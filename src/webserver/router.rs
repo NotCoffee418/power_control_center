@@ -4,7 +4,7 @@ use rust_embed::RustEmbed;
 use tiny_http::{Header, Method, Response, Server};
 
 #[derive(RustEmbed)]
-#[folder = "web/"]
+#[folder = "frontend/dist/"]
 struct Static;
 
 pub fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
