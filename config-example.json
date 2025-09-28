@@ -1,0 +1,16 @@
+{
+    "database_path": "/var/lib/power_control_center/pcc.db",
+    "listen_address": "127.0.0.1",
+    "listen_port": 9040,
+    "smart_meter_api_endpoint": "http://raspberrypi.local:9039",
+    "ac_controller_endpoints": {
+        "LivingRoom": {
+            "endpoint": "http://192.168.50.201",
+            "api_key": "secret123"
+        },
+        "Veranda": {
+            "endpoint": "http://192.168.50.202",
+            "api_key": "secret456"
+        }
+    }
+}
