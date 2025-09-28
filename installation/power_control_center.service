@@ -1,0 +1,30 @@
+# /etc/systemd/system/power_control_center.service
+[Unit]
+Description=Power Control Center Service
+After=network.target
+
+[Service]
+Type=simple
+User=power_control
+Group=power_control
+ExecStart=/usr/local/bin/power_control_center
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/lib/power_control_center
+
+# Systemd managed directories
+StateDirectory=power_control_center
+LogsDirectory=power_control_center
+ConfigurationDirectory=power_control_center
+RuntimeDirectory=power_control_center
+
+# Environment
+Environment=RUST_LOG=info
+
+# Basic security
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/power_control_center /var/log/power_control_center /run/power_control_center
+ReadOnlyPaths=/etc/power_control_center
+
+[Install]
+WantedBy=multi-user.target
