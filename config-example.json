@@ -1,6 +1,6 @@
 {
     "database_path": "/var/lib/power_control_center/pcc.db",
-    "listen_address": "127.0.0.1",
+    "listen_address": "0.0.0.0",
     "listen_port": 9040,
     "smart_meter_api_endpoint": "http://raspberrypi.local:9039",
     "ac_controller_endpoints": {

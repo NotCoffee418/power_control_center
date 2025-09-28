@@ -1,16 +1,24 @@
+mod ac_controller;
 mod config;
 mod types;
+mod webserver;
 
 use env_logger::Env;
 use log::{debug, error};
+use std::thread;
 
 fn main() {
     // Set up logging
     init_logging();
 
-    // xxx
-    config::get_config();
-    println!("Hello, world!");
+    // Start AC controller in the background in a seperate thread
+    let bg_handle = thread::spawn(|| {
+        ac_controller::start_ac_controller();
+    });
+
+    // Run webserver on main thread
+    webserver::start_webserver();
+    bg_handle.join().unwrap();
 }
 
 fn init_logging() {

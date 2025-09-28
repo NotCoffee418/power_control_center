@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Power Control Center</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>Power Control</h1>
+    <button onclick="powerOn()">Power On</button>
+    <button onclick="powerOff()">Power Off</button>
+    <div id="status"></div>
+
+    <script>
+      async function powerOn() {
+        const response = await fetch("/api/ac_request/power/on", {
+          method: "POST",
+        });
+        const result = await response.json();
+        console.log(result);
+      }
+
+      async function powerOff() {
+        const response = await fetch("/api/ac_request/power/off", {
+          method: "POST",
+        });
+        const result = await response.json();
+        console.log(result);
+      }
+    </script>
+  </body>
+</html>
