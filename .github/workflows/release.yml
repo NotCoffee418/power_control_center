@@ -125,35 +125,38 @@ jobs:
     release:
         needs: build
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
         steps:
             - uses: actions/checkout@v5.0.0
+
+            - name: Get version
+              id: get_version
+              run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
             - name: Download artifacts
               uses: actions/download-artifact@v5.0.0
               with:
                   name: power_control_center-binaries
+                  path: artifacts
 
-            - name: Extract version from tag
-              id: version
-              run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            - name: Prepare release assets
+              run: |
+                  mkdir -p release-assets
+                  cp artifacts/power_control_center-${{ steps.get_version.outputs.VERSION }}-linux-*.tar.gz release-assets/
 
             - name: Create Release
-              uses: softprops/action-gh-release@v2.3.3
-              with:
-                  tag_name: ${{ steps.version.outputs.VERSION }}
-                  name: Release ${{ steps.version.outputs.VERSION }}
-                  body: |
-                      Release ${{ steps.version.outputs.VERSION }}
-
-                      ## Downloads
-                      - **AMD64 (x86_64)**: `power_control_center-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz`
-                      - **ARM64**: `power_control_center-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz`  
-                      - **ARMv7**: `power_control_center-${{ steps.version.outputs.VERSION }}-linux-armv7.tar.gz`
-
-                      Extract with: `tar -xzf power_control_center-${{ steps.version.outputs.VERSION }}-linux-<arch>.tar.gz`
-                  files: |
-                      power_control_center-${{ steps.version.outputs.VERSION }}-linux-*.tar.gz
-                  draft: false
-                  prerelease: false
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh release create ${{ github.ref_name }} \
+                    --title "Power Control Center ${{ steps.get_version.outputs.VERSION }}" \
+                    --notes "Release ${{ steps.get_version.outputs.VERSION }}
+
+                  ## Downloads
+                  - **AMD64 (x86_64)**: \`power_control_center-${{ steps.get_version.outputs.VERSION }}-linux-amd64.tar.gz\`
+                  - **ARM64**: \`power_control_center-${{ steps.get_version.outputs.VERSION }}-linux-arm64.tar.gz\`  
+                  - **ARMv7**: \`power_control_center-${{ steps.get_version.outputs.VERSION }}-linux-armv7.tar.gz\`
+
+                  Extract with: \`tar -xzf power_control_center-${{ steps.get_version.outputs.VERSION }}-linux-<arch>.tar.gz\`" \
+                    release-assets/*
