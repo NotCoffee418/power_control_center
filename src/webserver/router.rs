@@ -1,7 +1,7 @@
-use crate::types::{self, ApiResponse};
+use crate::webserver::api_controllers::handle_api_request;
 use log::{debug, info};
 use rust_embed::RustEmbed;
-use tiny_http::{Header, Method, Request, Response, Server};
+use tiny_http::{Header, Method, Response, Server};
 
 #[derive(RustEmbed)]
 #[folder = "web/"]
@@ -31,37 +31,31 @@ fn handle_request(request: tiny_http::Request) -> Result<(), Box<dyn std::error:
     let method = request.method().clone();
     debug!("{}: {}", method.as_str(), url);
 
-    match (method, url.as_str()) {
-        (Method::Get, "/status") => {
-            respond_json(request, ApiResponse::success("Service is running"));
-        }
+    // minor security check to prevent directory traversal attacks
+    if url.contains("..") {
+        let response = Response::from_string("Bad Request").with_status_code(400);
+        request.respond(response)?;
+        return Ok(());
+    }
 
+    // route api requests
+    if url.starts_with("/api/") {
+        return handle_api_request(request, method, url);
+    }
+
+    // serve static files
+    match (method, url.as_str()) {
         (Method::Get, path) => {
             serve_static(request, path);
         }
 
+        // Post request to static or other shenanigans.
         _ => {
-            let response = Response::from_string("Not Found").with_status_code(404);
+            let response = Response::from_string("Bad Request").with_status_code(400);
             request.respond(response)?;
         }
     }
     Ok(())
-}
-
-/// Respond with standardized JSON response
-/// example usage:
-/// respond_json(request, types::ApiResponse::success(data))
-pub fn respond_json<T>(request: tiny_http::Request, response_data: types::ApiResponse<T>)
-where
-    T: serde::Serialize,
-{
-    let json_str = response_data.to_json();
-    let header = Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap();
-    let response = Response::from_string(json_str).with_header(header);
-    match request.respond(response) {
-        Err(e) => log::error!("respond_json: Failed to send JSON response: {}", e),
-        _ => (),
-    }
 }
 
 fn serve_static(request: tiny_http::Request, path: &str) {

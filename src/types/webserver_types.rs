@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub type ApiError = ApiResponse<()>;
+
 /// used by webserver::json_response()
 #[derive(Serialize, Deserialize)]
 pub struct ApiResponse<T>
@@ -31,15 +33,15 @@ where
         }
     }
 
-    pub fn error(message: String) -> Self {
+    pub fn error(message: impl Into<String>) -> Self {
         Self::error_with_status(message, 500)
     }
 
-    pub fn error_with_status(message: String, status_code: u16) -> Self {
+    pub fn error_with_status(message: impl Into<String>, status_code: u16) -> Self {
         ApiResponse {
             success: false,
             data: None,
-            error: Some(message),
+            error: Some(message.into()),
             http_status: status_code,
         }
     }
