@@ -9,28 +9,25 @@ jobs:
     test:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5.0.0
 
             - name: Setup Rust
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  override: true
+              uses: dtolnay/rust-toolchain@stable
 
             - name: Cache cargo registry
-              uses: actions/cache@v4
+              uses: actions/cache@v4.3.0
               with:
                   path: ~/.cargo/registry
                   key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
             - name: Cache cargo index
-              uses: actions/cache@v4
+              uses: actions/cache@v4.3.0
               with:
                   path: ~/.cargo/git
                   key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
             - name: Cache cargo build
-              uses: actions/cache@v4
+              uses: actions/cache@v4.3.0
               with:
                   path: target
                   key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
@@ -41,25 +38,11 @@ jobs:
     build:
         needs: test
         runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                target:
-                    - x86_64-unknown-linux-gnu
-                    - aarch64-unknown-linux-gnu
-                    - armv7-unknown-linux-gnueabihf
-                include:
-                    - target: x86_64-unknown-linux-gnu
-                      arch: amd64
-                    - target: aarch64-unknown-linux-gnu
-                      arch: arm64
-                    - target: armv7-unknown-linux-gnueabihf
-                      arch: armv7
-
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5.0.0
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v5.0.0
               with:
                   node-version: "20"
                   cache: "npm"
@@ -74,78 +57,73 @@ jobs:
               working-directory: frontend
 
             - name: Setup Rust
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  target: ${{ matrix.target }}
-                  override: true
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Add Rust targets
+              run: |
+                  rustup target add x86_64-unknown-linux-gnu
+                  rustup target add aarch64-unknown-linux-gnu
+                  rustup target add armv7-unknown-linux-gnueabihf
 
             - name: Install cross-compilation tools
               run: |
                   sudo apt-get update
                   sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
 
-            - name: Cache cargo registry
-              uses: actions/cache@v4
+            - name: Cache cargo
+              uses: actions/cache@v4.3.0
               with:
-                  path: ~/.cargo/registry
-                  key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      target
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-            - name: Cache cargo index
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cargo/git
-                  key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Cache cargo build
-              uses: actions/cache@v4
-              with:
-                  path: target
-                  key: ${{ runner.os }}-cargo-build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-
-            - name: Build binary
-              uses: actions-rs/cargo@v1
-              with:
-                  use-cross: true
-                  command: build
-                  args: --release --target ${{ matrix.target }}
-              env:
-                  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-                  CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
-
-            - name: Package binary
+            - name: Build binaries
               run: |
-                  mkdir -p dist
-                  cp target/${{ matrix.target }}/release/power_control_center dist/
-                  tar -czf power_control_center-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz -C dist power_control_center
+                  # AMD64
+                  cargo build --release --target x86_64-unknown-linux-gnu
+                  mkdir -p dist/amd64
+                  cp target/x86_64-unknown-linux-gnu/release/power_control_center dist/amd64/
+                  tar -czf power_control_center-${{ github.ref_name }}-linux-amd64.tar.gz -C dist/amd64 power_control_center
 
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
+                  # ARM64
+                  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+                  cargo build --release --target aarch64-unknown-linux-gnu
+                  mkdir -p dist/arm64
+                  cp target/aarch64-unknown-linux-gnu/release/power_control_center dist/arm64/
+                  tar -czf power_control_center-${{ github.ref_name }}-linux-arm64.tar.gz -C dist/arm64 power_control_center
+
+                  # ARMv7
+                  CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc \
+                  cargo build --release --target armv7-unknown-linux-gnueabihf
+                  mkdir -p dist/armv7
+                  cp target/armv7-unknown-linux-gnueabihf/release/power_control_center dist/armv7/
+                  tar -czf power_control_center-${{ github.ref_name }}-linux-armv7.tar.gz -C dist/armv7 power_control_center
+
+            - name: Upload artifacts
+              uses: actions/upload-artifact@v4.6.2
               with:
-                  name: power_control_center-${{ matrix.arch }}
-                  path: power_control_center-${{ github.ref_name }}-linux-${{ matrix.arch }}.tar.gz
+                  name: power_control_center-binaries
+                  path: power_control_center-${{ github.ref_name }}-linux-*.tar.gz
 
     release:
         needs: build
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5.0.0
 
-            - name: Download all artifacts
-              uses: actions/download-artifact@v4
+            - name: Download artifacts
+              uses: actions/download-artifact@v5.0.0
               with:
-                  path: ./artifacts
-
-            - name: Move artifacts to root
-              run: |
-                  find ./artifacts -name "*.tar.gz" -exec mv {} . \;
+                  name: power_control_center-binaries
 
             - name: Extract version from tag
               id: version
               run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
             - name: Create Release
-              uses: softprops/action-gh-release@v1
+              uses: softprops/action-gh-release@v2.3.3
               with:
                   tag_name: ${{ steps.version.outputs.VERSION }}
                   name: Release ${{ steps.version.outputs.VERSION }}
