@@ -1,5 +1,5 @@
 use crate::webserver::api_controllers::handle_api_request;
-use log::{debug, info};
+use log::{debug, info, warn};
 use rust_embed::RustEmbed;
 use tiny_http::{Header, Method, Response, Server};
 
@@ -20,7 +20,9 @@ pub fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
 
     // Pass incoming requests to handler
     for request in server.incoming_requests() {
-        handle_request(request)?;
+        if let Err(err) = handle_request(request) {
+            warn!("HTTP Request Error: {}", err);
+        }
     }
 
     Ok(())

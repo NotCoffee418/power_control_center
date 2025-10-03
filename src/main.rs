@@ -17,7 +17,9 @@ fn main() {
     });
 
     // Run webserver on main thread
-    webserver::start_webserver();
+    if let Err(err) = webserver::start_webserver() {
+        panic!("Webserver error: {}", err);
+    }
     bg_handle.join().unwrap();
 }
 

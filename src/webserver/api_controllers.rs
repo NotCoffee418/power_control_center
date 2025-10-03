@@ -1,6 +1,6 @@
 use crate::types::{ApiError, ApiResponse};
 use crate::webserver::helpers::respond_json;
-use tiny_http::{Method, Response};
+use tiny_http::Method;
 
 /// Handle requests routed to /api/*
 pub fn handle_api_request(
