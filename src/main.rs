@@ -13,6 +13,8 @@ async fn main() {
     // Set up logging
     init_logging();
 
+    _ = db::get_pool().await;
+
     // Start AC controller
     let bg_handle = tokio::spawn(async move {
         ac_controller::start_ac_controller().await;

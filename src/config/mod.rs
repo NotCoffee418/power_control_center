@@ -26,3 +26,35 @@ pub fn get_config() -> &'static Config {
 fn get_config_from_json_str(json_str: &str) -> Config {
     serde_json::from_str(json_str).unwrap_or_else(|e| panic!("Failed to parse config JSON: {}", e))
 }
+
+#[cfg(test)]
+impl Default for Config {
+    fn default() -> Self {
+        use std::collections::HashMap;
+
+        Config {
+            database_path: String::new(),
+            listen_address: String::new(),
+            listen_port: 0,
+            smart_meter_api_endpoint: String::new(),
+            ac_controller_endpoints: HashMap::new(),
+        }
+    }
+}
+/// Build config with custom values for unit tests.
+#[cfg(test)]
+impl Config {
+    pub fn with_memory_db(mut self) -> Self {
+        self.database_path = ":memory:".to_string();
+        self
+    }
+
+    // Set global config to our customized test config.
+    // Now callable by `get_config`
+    pub fn build(self) -> &'static Config {
+        CONFIG
+            .set(self)
+            .expect("set_test_config failed. Config already initialized.");
+        CONFIG.get().unwrap()
+    }
+}
