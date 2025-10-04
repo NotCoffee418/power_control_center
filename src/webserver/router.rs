@@ -7,7 +7,7 @@ use tiny_http::{Header, Method, Response, Server};
 #[folder = "frontend/dist/"]
 struct Static;
 
-pub fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
     // Get listen address from config
     let cfg = crate::config::get_config();
     let listen_addr = format!("{}:{}", cfg.listen_address, cfg.listen_port);

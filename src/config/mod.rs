@@ -1,12 +1,12 @@
 use crate::types::*;
-use once_cell::sync::OnceCell;
 use serde_json;
+use std::sync::OnceLock;
 
 #[cfg(test)]
 mod tests;
 
 pub const CONFIG_FILE_PATH: &str = "/etc/power_control_center/config.json";
-static CONFIG: OnceCell<Config> = OnceCell::new();
+static CONFIG: OnceLock<Config> = OnceLock::new();
 
 /// Load and return a reference to the global configuration
 /// Reuse existing config if already loaded from file.
