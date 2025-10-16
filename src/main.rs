@@ -1,4 +1,5 @@
 mod ac_controller;
+mod ac_remote_access;
 mod config;
 mod db;
 mod types;
