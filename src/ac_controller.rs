@@ -4,6 +4,22 @@ use tokio;
 use crate::device_requests;
 
 pub async fn start_ac_controller() {
+    // Read thing from thing debug
+    match device_requests::meter::get_solar_production().await {
+        Ok(data) => {
+            println!("Solar production data: {:?}", data.current_production);
+        }
+        Err(e) => println!("Error fetching solar production data: {}", e),
+    }
+
+    // Read other thing
+    match device_requests::meter::get_latest_reading().await {
+        Ok(data) => {
+            println!("Latest meter reading: {:?}", data);
+        }
+        Err(e) => println!("Error fetching latest meter reading: {}", e),
+    }
+
     // // Debug fetch sensors
     match device_requests::ac::get_sensors("LivingRoom").await {
         Ok(data) => {
