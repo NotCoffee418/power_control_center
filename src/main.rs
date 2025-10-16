@@ -13,7 +13,15 @@ async fn main() {
     // Set up logging
     init_logging();
 
-    _ = db::get_pool().await;
+    // Prepare database
+    {
+        let pool = db::get_pool().await;
+        if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
+            panic!("Failed to run database migrations: {}", e);
+        } else {
+            debug!("Database migrations OK.");
+        }
+    }
 
     // Start AC controller
     let bg_handle = tokio::spawn(async move {
