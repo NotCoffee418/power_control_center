@@ -1,7 +1,7 @@
 mod ac_controller;
-mod ac_remote_access;
 mod config;
 mod db;
+mod device_requests;
 mod types;
 mod webserver;
 

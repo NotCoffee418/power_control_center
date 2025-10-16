@@ -1,30 +1,7 @@
+use super::common;
 use log::{debug, error, info};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::time::Duration;
-use tokio::sync::OnceCell;
-
-static CLIENT: OnceCell<Client> = OnceCell::const_new();
-
-async fn get_client() -> &'static Client {
-    CLIENT
-        .get_or_init(|| async {
-            Client::builder()
-                .timeout(Duration::from_secs(30))
-                .build()
-                .unwrap()
-        })
-        .await
-}
-
-// Internal response types (not exposed)
-#[derive(Debug, Deserialize)]
-struct ApiResponse<T> {
-    success: bool,
-    error: String,
-    data: T,
-}
 
 // Public data types
 #[derive(Debug, Deserialize)]
@@ -72,8 +49,85 @@ impl From<reqwest::Error> for AcError {
     }
 }
 
+// API functions
+pub async fn turn_off_ac(endpoint_name: &str) -> Result<bool, AcError> {
+    let (base_url, api_key) = get_ac_endpoint_config(endpoint_name)?;
+
+    info!("Turning off AC '{}'", endpoint_name);
+    let url = format!("{}/api/ir/off", base_url);
+    let client = common::get_client().await;
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("ApiKey {}", api_key))
+        .send()
+        .await?;
+
+    handle_response(response).await
+}
+
+pub async fn turn_on_ac(
+    endpoint_name: &str,
+    mode: i32,
+    fan_speed: i32,
+    temperature: f64,
+    swing: i32,
+) -> Result<bool, AcError> {
+    let (base_url, api_key) = get_ac_endpoint_config(endpoint_name)?;
+
+    info!(
+        "Turning on AC '{}': mode={}, fan_speed={}, temp={}°C, swing={}",
+        endpoint_name, mode, fan_speed, temperature, swing
+    );
+    let url = format!("{}/api/ir/on", base_url);
+    let request = TurnOnRequest {
+        mode,
+        fan_speed,
+        temperature,
+        swing,
+    };
+    let client = common::get_client().await;
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("ApiKey {}", api_key))
+        .json(&request)
+        .send()
+        .await?;
+
+    handle_response(response).await
+}
+
+pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
+    let (base_url, api_key) = get_ac_endpoint_config(endpoint_name)?;
+
+    info!("Toggling powerful mode for AC '{}'", endpoint_name);
+    let url = format!("{}/api/ir/toggle-powerful", base_url);
+    let client = common::get_client().await;
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("ApiKey {}", api_key))
+        .send()
+        .await?;
+
+    handle_response(response).await
+}
+
+pub async fn get_sensors(endpoint_name: &str) -> Result<SensorData, AcError> {
+    let (base_url, _api_key) = get_ac_endpoint_config(endpoint_name)?;
+
+    debug!("Fetching sensor data from AC '{}'", endpoint_name);
+    let url = format!("{}/api/sensors", base_url);
+    let client = common::get_client().await;
+
+    let response = client.get(&url).send().await?;
+
+    handle_response(response).await
+}
+
 // Helper to get endpoint config
-fn get_endpoint_config(endpoint_name: &str) -> Result<(&str, &str), AcError> {
+fn get_ac_endpoint_config(endpoint_name: &str) -> Result<(&str, &str), AcError> {
     let config = crate::config::get_config();
 
     match config.ac_controller_endpoints.get(endpoint_name) {
@@ -95,7 +149,7 @@ fn get_endpoint_config(endpoint_name: &str) -> Result<(&str, &str), AcError> {
 async fn handle_response<T: for<'de> Deserialize<'de>>(
     response: reqwest::Response,
 ) -> Result<T, AcError> {
-    let api_response: ApiResponse<T> = response.json().await?;
+    let api_response: common::ApiResponse<T> = response.json().await?;
 
     if api_response.success {
         debug!("API request successful");
@@ -104,81 +158,4 @@ async fn handle_response<T: for<'de> Deserialize<'de>>(
         error!("API request failed: {}", api_response.error);
         Err(AcError::ApiError(api_response.error))
     }
-}
-
-// API functions
-pub async fn turn_off_ac(endpoint_name: &str) -> Result<bool, AcError> {
-    let (base_url, api_key) = get_endpoint_config(endpoint_name)?;
-
-    info!("Turning off AC '{}'", endpoint_name);
-    let url = format!("{}/api/ir/off", base_url);
-    let client = get_client().await;
-
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("ApiKey {}", api_key))
-        .send()
-        .await?;
-
-    handle_response(response).await
-}
-
-pub async fn turn_on_ac(
-    endpoint_name: &str,
-    mode: i32,
-    fan_speed: i32,
-    temperature: f64,
-    swing: i32,
-) -> Result<bool, AcError> {
-    let (base_url, api_key) = get_endpoint_config(endpoint_name)?;
-
-    info!(
-        "Turning on AC '{}': mode={}, fan_speed={}, temp={}°C, swing={}",
-        endpoint_name, mode, fan_speed, temperature, swing
-    );
-    let url = format!("{}/api/ir/on", base_url);
-    let request = TurnOnRequest {
-        mode,
-        fan_speed,
-        temperature,
-        swing,
-    };
-    let client = get_client().await;
-
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("ApiKey {}", api_key))
-        .json(&request)
-        .send()
-        .await?;
-
-    handle_response(response).await
-}
-
-pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
-    let (base_url, api_key) = get_endpoint_config(endpoint_name)?;
-
-    info!("Toggling powerful mode for AC '{}'", endpoint_name);
-    let url = format!("{}/api/ir/toggle-powerful", base_url);
-    let client = get_client().await;
-
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("ApiKey {}", api_key))
-        .send()
-        .await?;
-
-    handle_response(response).await
-}
-
-pub async fn get_sensors(endpoint_name: &str) -> Result<SensorData, AcError> {
-    let (base_url, _api_key) = get_endpoint_config(endpoint_name)?;
-
-    debug!("Fetching sensor data from AC '{}'", endpoint_name);
-    let url = format!("{}/api/sensors", base_url);
-    let client = get_client().await;
-
-    let response = client.get(&url).send().await?;
-
-    handle_response(response).await
 }
