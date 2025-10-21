@@ -1,6 +1,6 @@
 use crate::webserver::api::handle_api_request;
 use log::{debug, info, warn};
-use rust_embed::RustEmbed;
+use rust_embed::{Embed, RustEmbed};
 use tiny_http::{Header, Method, Response, Server};
 
 #[derive(RustEmbed)]
