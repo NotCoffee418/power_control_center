@@ -1,4 +1,4 @@
-use crate::webserver::api_controllers::handle_api_request;
+use crate::webserver::api::handle_api_request;
 use log::{debug, info, warn};
 use rust_embed::RustEmbed;
 use tiny_http::{Header, Method, Response, Server};
@@ -20,7 +20,7 @@ pub async fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
 
     // Pass incoming requests to handler
     for request in server.incoming_requests() {
-        if let Err(err) = handle_request(request) {
+        if let Err(err) = handle_request(request).await {
             warn!("HTTP Request Error: {}", err);
         }
     }
@@ -28,7 +28,7 @@ pub async fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn handle_request(request: tiny_http::Request) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_request(request: tiny_http::Request) -> Result<(), Box<dyn std::error::Error>> {
     let url = request.url().to_string();
     let method = request.method().clone();
     debug!("{}: {}", method.as_str(), url);
@@ -42,7 +42,7 @@ fn handle_request(request: tiny_http::Request) -> Result<(), Box<dyn std::error:
 
     // route api requests
     if url.starts_with("/api/") {
-        return handle_api_request(request, method, url);
+        return handle_api_request(request, method, url).await;
     }
 
     // serve static files

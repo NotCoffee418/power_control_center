@@ -1,3 +1,4 @@
+mod plan_helpers;
 mod plan_types;
 
 use crate::device_requests;
@@ -7,6 +8,7 @@ use tokio;
 /// ----------------- DEBUG OLD VER TEST
 /// Start the loop of controlling ACs
 pub async fn start_ac_controller() {
+    return; // Do nothing yet
     // Read thing from thing debug
     match device_requests::meter::get_solar_production().await {
         Ok(data) => {

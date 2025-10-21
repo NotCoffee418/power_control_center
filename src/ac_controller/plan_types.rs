@@ -1,6 +1,13 @@
+
+
+// Configurable parameters for AC behavior plans
+/// Minimum active solar power to consider Powerful (High Intensity) mode
+const SOLAR_HIGH_INTENSITY_WATT_THRESHOLD: u32 = 2000; // Watts
+
+
 /// Vague request for changing temperature
 /// To be specified by settings
-pub(super) enum RequestTemp {
+pub(super) enum RequestMode {
     Colder(Intensity),
     Warmer(Intensity),
     NoChange,
