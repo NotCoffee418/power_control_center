@@ -1,9 +1,13 @@
-use crate::webserver::api::handle_api_request;
-use log::{debug, info, warn};
-use rust_embed::{Embed, RustEmbed};
-use tiny_http::{Header, Method, Response, Server};
+use axum::{
+    body::Body,
+    http::{header, StatusCode, Uri},
+    response::{IntoResponse, Response},
+    Router,
+};
+use log::{debug, info};
+use rust_embed::Embed;
 
-#[derive(RustEmbed)]
+#[derive(Embed)]
 #[folder = "frontend/dist/"]
 struct Static;
 
@@ -12,73 +16,46 @@ pub async fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = crate::config::get_config();
     let listen_addr = format!("{}:{}", cfg.listen_address, cfg.listen_port);
 
-    // Attempt to start server
     debug!("Starting web server on {}", listen_addr);
-    let server = Server::http(listen_addr.as_str())
-        .map_err(|e| format!("Failed to start webserver: {}", e))?;
+
+    // Build the axum router
+    let app = Router::new()
+        .nest("/api", crate::webserver::api::api_routes())
+        .fallback(serve_static);
+
+    // Start the server
+    let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
     info!("Web server running on {}", listen_addr);
 
-    // Pass incoming requests to handler
-    for request in server.incoming_requests() {
-        if let Err(err) = handle_request(request).await {
-            warn!("HTTP Request Error: {}", err);
-        }
-    }
-
+    axum::serve(listener, app).await?;
     Ok(())
 }
 
-async fn handle_request(request: tiny_http::Request) -> Result<(), Box<dyn std::error::Error>> {
-    let url = request.url().to_string();
-    let method = request.method().clone();
-    debug!("{}: {}", method.as_str(), url);
-
-    // minor security check to prevent directory traversal attacks
-    if url.contains("..") {
-        let response = Response::from_string("Bad Request").with_status_code(400);
-        request.respond(response)?;
-        return Ok(());
+async fn serve_static(uri: Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+    
+    // Security check to prevent directory traversal attacks
+    if path.contains("..") {
+        return (StatusCode::BAD_REQUEST, "Bad Request").into_response();
     }
 
-    // route api requests
-    if url.starts_with("/api/") {
-        return handle_api_request(request, method, url).await;
-    }
-
-    // serve static files
-    match (method, url.as_str()) {
-        (Method::Get, path) => {
-            serve_static(request, path);
-        }
-
-        // Post request to static or other shenanigans.
-        _ => {
-            let response = Response::from_string("Bad Request").with_status_code(400);
-            request.respond(response)?;
-        }
-    }
-    Ok(())
-}
-
-fn serve_static(request: tiny_http::Request, path: &str) {
     // Root = index.html
-    let file_path = if path == "/" {
+    let file_path = if path.is_empty() {
         "index.html"
     } else {
-        &path[1..] // Remove leading /
+        path
     };
 
     match Static::get(file_path) {
         Some(content) => {
             let mime = guess_mime(file_path);
-            let header = Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).unwrap();
-            let response = Response::from_data(content.data.as_ref()).with_header(header);
-            let _ = request.respond(response);
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, mime)
+                .body(Body::from(content.data))
+                .unwrap()
         }
-        None => {
-            let response = Response::from_string("not found").with_status_code(404);
-            let _ = request.respond(response);
-        }
+        None => (StatusCode::NOT_FOUND, "not found").into_response(),
     }
 }
 
