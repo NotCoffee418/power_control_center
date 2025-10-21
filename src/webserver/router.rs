@@ -1,10 +1,10 @@
 use axum::{
-    body::Body,
-    http::{header, StatusCode, Uri},
-    response::{IntoResponse, Response},
     Router,
+    body::Body,
+    http::{StatusCode, Uri, header},
+    response::{IntoResponse, Response},
 };
-use log::{debug, info};
+use log::info;
 use rust_embed::Embed;
 
 #[derive(Embed)]
@@ -16,7 +16,7 @@ pub async fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = crate::config::get_config();
     let listen_addr = format!("{}:{}", cfg.listen_address, cfg.listen_port);
 
-    debug!("Starting web server on {}", listen_addr);
+    info!("Starting web server on {}", listen_addr);
 
     // Build the axum router
     let app = Router::new()
@@ -33,18 +33,14 @@ pub async fn start_webserver() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn serve_static(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
-    
+
     // Security check to prevent directory traversal attacks
     if path.contains("..") {
         return (StatusCode::BAD_REQUEST, "Bad Request").into_response();
     }
 
     // Root = index.html
-    let file_path = if path.is_empty() {
-        "index.html"
-    } else {
-        path
-    };
+    let file_path = if path.is_empty() { "index.html" } else { path };
 
     match Static::get(file_path) {
         Some(content) => {

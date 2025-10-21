@@ -1,15 +1,15 @@
 use axum::{
+    Json, Router,
     extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
-    Json, Router,
 };
 use serde::Deserialize;
 
 use crate::{
     db,
-    types::{ApiResponse},
+    types::{AcAction, ApiError, ApiResponse},
 };
 
 pub fn ac_routes() -> Router {
@@ -19,35 +19,31 @@ pub fn ac_routes() -> Router {
 }
 
 #[derive(Deserialize)]
-struct HistoryPageParams {
-    #[serde(default = "default_page_size")]
+#[serde(default)]
+struct HistoryPageRequest {
     page_size: i64,
-    #[serde(default = "default_page_num")]
     page_num: i64,
 }
 
-fn default_page_size() -> i64 {
-    10
-}
-
-fn default_page_num() -> i64 {
-    1
+impl Default for HistoryPageRequest {
+    fn default() -> Self {
+        Self {
+            page_size: 10,
+            page_num: 1,
+        }
+    }
 }
 
 // GET /api/ac/get_history_page?page_size=10&page_num=1
 // Returns Vec<db_types::AcAction>
-async fn get_history_page(
-    Query(params): Query<HistoryPageParams>,
-) -> Response {
+async fn get_history_page(Query(params): Query<HistoryPageRequest>) -> Response {
     // Validate parameters
     if params.page_size <= 0 || params.page_size > 100 {
-        let response: ApiResponse<Vec<crate::types::db_types::AcAction>> = 
-            ApiResponse::error_with_status("Invalid page size", 400);
+        let response = ApiError::error("Invalid page size");
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
     if params.page_num <= 0 {
-        let response: ApiResponse<Vec<crate::types::db_types::AcAction>> = 
-            ApiResponse::error_with_status("Invalid page number", 400);
+        let response = ApiError::error("Invalid page number");
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
 
@@ -62,8 +58,7 @@ async fn get_history_page(
         }
         Err(err) => {
             log::error!("Database error in get_history_page: {}", err);
-            let response: ApiResponse<Vec<crate::types::db_types::AcAction>> = 
-                ApiResponse::error_with_status("Database error has occurred", 500);
+            let response = ApiError::error("Database error has occurred");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
@@ -79,8 +74,7 @@ async fn get_history_count() -> Response {
         }
         Err(err) => {
             log::error!("Database error in get_history_count: {}", err);
-            let response: ApiResponse<i64> = 
-                ApiResponse::error_with_status("Database error has occurred", 500);
+            let response = ApiError::error("Database error has occurred");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
