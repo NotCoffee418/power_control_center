@@ -2,7 +2,7 @@ use chrono::{Datelike, Local, Timelike};
 
 /// Simple estimate if user is home and awake based on time of day
 /// Can be replaced later with some phone presence detection or other methods
-fn is_user_home_and_awake() -> bool {
+pub(super) fn is_user_home_and_awake() -> bool {
     let now = Local::now();
     let hour = now.hour();
     let minute = now.minute();

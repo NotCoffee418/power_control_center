@@ -9,6 +9,14 @@ use tokio;
 /// Start the loop of controlling ACs
 pub async fn start_ac_controller() {
     return; // Do nothing yet
+    
+    // Example usage of get_plan function:
+    // use plan_types::{AcDevices, get_plan};
+    // let living_room_plan = get_plan(&AcDevices::LivingRoom).await;
+    // let veranda_plan = get_plan(&AcDevices::Veranda).await;
+    // 
+    // Then use the RequestMode returned to decide what API calls to make
+    
     // Read thing from thing debug
     match device_requests::meter::get_solar_production().await {
         Ok(data) => {
