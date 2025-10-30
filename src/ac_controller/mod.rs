@@ -16,8 +16,15 @@ pub async fn start_ac_controller() {
     // let veranda_plan = fetch_data_and_get_plan(&AcDevices::Veranda).await;
     // 
     // Or use get_plan directly with known data for testing:
-    // use plan_types::get_plan;
-    // let plan = get_plan(22.0, 1500, true);
+    // use plan_types::{get_plan, PlanInput};
+    // let input = PlanInput {
+    //     current_indoor_temp: 22.0,
+    //     solar_production: 1500,
+    //     user_is_home: true,
+    //     current_outdoor_temp: 20.0,
+    //     avg_next_12h_outdoor_temp: 18.0,
+    // };
+    // let plan = get_plan(&input);
     // 
     // Then use the RequestMode returned to decide what API calls to make
     

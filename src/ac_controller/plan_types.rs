@@ -13,9 +13,22 @@ const COMFORTABLE_TEMP_MAX: f64 = 24.0; // °C
 const TOO_COLD_THRESHOLD: f64 = 18.0; // °C
 const TOO_HOT_THRESHOLD: f64 = 27.0; // °C
 
+/// Significant temperature change threshold (for weather forecasting logic)
+const SIGNIFICANT_TEMP_CHANGE: f64 = 3.0; // °C
+
 /// AC operation modes for API calls (for future implementation)
 const AC_MODE_HEAT: i32 = 1;
 const AC_MODE_COOL: i32 = 4;
+
+/// Input parameters for AC planning
+#[derive(Debug, Clone)]
+pub(super) struct PlanInput {
+    pub current_indoor_temp: f64,
+    pub solar_production: u32,
+    pub user_is_home: bool,
+    pub current_outdoor_temp: f64,
+    pub avg_next_12h_outdoor_temp: f64,
+}
 
 
 /// Vague request for changing temperature
@@ -53,7 +66,7 @@ impl AcDevices {
 /// This is the async wrapper that fetches data and calls get_plan
 pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
     // Get current conditions
-    let current_temp = match get_current_temperature(device).await {
+    let current_indoor_temp = match get_current_temperature(device).await {
         Some(temp) => temp,
         None => {
             // If we can't get temperature, default to no change
@@ -63,34 +76,59 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
 
     let solar_production = get_solar_production_watts().await.unwrap_or(0);
     let user_is_home = plan_helpers::is_user_home_and_awake();
+    let current_outdoor_temp = get_current_outdoor_temp().await;
+    let avg_next_12h_outdoor_temp = get_avg_next_12h_outdoor_temp().await;
+
+    // Build input struct
+    let input = PlanInput {
+        current_indoor_temp,
+        solar_production,
+        user_is_home,
+        current_outdoor_temp,
+        avg_next_12h_outdoor_temp,
+    };
 
     // Call the pure function with fetched data
-    get_plan(current_temp, solar_production, user_is_home)
+    get_plan(&input)
 }
 
 /// Get the desired AC plan based on provided conditions
 /// This is a pure function that can be easily unit tested
-pub(super) fn get_plan(current_temp: f64, solar_production: u32, user_is_home: bool) -> RequestMode {
-    // Determine intensity based on solar production
-    let intensity = if solar_production >= SOLAR_HIGH_INTENSITY_WATT_THRESHOLD {
+pub(super) fn get_plan(input: &PlanInput) -> RequestMode {
+    // Calculate temperature forecast trend
+    let temp_trend = input.avg_next_12h_outdoor_temp - input.current_outdoor_temp;
+    let getting_significantly_colder = temp_trend < -SIGNIFICANT_TEMP_CHANGE;
+    let getting_significantly_warmer = temp_trend > SIGNIFICANT_TEMP_CHANGE;
+    
+    // Adjust solar threshold based on weather forecast
+    // If it's getting significantly colder or warmer, we want to use excess capacity now
+    let effective_solar_threshold = if getting_significantly_colder || getting_significantly_warmer {
+        // Lower threshold = easier to trigger high intensity
+        SOLAR_HIGH_INTENSITY_WATT_THRESHOLD / 2
+    } else {
+        SOLAR_HIGH_INTENSITY_WATT_THRESHOLD
+    };
+
+    // Determine intensity based on solar production and weather forecast
+    let intensity = if input.solar_production >= effective_solar_threshold {
         Intensity::High
-    } else if user_is_home {
+    } else if input.user_is_home {
         Intensity::Medium
     } else {
         Intensity::Low
     };
 
     // Decide on the mode based on temperature
-    if current_temp < TOO_COLD_THRESHOLD {
+    if input.current_indoor_temp < TOO_COLD_THRESHOLD {
         // Too cold - need heating
         RequestMode::Warmer(intensity)
-    } else if current_temp > TOO_HOT_THRESHOLD {
+    } else if input.current_indoor_temp > TOO_HOT_THRESHOLD {
         // Too hot - need cooling
         RequestMode::Colder(intensity)
-    } else if current_temp < COMFORTABLE_TEMP_MIN && user_is_home {
+    } else if input.current_indoor_temp < COMFORTABLE_TEMP_MIN && input.user_is_home {
         // A bit cold and user is home - use calculated intensity
         RequestMode::Warmer(intensity)
-    } else if current_temp > COMFORTABLE_TEMP_MAX && user_is_home {
+    } else if input.current_indoor_temp > COMFORTABLE_TEMP_MAX && input.user_is_home {
         // A bit warm and user is home - use calculated intensity
         RequestMode::Colder(intensity)
     } else {
@@ -130,6 +168,24 @@ async fn get_solar_production_watts() -> Option<u32> {
     }
 }
 
+/// Get current outdoor temperature
+/// TODO: Implement actual weather API integration
+async fn get_current_outdoor_temp() -> f64 {
+    // Spoof function - returns a default value
+    // In production, this should fetch from a weather API
+    log::warn!("Using spoofed current outdoor temperature");
+    20.0 // Default to 20°C
+}
+
+/// Get average outdoor temperature for next 12 hours
+/// TODO: Implement actual weather forecast API integration
+async fn get_avg_next_12h_outdoor_temp() -> f64 {
+    // Spoof function - returns a default value
+    // In production, this should fetch from a weather forecast API
+    log::warn!("Using spoofed 12h forecast outdoor temperature");
+    20.0 // Default to 20°C (same as current for now)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,7 +218,14 @@ mod tests {
     #[test]
     fn test_cold_mode_extreme_temp_user_home() {
         // Very cold temperature (17°C), user is home, no solar
-        let plan = get_plan(17.0, 0, true);
+        let input = PlanInput {
+            current_indoor_temp: 17.0,
+            solar_production: 0,
+            user_is_home: true,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Medium because user is home
             _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan),
@@ -172,7 +235,14 @@ mod tests {
     #[test]
     fn test_cold_mode_extreme_temp_high_solar() {
         // Very cold temperature (17°C), user not home, high solar
-        let plan = get_plan(17.0, 2500, false);
+        let input = PlanInput {
+            current_indoor_temp: 17.0,
+            solar_production: 2500,
+            user_is_home: false,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::Warmer(Intensity::High) => {}, // Expected: High because high solar
             _ => panic!("Expected Warmer with High intensity, got {:?}", plan),
@@ -183,7 +253,14 @@ mod tests {
     #[test]
     fn test_warm_mode_extreme_temp_user_home() {
         // Very hot temperature (28°C), user is home, no solar
-        let plan = get_plan(28.0, 0, true);
+        let input = PlanInput {
+            current_indoor_temp: 28.0,
+            solar_production: 0,
+            user_is_home: true,
+            current_outdoor_temp: 30.0,
+            avg_next_12h_outdoor_temp: 30.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::Colder(Intensity::Medium) => {}, // Expected: Medium because user is home
             _ => panic!("Expected Colder with Medium intensity, got {:?}", plan),
@@ -193,7 +270,14 @@ mod tests {
     #[test]
     fn test_warm_mode_extreme_temp_high_solar() {
         // Very hot temperature (28°C), user not home, high solar
-        let plan = get_plan(28.0, 2500, false);
+        let input = PlanInput {
+            current_indoor_temp: 28.0,
+            solar_production: 2500,
+            user_is_home: false,
+            current_outdoor_temp: 30.0,
+            avg_next_12h_outdoor_temp: 30.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::Colder(Intensity::High) => {}, // Expected: High because high solar
             _ => panic!("Expected Colder with High intensity, got {:?}", plan),
@@ -204,7 +288,14 @@ mod tests {
     #[test]
     fn test_comfortable_temp_no_change() {
         // Comfortable temperature (22°C), should not change
-        let plan = get_plan(22.0, 0, true);
+        let input = PlanInput {
+            current_indoor_temp: 22.0,
+            solar_production: 0,
+            user_is_home: true,
+            current_outdoor_temp: 20.0,
+            avg_next_12h_outdoor_temp: 20.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::NoChange => {}, // Expected: No change
             _ => panic!("Expected NoChange, got {:?}", plan),
@@ -214,7 +305,14 @@ mod tests {
     #[test]
     fn test_slightly_cold_user_home() {
         // Slightly cold (19°C), user is home, no solar
-        let plan = get_plan(19.0, 0, true);
+        let input = PlanInput {
+            current_indoor_temp: 19.0,
+            solar_production: 0,
+            user_is_home: true,
+            current_outdoor_temp: 18.0,
+            avg_next_12h_outdoor_temp: 18.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Warm with Medium
             _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan),
@@ -224,7 +322,14 @@ mod tests {
     #[test]
     fn test_slightly_warm_user_home() {
         // Slightly warm (25°C), user is home, no solar
-        let plan = get_plan(25.0, 0, true);
+        let input = PlanInput {
+            current_indoor_temp: 25.0,
+            solar_production: 0,
+            user_is_home: true,
+            current_outdoor_temp: 26.0,
+            avg_next_12h_outdoor_temp: 26.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::Colder(Intensity::Medium) => {}, // Expected: Cool with Medium
             _ => panic!("Expected Colder with Medium intensity, got {:?}", plan),
@@ -234,10 +339,54 @@ mod tests {
     #[test]
     fn test_slightly_cold_user_not_home() {
         // Slightly cold (19°C), user NOT home, no solar
-        let plan = get_plan(19.0, 0, false);
+        let input = PlanInput {
+            current_indoor_temp: 19.0,
+            solar_production: 0,
+            user_is_home: false,
+            current_outdoor_temp: 18.0,
+            avg_next_12h_outdoor_temp: 18.0,
+        };
+        let plan = get_plan(&input);
         match plan {
             RequestMode::NoChange => {}, // Expected: No change when user not home
             _ => panic!("Expected NoChange, got {:?}", plan),
+        }
+    }
+
+    // Weather forecast tests
+    #[test]
+    fn test_getting_significantly_colder_boosts_intensity() {
+        // Current outdoor 20°C, forecast 15°C (5° drop), moderate solar
+        // Should trigger high intensity due to weather forecast
+        let input = PlanInput {
+            current_indoor_temp: 19.0,
+            solar_production: 1200, // Below normal threshold, but above lowered threshold
+            user_is_home: true,
+            current_outdoor_temp: 20.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
+        match plan {
+            RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to weather forecast
+            _ => panic!("Expected Warmer with High intensity due to forecast, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn test_getting_significantly_warmer_boosts_intensity() {
+        // Current outdoor 20°C, forecast 25°C (5° increase), moderate solar
+        // Should trigger high intensity due to weather forecast
+        let input = PlanInput {
+            current_indoor_temp: 25.0,
+            solar_production: 1200, // Below normal threshold, but above lowered threshold
+            user_is_home: true,
+            current_outdoor_temp: 20.0,
+            avg_next_12h_outdoor_temp: 25.0,
+        };
+        let plan = get_plan(&input);
+        match plan {
+            RequestMode::Colder(Intensity::High) => {}, // Expected: High due to weather forecast
+            _ => panic!("Expected Colder with High intensity due to forecast, got {:?}", plan),
         }
     }
 }
