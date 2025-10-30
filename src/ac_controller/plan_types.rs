@@ -13,7 +13,7 @@ const COMFORTABLE_TEMP_MAX: f64 = 24.0; // °C
 const TOO_COLD_THRESHOLD: f64 = 18.0; // °C
 const TOO_HOT_THRESHOLD: f64 = 27.0; // °C
 
-/// AC operation modes
+/// AC operation modes for API calls (for future implementation)
 const AC_MODE_HEAT: i32 = 1;
 const AC_MODE_COOL: i32 = 4;
 
@@ -79,11 +79,11 @@ pub(super) async fn get_plan(device: &AcDevices) -> RequestMode {
         // Too hot - need cooling
         RequestMode::Colder(intensity)
     } else if current_temp < COMFORTABLE_TEMP_MIN && user_is_home {
-        // A bit cold and user is home - heat gently
-        RequestMode::Warmer(Intensity::Medium)
+        // A bit cold and user is home - use calculated intensity
+        RequestMode::Warmer(intensity)
     } else if current_temp > COMFORTABLE_TEMP_MAX && user_is_home {
-        // A bit warm and user is home - cool gently
-        RequestMode::Colder(Intensity::Medium)
+        // A bit warm and user is home - use calculated intensity
+        RequestMode::Colder(intensity)
     } else {
         // Temperature is comfortable or user is not home
         RequestMode::NoChange
@@ -106,7 +106,14 @@ async fn get_current_temperature(device: &AcDevices) -> Option<f64> {
 /// Get current solar production in watts
 async fn get_solar_production_watts() -> Option<u32> {
     match device_requests::meter::get_solar_production().await {
-        Ok(production) => Some(production.current_production as u32),
+        Ok(production) => {
+            // Only return positive values, treat negative as 0
+            if production.current_production >= 0 {
+                Some(production.current_production as u32)
+            } else {
+                Some(0)
+            }
+        },
         Err(e) => {
             log::error!("Failed to get solar production: {}", e);
             None
