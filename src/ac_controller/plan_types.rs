@@ -20,6 +20,7 @@ const AC_MODE_COOL: i32 = 4;
 
 /// Vague request for changing temperature
 /// To be specified by settings
+#[derive(Debug, PartialEq)]
 pub(super) enum RequestMode {
     Colder(Intensity),
     Warmer(Intensity),
@@ -27,6 +28,7 @@ pub(super) enum RequestMode {
 }
 
 /// Intensity levels of desired temperature change
+#[derive(Debug, PartialEq)]
 pub(super) enum Intensity {
     Low,    // Maintain not freezing/smelting temperature
     Medium, // Keep it comfortable
@@ -47,9 +49,9 @@ impl AcDevices {
     }
 }
 
-/// Get the desired AC plan for a specific device
-/// This determines what mode the AC should be in based on various conditions
-pub(super) async fn get_plan(device: &AcDevices) -> RequestMode {
+/// Fetch data and get the desired AC plan for a specific device
+/// This is the async wrapper that fetches data and calls get_plan
+pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
     // Get current conditions
     let current_temp = match get_current_temperature(device).await {
         Some(temp) => temp,
@@ -62,6 +64,13 @@ pub(super) async fn get_plan(device: &AcDevices) -> RequestMode {
     let solar_production = get_solar_production_watts().await.unwrap_or(0);
     let user_is_home = plan_helpers::is_user_home_and_awake();
 
+    // Call the pure function with fetched data
+    get_plan(current_temp, solar_production, user_is_home)
+}
+
+/// Get the desired AC plan based on provided conditions
+/// This is a pure function that can be easily unit tested
+pub(super) fn get_plan(current_temp: f64, solar_production: u32, user_is_home: bool) -> RequestMode {
     // Determine intensity based on solar production
     let intensity = if solar_production >= SOLAR_HIGH_INTENSITY_WATT_THRESHOLD {
         Intensity::High
@@ -147,5 +156,88 @@ mod tests {
         // Verify AC modes are defined
         assert_eq!(AC_MODE_HEAT, 1);
         assert_eq!(AC_MODE_COOL, 4);
+    }
+
+    // Cold mode tests
+    #[test]
+    fn test_cold_mode_extreme_temp_user_home() {
+        // Very cold temperature (17°C), user is home, no solar
+        let plan = get_plan(17.0, 0, true);
+        match plan {
+            RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Medium because user is home
+            _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn test_cold_mode_extreme_temp_high_solar() {
+        // Very cold temperature (17°C), user not home, high solar
+        let plan = get_plan(17.0, 2500, false);
+        match plan {
+            RequestMode::Warmer(Intensity::High) => {}, // Expected: High because high solar
+            _ => panic!("Expected Warmer with High intensity, got {:?}", plan),
+        }
+    }
+
+    // Warm mode tests
+    #[test]
+    fn test_warm_mode_extreme_temp_user_home() {
+        // Very hot temperature (28°C), user is home, no solar
+        let plan = get_plan(28.0, 0, true);
+        match plan {
+            RequestMode::Colder(Intensity::Medium) => {}, // Expected: Medium because user is home
+            _ => panic!("Expected Colder with Medium intensity, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn test_warm_mode_extreme_temp_high_solar() {
+        // Very hot temperature (28°C), user not home, high solar
+        let plan = get_plan(28.0, 2500, false);
+        match plan {
+            RequestMode::Colder(Intensity::High) => {}, // Expected: High because high solar
+            _ => panic!("Expected Colder with High intensity, got {:?}", plan),
+        }
+    }
+
+    // Additional edge case tests
+    #[test]
+    fn test_comfortable_temp_no_change() {
+        // Comfortable temperature (22°C), should not change
+        let plan = get_plan(22.0, 0, true);
+        match plan {
+            RequestMode::NoChange => {}, // Expected: No change
+            _ => panic!("Expected NoChange, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn test_slightly_cold_user_home() {
+        // Slightly cold (19°C), user is home, no solar
+        let plan = get_plan(19.0, 0, true);
+        match plan {
+            RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Warm with Medium
+            _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn test_slightly_warm_user_home() {
+        // Slightly warm (25°C), user is home, no solar
+        let plan = get_plan(25.0, 0, true);
+        match plan {
+            RequestMode::Colder(Intensity::Medium) => {}, // Expected: Cool with Medium
+            _ => panic!("Expected Colder with Medium intensity, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn test_slightly_cold_user_not_home() {
+        // Slightly cold (19°C), user NOT home, no solar
+        let plan = get_plan(19.0, 0, false);
+        match plan {
+            RequestMode::NoChange => {}, // Expected: No change when user not home
+            _ => panic!("Expected NoChange, got {:?}", plan),
+        }
     }
 }

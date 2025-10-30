@@ -10,10 +10,14 @@ use tokio;
 pub async fn start_ac_controller() {
     return; // Do nothing yet
     
-    // Example usage of get_plan function:
-    // use plan_types::{AcDevices, get_plan};
-    // let living_room_plan = get_plan(&AcDevices::LivingRoom).await;
-    // let veranda_plan = get_plan(&AcDevices::Veranda).await;
+    // Example usage of fetch_data_and_get_plan function:
+    // use plan_types::{AcDevices, fetch_data_and_get_plan};
+    // let living_room_plan = fetch_data_and_get_plan(&AcDevices::LivingRoom).await;
+    // let veranda_plan = fetch_data_and_get_plan(&AcDevices::Veranda).await;
+    // 
+    // Or use get_plan directly with known data for testing:
+    // use plan_types::get_plan;
+    // let plan = get_plan(22.0, 1500, true);
     // 
     // Then use the RequestMode returned to decide what API calls to make
     
