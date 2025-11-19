@@ -12,5 +12,7 @@
             "endpoint": "http://192.168.50.202",
             "api_key": "secret456"
         }
-    }
+    },
+    "latitude": 51.5074,
+    "longitude": -0.1278
 }

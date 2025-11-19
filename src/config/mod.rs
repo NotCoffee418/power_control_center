@@ -38,6 +38,8 @@ impl Default for Config {
             listen_port: 0,
             smart_meter_api_endpoint: String::new(),
             ac_controller_endpoints: HashMap::new(),
+            latitude: 0.0,
+            longitude: 0.0,
         }
     }
 }

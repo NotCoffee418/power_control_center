@@ -1,5 +1,6 @@
 use super::plan_helpers;
 use crate::device_requests;
+use crate::config;
 
 // Configurable parameters for AC behavior plans
 /// Minimum active solar power to consider Powerful (High Intensity) mode
@@ -169,21 +170,27 @@ async fn get_solar_production_watts() -> Option<u32> {
 }
 
 /// Get current outdoor temperature
-/// TODO: Implement actual weather API integration
 async fn get_current_outdoor_temp() -> f64 {
-    // Spoof function - returns a default value
-    // In production, this should fetch from a weather API
-    log::warn!("Using spoofed current outdoor temperature");
-    20.0 // Default to 20°C
+    let cfg = config::get_config();
+    match device_requests::weather::get_current_outdoor_temp(cfg.latitude, cfg.longitude).await {
+        Ok(temp) => temp,
+        Err(e) => {
+            log::error!("Failed to get current outdoor temperature: {}. Using default.", e);
+            20.0 // Default to 20°C on error
+        }
+    }
 }
 
 /// Get average outdoor temperature for next 12 hours
-/// TODO: Implement actual weather forecast API integration
 async fn get_avg_next_12h_outdoor_temp() -> f64 {
-    // Spoof function - returns a default value
-    // In production, this should fetch from a weather forecast API
-    log::warn!("Using spoofed 12h forecast outdoor temperature");
-    20.0 // Default to 20°C (same as current for now)
+    let cfg = config::get_config();
+    match device_requests::weather::get_avg_next_12h_outdoor_temp(cfg.latitude, cfg.longitude).await {
+        Ok(temp) => temp,
+        Err(e) => {
+            log::error!("Failed to get 12h forecast outdoor temperature: {}. Using default.", e);
+            20.0 // Default to 20°C on error
+        }
+    }
 }
 
 #[cfg(test)]

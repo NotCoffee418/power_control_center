@@ -8,6 +8,8 @@ pub struct Config {
     pub listen_port: u16,
     pub smart_meter_api_endpoint: String,
     pub ac_controller_endpoints: HashMap<String, AcControllerEndpointProperties>,
+    pub latitude: f64,
+    pub longitude: f64,
 }
 
 #[derive(Debug, Deserialize)]

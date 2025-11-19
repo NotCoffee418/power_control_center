@@ -21,7 +21,9 @@ mod tests {
                     "endpoint": "http://192.168.50.202",
                     "api_key": "secret456"
                 }
-            }
+            },
+            "latitude": 51.5074,
+            "longitude": -0.1278
         }
         "#;
 
@@ -34,6 +36,8 @@ mod tests {
             config.smart_meter_api_endpoint,
             "http://raspberrypi.local:9039"
         );
+        assert_eq!(config.latitude, 51.5074);
+        assert_eq!(config.longitude, -0.1278);
 
         // Test AC controller endpoints
         assert_eq!(config.ac_controller_endpoints.len(), 2);
