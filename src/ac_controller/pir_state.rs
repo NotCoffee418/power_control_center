@@ -1,10 +1,9 @@
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 /// Global PIR state manager
-static PIR_STATE: once_cell::sync::Lazy<Arc<PirState>> =
-    once_cell::sync::Lazy::new(|| Arc::new(PirState::new()));
+static PIR_STATE: OnceLock<Arc<PirState>> = OnceLock::new();
 
 /// Thread-safe PIR detection state
 pub struct PirState {
@@ -57,7 +56,7 @@ impl PirState {
 
 /// Get the global PIR state instance
 pub fn get_pir_state() -> &'static Arc<PirState> {
-    &PIR_STATE
+    PIR_STATE.get_or_init(|| Arc::new(PirState::new()))
 }
 
 #[cfg(test)]

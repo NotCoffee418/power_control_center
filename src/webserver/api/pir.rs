@@ -121,14 +121,3 @@ fn verify_api_key(headers: &HeaderMap) -> bool {
 
     false
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_verify_api_key_with_bearer() {
-        // Note: This test would need proper config setup to work
-        // In a real scenario, you'd mock the config or use dependency injection
-    }
-}
