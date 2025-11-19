@@ -9,6 +9,25 @@ use tokio;
 /// Start the loop of controlling ACs
 pub async fn start_ac_controller() {
     return; // Do nothing yet
+    
+    // Example usage of fetch_data_and_get_plan function:
+    // use plan_types::{AcDevices, fetch_data_and_get_plan};
+    // let living_room_plan = fetch_data_and_get_plan(&AcDevices::LivingRoom).await;
+    // let veranda_plan = fetch_data_and_get_plan(&AcDevices::Veranda).await;
+    // 
+    // Or use get_plan directly with known data for testing:
+    // use plan_types::{get_plan, PlanInput};
+    // let input = PlanInput {
+    //     current_indoor_temp: 22.0,
+    //     solar_production: 1500,
+    //     user_is_home: true,
+    //     current_outdoor_temp: 20.0,
+    //     avg_next_12h_outdoor_temp: 18.0,
+    // };
+    // let plan = get_plan(&input);
+    // 
+    // Then use the RequestMode returned to decide what API calls to make
+    
     // Read thing from thing debug
     match device_requests::meter::get_solar_production().await {
         Ok(data) => {
