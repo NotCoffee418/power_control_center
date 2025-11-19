@@ -40,6 +40,8 @@ impl Default for Config {
             ac_controller_endpoints: HashMap::new(),
             latitude: 0.0,
             longitude: 0.0,
+            pir_api_key: String::new(),
+            pir_timeout_minutes: 5,
         }
     }
 }

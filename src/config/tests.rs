@@ -23,7 +23,9 @@ mod tests {
                 }
             },
             "latitude": 51.5074,
-            "longitude": -0.1278
+            "longitude": -0.1278,
+            "pir_api_key": "test_pir_key",
+            "pir_timeout_minutes": 10
         }
         "#;
 
@@ -38,6 +40,8 @@ mod tests {
         );
         assert_eq!(config.latitude, 51.5074);
         assert_eq!(config.longitude, -0.1278);
+        assert_eq!(config.pir_api_key, "test_pir_key");
+        assert_eq!(config.pir_timeout_minutes, 10);
 
         // Test AC controller endpoints
         assert_eq!(config.ac_controller_endpoints.len(), 2);
@@ -76,5 +80,32 @@ mod tests {
     "#;
 
         get_config_from_json_str(json_str); // This should panic
+    }
+
+    #[test]
+    fn test_pir_settings_have_defaults() {
+        // Test that PIR settings are optional and use defaults when not provided
+        let json_str = r#"
+        {
+            "database_path": "../test.db",
+            "listen_address": "127.0.0.1",
+            "listen_port": 9040,
+            "smart_meter_api_endpoint": "http://raspberrypi.local:9039",
+            "ac_controller_endpoints": {
+                "LivingRoom": {
+                    "endpoint": "http://192.168.50.201",
+                    "api_key": "secret123"
+                }
+            },
+            "latitude": 51.5074,
+            "longitude": -0.1278
+        }
+        "#;
+
+        let config = get_config_from_json_str(json_str);
+
+        // Should use default values
+        assert_eq!(config.pir_api_key, "");
+        assert_eq!(config.pir_timeout_minutes, 5);
     }
 }
