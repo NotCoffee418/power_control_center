@@ -17,10 +17,6 @@ const TOO_HOT_THRESHOLD: f64 = 27.0; // °C
 /// Significant temperature change threshold (for weather forecasting logic)
 const SIGNIFICANT_TEMP_CHANGE: f64 = 3.0; // °C
 
-/// AC operation modes for API calls (for future implementation)
-const AC_MODE_HEAT: i32 = 1;
-const AC_MODE_COOL: i32 = 4;
-
 /// Input parameters for AC planning
 #[derive(Debug, Clone)]
 pub(super) struct PlanInput {
@@ -229,12 +225,7 @@ mod tests {
         assert!(SOLAR_HIGH_INTENSITY_WATT_THRESHOLD > 0);
     }
 
-    #[test]
-    fn test_ac_mode_constants() {
-        // Verify AC modes are defined
-        assert_eq!(AC_MODE_HEAT, 1);
-        assert_eq!(AC_MODE_COOL, 4);
-    }
+
 
     // Cold mode tests
     #[test]
