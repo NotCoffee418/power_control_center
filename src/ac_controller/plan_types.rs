@@ -66,6 +66,21 @@ impl AcDevices {
 /// Fetch data and get the desired AC plan for a specific device
 /// This is the async wrapper that fetches data and calls get_plan
 pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
+    // Check for recent PIR detection first
+    let pir_state = super::pir_state::get_pir_state();
+    let config = config::get_config();
+    
+    if pir_state.has_recent_detection(device.as_str(), config.pir_timeout_minutes) {
+        log::info!(
+            "PIR detection active for {}, overriding plan to turn off AC",
+            device.as_str()
+        );
+        // Return NoChange as a signal to turn off or keep off the AC
+        // The actual turn-off is handled by the PIR detect endpoint
+        // This prevents the AC from being turned back on during normal evaluation
+        return RequestMode::NoChange;
+    }
+
     // Get current conditions
     let current_indoor_temp = match get_current_temperature(device).await {
         Some(temp) => temp,
