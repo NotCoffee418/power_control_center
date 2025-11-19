@@ -156,6 +156,15 @@ async fn execute_state_change(
     Ok(())
 }
 
+/// Check if a device is currently off according to tracked state
+/// Returns true if the device is off or not yet tracked (defaults to off)
+pub fn is_device_off(device: &AcDevices) -> bool {
+    let device_name = device.as_str();
+    let state_manager = get_state_manager();
+    let current_state = state_manager.get_state(device_name);
+    !current_state.is_on
+}
+
 /// Reset the state for a specific device (useful for testing or manual override)
 pub fn reset_device_state(device: &AcDevices) {
     let device_name = device.as_str();
@@ -267,5 +276,29 @@ mod tests {
         // Same state should not require change
         let cool_low_copy = AcState::new_on(4, 0, 26.0, 1, false);
         assert!(!cool_low.requires_change(&cool_low_copy));
+    }
+
+    #[test]
+    fn test_is_device_off() {
+        // Reset all states first to ensure clean test
+        reset_all_states();
+        
+        // Device not yet tracked should default to off
+        assert!(is_device_off(&AcDevices::LivingRoom));
+        
+        // Set device to on
+        let manager = get_state_manager();
+        let on_state = AcState::new_on(4, 0, 22.0, 1, false);
+        manager.set_state("LivingRoom", on_state);
+        
+        // Should now be on (not off)
+        assert!(!is_device_off(&AcDevices::LivingRoom));
+        
+        // Set device to off
+        let off_state = AcState::new_off();
+        manager.set_state("LivingRoom", off_state);
+        
+        // Should now be off
+        assert!(is_device_off(&AcDevices::LivingRoom));
     }
 }

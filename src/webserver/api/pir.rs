@@ -53,18 +53,19 @@ async fn pir_detect(
         }
     };
 
-    // Use ac_executor to turn off the AC (uses NoChange plan which maps to off state)
-    // This ensures we don't spam the remote if the device is already off
+    // Check if device is already off - if so, no need to call executor
+    if ac_executor::is_device_off(&device_enum) {
+        info!("PIR detection for device {}, AC already off - no action needed", params.device);
+        let response = ApiResponse::success("PIR detection recorded, AC was already off");
+        return (StatusCode::OK, Json(response)).into_response();
+    }
+
+    // Device is on, use executor to turn it off
     let plan = RequestMode::NoChange;
     match ac_executor::execute_plan(&device_enum, &plan).await {
-        Ok(true) => {
+        Ok(_) => {
             info!("AC turned off for device {} due to PIR detection", params.device);
             let response = ApiResponse::success("PIR detection recorded and AC turned off");
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Ok(false) => {
-            info!("AC already off for device {} during PIR detection", params.device);
-            let response = ApiResponse::success("PIR detection recorded, AC was already off");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
