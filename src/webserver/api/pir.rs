@@ -9,8 +9,7 @@ use serde::Deserialize;
 use log::{info, warn};
 
 use crate::{
-    ac_controller::pir_state,
-    device_requests,
+    ac_controller::{pir_state, ac_executor, AcDevices, RequestMode},
     types::{ApiError, ApiResponse},
 };
 
@@ -44,11 +43,28 @@ async fn pir_detect(
     let pir_state = pir_state::get_pir_state();
     pir_state.record_detection(&params.device);
 
-    // Immediately turn off the AC for this device
-    match device_requests::ac::turn_off_ac(&params.device).await {
-        Ok(_) => {
+    // Convert device name to AcDevices enum
+    let device_enum = match AcDevices::from_str(&params.device) {
+        Some(d) => d,
+        None => {
+            warn!("Unknown device name in PIR detection: {}", params.device);
+            let response = ApiError::error("Unknown device");
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+        }
+    };
+
+    // Use ac_executor to turn off the AC (uses NoChange plan which maps to off state)
+    // This ensures we don't spam the remote if the device is already off
+    let plan = RequestMode::NoChange;
+    match ac_executor::execute_plan(&device_enum, &plan).await {
+        Ok(true) => {
             info!("AC turned off for device {} due to PIR detection", params.device);
             let response = ApiResponse::success("PIR detection recorded and AC turned off");
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Ok(false) => {
+            info!("AC already off for device {} during PIR detection", params.device);
+            let response = ApiResponse::success("PIR detection recorded, AC was already off");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {

@@ -3,6 +3,9 @@ mod plan_types;
 pub mod pir_state;
 pub mod ac_executor;
 
+// Re-export types needed by other modules
+pub use plan_types::{AcDevices, RequestMode};
+
 use crate::device_requests;
 use std::time::Duration;
 use tokio;
