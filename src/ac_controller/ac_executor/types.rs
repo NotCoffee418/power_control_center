@@ -55,8 +55,8 @@ impl AcState {
 }
 
 /// Converts a RequestMode plan into a concrete AcState
-/// Takes the device name to determine appropriate settings
-pub fn plan_to_state(plan: &RequestMode, device_name: &str) -> AcState {
+/// Takes the device name to determine appropriate settings (currently unused but reserved for future use)
+pub fn plan_to_state(plan: &RequestMode, _device_name: &str) -> AcState {
     match plan {
         RequestMode::NoChange => {
             // NoChange means turn off or keep off
