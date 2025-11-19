@@ -1,5 +1,6 @@
 mod plan_helpers;
 mod plan_types;
+pub mod pir_state;
 
 use crate::device_requests;
 use std::time::Duration;

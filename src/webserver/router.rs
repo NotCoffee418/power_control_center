@@ -5,9 +5,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use log::info;
-use rust_embed::Embed;
+use rust_embed::{Embed, RustEmbed};
 
-#[derive(Embed)]
+#[derive(RustEmbed)]
 #[folder = "frontend/dist/"]
 struct Static;
 

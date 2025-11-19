@@ -14,5 +14,7 @@
         }
     },
     "latitude": 51.5074,
-    "longitude": -0.1278
+    "longitude": -0.1278,
+    "pir_api_key": "your_pir_api_key_here",
+    "pir_timeout_minutes": 5
 }
