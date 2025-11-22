@@ -1,6 +1,6 @@
 # Pi WiFi Auto-Reconnect
 
-Reconnects WiFi every minute if disconnected.
+Since no in-code approach appears to work properly, do it in linux.
 
 ## Install
 
