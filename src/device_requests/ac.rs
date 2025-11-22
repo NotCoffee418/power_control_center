@@ -334,6 +334,15 @@ async fn log_ac_command(
         }
     };
     
+    // Try to get current raw solar production
+    let solar_production = match super::meter::get_solar_production().await {
+        Ok(production) => Some(production.current_production),
+        Err(e) => {
+            debug!("Could not fetch solar production for logging: {}", e);
+            None
+        }
+    };
+    
     // For now, we don't have a reliable way to detect if humans are home
     // This could be enhanced in the future with presence detection
     let is_human_home = None;
@@ -347,6 +356,7 @@ async fn log_ac_command(
         swing,
         measured_temp,
         net_power,
+        solar_production,
         is_human_home,
         cause_id,
     );
