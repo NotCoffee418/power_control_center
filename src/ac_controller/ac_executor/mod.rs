@@ -217,9 +217,10 @@ pub fn reset_device_state(device: &AcDevices) {
 /// Reset all device states (useful for testing or system restart)
 pub fn reset_all_states() {
     let state_manager = get_state_manager();
-    let mut states = state_manager.states.write().unwrap();
-    states.clear();
-    drop(states); // Release the lock before calling clear_all_initialization
+    {
+        let mut states = state_manager.states.write().unwrap();
+        states.clear();
+    }
     state_manager.clear_all_initialization();
     log::info!("Reset all device states");
 }
