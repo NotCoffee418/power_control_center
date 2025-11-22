@@ -282,10 +282,9 @@
                 <tr>
                   <th>Time</th>
                   <th>Device</th>
-                  <th>Action</th>
-                  <th>Details</th>
                   <th>Temp</th>
                   <th>Net / Solar</th>
+                  <th>Action</th>
                   <th>Cause</th>
                 </tr>
               </thead>
@@ -294,20 +293,6 @@
                   <tr>
                     <td class="timestamp">{formatTimestamp(command.action_timestamp)}</td>
                     <td class="device-name">{command.device_identifier}</td>
-                    <td class="action-cell">
-                      <span class="action-type {getActionTypeClass(command.action_type)}">
-                        {formatActionType(command.action_type)}
-                      </span>
-                    </td>
-                    <td class="command-details">
-                      {#if command.action_type === 'on'}
-                        <span class="detail-item">Mode: {command.mode === 1 ? 'Heat' : command.mode === 4 ? 'Cool' : command.mode}</span>
-                        <span class="detail-item">Fan: {formatFanSpeed(command.fan_speed)}</span>
-                        <span class="detail-item">Set: {command.request_temperature ? `${command.request_temperature.toFixed(1)}°C` : 'N/A'}</span>
-                      {:else}
-                        <span class="detail-item">—</span>
-                      {/if}
-                    </td>
                     <td class="measured-temp">
                       {command.measured_temperature ? `${command.measured_temperature.toFixed(1)}°C` : '—'}
                     </td>
@@ -323,13 +308,18 @@
                         </div>
                       </div>
                     </td>
+                    <td class="action-cell">
+                      <span class="action-type {getActionTypeClass(command.action_type)}">
+                        {formatActionType(command.action_type)}
+                      </span>
+                    </td>
                     <td class="cause-cell">
                       {#if command.cause_label && command.cause_label !== 'Undefined'}
                         <span class="cause-badge" title={command.cause_description}>
                           {command.cause_label}
                         </span>
                       {:else}
-                        <span class="detail-item">—</span>
+                        <span>—</span>
                       {/if}
                     </td>
                   </tr>
@@ -627,14 +617,13 @@
     white-space: nowrap;
   }
 
-  .commands-table th:nth-child(1) { width: 12%; }  /* Time */
-  .commands-table th:nth-child(2) { width: 10%; }  /* Device */
-  .commands-table th:nth-child(3) { width: 8%; }   /* Action */
-  .commands-table th:nth-child(4) { width: 23%; }  /* Details */
-  .commands-table th:nth-child(5) { width: 8%; }   /* Temp */
-  .commands-table th:nth-child(6) { width: 18%; }  /* Net / Solar */
-  .commands-table th:nth-child(7) { width: 20%; }  /* Cause */
-  /* Total: 99% to allow for borders and padding */
+  .commands-table th:nth-child(1) { width: 15%; }  /* Time */
+  .commands-table th:nth-child(2) { width: 15%; }  /* Device */
+  .commands-table th:nth-child(3) { width: 12%; }  /* Temp */
+  .commands-table th:nth-child(4) { width: 23%; }  /* Net / Solar */
+  .commands-table th:nth-child(5) { width: 10%; }  /* Action */
+  .commands-table th:nth-child(6) { width: 25%; }  /* Cause */
+  /* Total: 100% to allow for borders and padding */
 
   .commands-table td {
     padding: 0.75rem;
@@ -715,22 +704,6 @@
   .action-powerful::before {
     background: #e3f2fd;
     box-shadow: 0 0 4px #e3f2fd;
-  }
-
-  .command-details {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .detail-item {
-    font-size: 0.8rem;
-    opacity: 0.8;
-    margin-right: 0.5rem;
-  }
-
-  .detail-item:last-child {
-    margin-right: 0;
   }
 
   .measured-temp {
