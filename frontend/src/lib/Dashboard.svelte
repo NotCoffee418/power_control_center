@@ -1,5 +1,10 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { format } from 'timeago.js';
+
+  // Constants for time conversions
+  const SECONDS_TO_MILLISECONDS = 1000;
+  const SECONDS_PER_MINUTE = 60;
 
   let dashboardData = $state(null);
   let recentCommands = $state([]);
@@ -140,6 +145,29 @@
     const sum = validTemps.reduce((acc, temp) => acc + temp, 0);
     return sum / validTemps.length;
   }
+
+  /**
+   * Format PIR detection time as relative time (e.g., "5 minutes ago")
+   * @param {number|null} timestamp - Unix timestamp in seconds
+   * @returns {string|null} Formatted time string or null if no detection
+   */
+  function formatPirDetectionTime(timestamp) {
+    if (!timestamp) return null;
+    return format(timestamp * SECONDS_TO_MILLISECONDS);
+  }
+
+  /**
+   * Check if PIR detection is recent based on timeout configuration
+   * @param {number|null} timestamp - Unix timestamp in seconds
+   * @param {number} timeoutMinutes - PIR timeout in minutes
+   * @returns {boolean} True if recent, false otherwise
+   */
+  function isPirDetectionRecent(timestamp, timeoutMinutes) {
+    if (!timestamp || !timeoutMinutes) return false;
+    const now = Date.now() / SECONDS_TO_MILLISECONDS;
+    const minutesAgo = (now - timestamp) / SECONDS_PER_MINUTE;
+    return minutesAgo < timeoutMinutes;
+  }
 </script>
 
 <div class="dashboard">
@@ -231,6 +259,15 @@
                 <span class="temp-label">Indoor Temp</span>
                 <span class="temp-value">{formatTemperature(device.indoor_temperature)}</span>
               </div>
+
+              <!-- PIR Detection Display -->
+              {#if device.last_pir_detection}
+                {@const isRecent = isPirDetectionRecent(device.last_pir_detection, dashboardData.pir_timeout_minutes)}
+                <div class="pir-detection" class:recent={isRecent} class:not-recent={!isRecent}>
+                  <span class="pir-label">Last PIR:</span>
+                  <span class="pir-value">{formatPirDetectionTime(device.last_pir_detection)}</span>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -519,6 +556,45 @@
     font-size: 1.25rem;
     font-weight: 600;
     color: #646cff;
+  }
+
+  /* PIR Detection Styles */
+  .pir-detection {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-radius: 8px;
+    margin-top: 0.75rem;
+    transition: all 0.3s ease;
+  }
+
+  .pir-detection.recent {
+    background: rgba(255, 107, 107, 0.15);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+  }
+
+  .pir-detection.not-recent {
+    background: rgba(66, 153, 225, 0.15);
+    border: 1px solid rgba(66, 153, 225, 0.3);
+  }
+
+  .pir-label {
+    font-size: 0.875rem;
+    opacity: 0.8;
+  }
+
+  .pir-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .pir-detection.recent .pir-value {
+    color: #ff6b6b;
+  }
+
+  .pir-detection.not-recent .pir-value {
+    color: #4299e1;
   }
 
   /* Recent Commands Section */
