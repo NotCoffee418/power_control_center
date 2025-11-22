@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::{
     db,
-    types::{AcAction, ApiError, ApiResponse},
+    types::{ApiError, ApiResponse},
 };
 
 pub fn ac_routes() -> Router {

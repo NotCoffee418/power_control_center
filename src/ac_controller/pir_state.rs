@@ -48,6 +48,7 @@ impl PirState {
     }
 
     /// Get the last detection time for a device (for testing/debugging)
+    #[allow(dead_code)]
     pub fn get_last_detection(&self, device: &str) -> Option<DateTime<Utc>> {
         let map = self.last_detection.read().unwrap();
         map.get(device).copied()
@@ -62,8 +63,6 @@ pub fn get_pir_state() -> &'static Arc<PirState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
-    use std::time::Duration;
 
     #[test]
     fn test_record_and_check_detection() {

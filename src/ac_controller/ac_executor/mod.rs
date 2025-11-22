@@ -1,6 +1,6 @@
 mod types;
 
-pub use types::{AcState, AC_MODE_COOL, AC_MODE_HEAT};
+pub use types::AcState;
 
 use super::plan_types::{AcDevices, RequestMode};
 use crate::device_requests;
@@ -56,12 +56,14 @@ impl AcStateManager {
     }
 
     /// Clear the initialization flag for a specific device
+    #[allow(dead_code)]
     fn clear_device_initialization(&self, device_name: &str) {
         let mut initialized = self.initialized_devices.write().unwrap();
         initialized.remove(device_name);
     }
 
     /// Clear all initialization flags
+    #[allow(dead_code)]
     fn clear_all_initialization(&self) {
         let mut initialized = self.initialized_devices.write().unwrap();
         initialized.clear();
@@ -206,6 +208,7 @@ pub fn is_device_off(device: &AcDevices) -> bool {
 }
 
 /// Reset the state for a specific device (useful for testing or manual override)
+#[allow(dead_code)]
 pub fn reset_device_state(device: &AcDevices) {
     let device_name = device.as_str();
     let state_manager = get_state_manager();
@@ -215,6 +218,7 @@ pub fn reset_device_state(device: &AcDevices) {
 }
 
 /// Reset all device states (useful for testing or system restart)
+#[allow(dead_code)]
 pub fn reset_all_states() {
     let state_manager = get_state_manager();
     {

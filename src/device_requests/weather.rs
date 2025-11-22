@@ -131,7 +131,6 @@ pub async fn compute_temperature_trend_cached(latitude: f64, longitude: f64) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     // Test helper to validate that trend calculation logic is correct
     #[test]

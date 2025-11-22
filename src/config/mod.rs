@@ -50,6 +50,7 @@ impl Default for Config {
 /// Build config with custom values for unit tests.
 #[cfg(test)]
 impl Config {
+    #[allow(dead_code)]
     pub fn with_memory_db(mut self) -> Self {
         self.database_path = ":memory:".to_string();
         self
@@ -57,6 +58,7 @@ impl Config {
 
     // Set global config to our customized test config.
     // Now callable by `get_config`
+    #[allow(dead_code)]
     pub fn build(self) -> &'static Config {
         CONFIG
             .set(self)

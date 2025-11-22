@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 // Public data types
 #[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
 pub struct RawMeterReading {
     pub timestamp: String,
 
