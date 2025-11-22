@@ -131,7 +131,7 @@ pub async fn execute_plan(
     if result.is_ok() {
         state_manager.set_state(device_name, desired_state);
         state_manager.mark_device_initialized(device_name);
-        log::info!("Successfully updated state for device '{}'", device_name);
+        log::debug!("Successfully updated state for device '{}'", device_name);
     }
 
     result.map(|_| true)

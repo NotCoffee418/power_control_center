@@ -204,10 +204,10 @@ async fn get_solar_production_watts() -> Option<u32> {
                     
                     // Only use if production is positive (indicating solar is producing)
                     if production_watts > 0 {
-                        log::info!("Using power meter production as solar fallback: {} W", production_watts);
+                        log::debug!("Using power meter production as solar fallback: {} W", production_watts);
                         Some(production_watts)
                     } else {
-                        log::info!("Power meter shows no production, assuming 0 solar");
+                        log::debug!("Power meter shows no production, assuming 0 solar");
                         Some(0)
                     }
                 },

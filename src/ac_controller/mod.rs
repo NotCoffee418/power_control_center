@@ -38,13 +38,13 @@ async fn execute_ac_control_cycle() {
         // Fetch data and calculate plan
         // Note: fetch_data_and_get_plan handles errors internally and returns NoChange on failure
         let plan = plan_types::fetch_data_and_get_plan(&device).await;
-        log::info!("Plan for {}: {:?}", device_name, plan);
+        log::debug!("Plan for {}: {:?}", device_name, plan);
         
         // Execute the plan
         match ac_executor::execute_plan(&device, &plan).await {
             Ok(command_sent) => {
                 if command_sent {
-                    log::info!("AC command executed for {}", device_name);
+                    log::debug!("AC command executed for {}", device_name);
                 } else {
                     log::debug!("No command needed for {} (state unchanged)", device_name);
                 }
