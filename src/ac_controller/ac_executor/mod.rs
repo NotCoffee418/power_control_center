@@ -100,7 +100,7 @@ pub async fn execute_plan(
         Some(is_auto) => is_auto,
         None => {
             // Mode not yet tracked - fetch it from the device
-            match crate::device_requests::ac::get_sensors(device_name).await {
+            match crate::device_requests::ac::get_sensors_cached(device_name).await {
                 Ok(sensor_data) => {
                     // Store the mode for future reference
                     manual_mode_monitor.update_mode(device_name, sensor_data.is_automatic_mode);
