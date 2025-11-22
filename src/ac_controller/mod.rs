@@ -81,12 +81,12 @@ async fn manual_mode_monitoring_loop() {
     loop {
         log::debug!("Checking manual mode devices");
         
+        // Get the manual mode monitor once before the loop
+        let monitor = manual_mode_monitor::get_manual_mode_monitor();
+        
         // Check each device
         for device in AcDevices::all() {
             let device_name = device.as_str();
-            
-            // Get the manual mode monitor
-            let monitor = manual_mode_monitor::get_manual_mode_monitor();
             
             // Fetch current sensor data to check automatic mode status
             match crate::device_requests::ac::get_sensors(device_name).await {
@@ -105,9 +105,11 @@ async fn manual_mode_monitoring_loop() {
                         log::info!("Manual→Auto transition plan for {}: {:?}", device_name, plan);
                         
                         // Execute the plan with force_execution flag to bypass NoChange optimization
-                        // Use ManualToAutoTransition as the cause reason
-                        let mut transition_plan = plan;
-                        transition_plan.cause = crate::types::CauseReason::ManualToAutoTransition;
+                        // Override the cause to ManualToAutoTransition
+                        let transition_plan = plan_types::PlanResult::new(
+                            plan.mode, 
+                            crate::types::CauseReason::ManualToAutoTransition
+                        );
                         
                         match ac_executor::execute_plan(&device, &transition_plan, true).await {
                             Ok(command_sent) => {
