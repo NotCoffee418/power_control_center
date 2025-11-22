@@ -544,10 +544,11 @@
   .commands-table th:nth-child(1) { width: 12%; }  /* Time */
   .commands-table th:nth-child(2) { width: 10%; }  /* Device */
   .commands-table th:nth-child(3) { width: 8%; }   /* Action */
-  .commands-table th:nth-child(4) { width: 24%; }  /* Details */
+  .commands-table th:nth-child(4) { width: 23%; }  /* Details */
   .commands-table th:nth-child(5) { width: 8%; }   /* Temp */
   .commands-table th:nth-child(6) { width: 18%; }  /* Net / Solar */
   .commands-table th:nth-child(7) { width: 20%; }  /* Cause */
+  /* Total: 99% to allow for borders and padding */
 
   .commands-table td {
     padding: 0.75rem;
@@ -586,7 +587,7 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     border: 1px solid transparent;
     transition: all 0.2s ease;
-    min-width: 52px;
+    min-width: 52px; /* Ensures badge width fits uppercase "POWERFUL" text */
   }
 
   .action-type::before {
