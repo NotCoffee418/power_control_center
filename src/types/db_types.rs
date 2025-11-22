@@ -13,6 +13,7 @@ pub struct AcAction {
     pub swing: Option<i32>,
     pub measured_temperature: Option<f32>,
     pub measured_net_power_watt: Option<i32>,
+    pub measured_solar_production_watt: Option<i32>,
     pub is_human_home: Option<bool>,
     pub cause_id: i32, // Reason for the action (see CauseReason enum)
 }
@@ -28,6 +29,7 @@ impl AcAction {
         swing: Option<i32>,
         measured_temperature: Option<f32>,
         measured_net_power_watt: Option<i32>,
+        measured_solar_production_watt: Option<i32>,
         is_human_home: Option<bool>,
         cause_id: i32,
     ) -> Self {
@@ -42,6 +44,7 @@ impl AcAction {
             swing,
             measured_temperature,
             measured_net_power_watt,
+            measured_solar_production_watt,
             is_human_home,
             cause_id,
         }

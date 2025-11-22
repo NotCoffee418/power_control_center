@@ -246,7 +246,7 @@
                   <th>Action</th>
                   <th>Details</th>
                   <th>Temp</th>
-                  <th>Power</th>
+                  <th>Net / Solar</th>
                   <th>Cause</th>
                 </tr>
               </thead>
@@ -271,7 +271,16 @@
                       {command.measured_temperature ? `${command.measured_temperature.toFixed(1)}°C` : '—'}
                     </td>
                     <td class="measured-power">
-                      {command.measured_net_power_watt != null ? `${(command.measured_net_power_watt / 1000).toFixed(2)} kW` : '—'}
+                      <div class="power-values">
+                        <div class="power-row">
+                          <span class="power-label">Net:</span>
+                          <span class="power-value">{command.measured_net_power_watt != null ? `${(command.measured_net_power_watt / 1000).toFixed(2)} kW` : '—'}</span>
+                        </div>
+                        <div class="power-row">
+                          <span class="power-label">Solar:</span>
+                          <span class="power-value">{command.measured_solar_production_watt != null ? `${(command.measured_solar_production_watt / 1000).toFixed(2)} kW` : '—'}</span>
+                        </div>
+                      </div>
                     </td>
                     <td class="cause-cell">
                       {#if command.cause_label && command.cause_label !== 'Undefined'}
@@ -597,9 +606,36 @@
     opacity: 0.8;
   }
 
-  .measured-temp, .measured-power {
+  .measured-temp {
     text-align: right;
     opacity: 0.8;
+  }
+
+  .measured-power {
+    text-align: right;
+    opacity: 0.8;
+  }
+
+  .power-values {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: flex-end;
+  }
+
+  .power-row {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .power-label {
+    opacity: 0.6;
+    font-weight: 500;
+  }
+
+  .power-value {
+    font-weight: 600;
   }
 
   .cause-cell {
