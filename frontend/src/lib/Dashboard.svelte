@@ -247,6 +247,7 @@
                   <th>Details</th>
                   <th>Temp</th>
                   <th>Power</th>
+                  <th>Cause</th>
                 </tr>
               </thead>
               <tbody>
@@ -271,6 +272,15 @@
                     </td>
                     <td class="measured-power">
                       {command.measured_net_power_watt != null ? `${(command.measured_net_power_watt / 1000).toFixed(2)} kW` : '—'}
+                    </td>
+                    <td class="cause-cell">
+                      {#if command.cause_label && command.cause_label !== 'Undefined'}
+                        <span class="cause-badge" title={command.cause_description}>
+                          {command.cause_label}
+                        </span>
+                      {:else}
+                        <span class="detail-item">—</span>
+                      {/if}
                     </td>
                   </tr>
                 {/each}
@@ -590,6 +600,27 @@
   .measured-temp, .measured-power {
     text-align: right;
     opacity: 0.8;
+  }
+
+  .cause-cell {
+    text-align: center;
+  }
+
+  .cause-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: rgba(255, 165, 0, 0.2);
+    color: #ffa500;
+    cursor: help;
+    transition: all 0.2s ease;
+  }
+
+  .cause-badge:hover {
+    background: rgba(255, 165, 0, 0.3);
+    transform: scale(1.05);
   }
 
   @media (max-width: 768px) {
