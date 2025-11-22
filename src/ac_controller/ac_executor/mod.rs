@@ -25,7 +25,7 @@ impl AcStateManager {
     }
 
     /// Get the current state for a device, or return a new "off" state if not tracked yet
-    fn get_state(&self, device_name: &str) -> AcState {
+    pub fn get_state(&self, device_name: &str) -> AcState {
         let states = self.states.read().unwrap();
         states
             .get(device_name)
@@ -41,7 +41,7 @@ impl AcStateManager {
 }
 
 /// Get the global state manager instance
-fn get_state_manager() -> &'static AcStateManager {
+pub fn get_state_manager() -> &'static AcStateManager {
     AC_STATE_MANAGER.get_or_init(AcStateManager::new)
 }
 
