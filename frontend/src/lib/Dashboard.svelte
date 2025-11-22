@@ -2,6 +2,10 @@
   import { onMount, onDestroy } from 'svelte';
   import { format } from 'timeago.js';
 
+  // Constants for time conversions
+  const SECONDS_TO_MILLISECONDS = 1000;
+  const SECONDS_PER_MINUTE = 60;
+
   let dashboardData = $state(null);
   let recentCommands = $state([]);
   let loading = $state(true);
@@ -149,7 +153,7 @@
    */
   function formatPirDetectionTime(timestamp) {
     if (!timestamp) return null;
-    return format(timestamp * 1000); // Convert to milliseconds
+    return format(timestamp * SECONDS_TO_MILLISECONDS);
   }
 
   /**
@@ -160,8 +164,8 @@
    */
   function isPirDetectionRecent(timestamp, timeoutMinutes) {
     if (!timestamp || !timeoutMinutes) return false;
-    const now = Date.now() / 1000; // Current time in seconds
-    const minutesAgo = (now - timestamp) / 60;
+    const now = Date.now() / SECONDS_TO_MILLISECONDS;
+    const minutesAgo = (now - timestamp) / SECONDS_PER_MINUTE;
     return minutesAgo < timeoutMinutes;
   }
 </script>
