@@ -517,7 +517,6 @@
 
   .commands-table {
     width: 100%;
-    min-width: 100%;
     border-collapse: collapse;
     font-size: 0.875rem;
     table-layout: auto;
