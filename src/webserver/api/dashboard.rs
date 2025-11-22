@@ -57,6 +57,9 @@ const DEFAULT_IS_AUTOMATIC_MODE: bool = false;
 async fn get_dashboard_status() -> Response {
     let cfg = config::get_config();
     
+    // Get PIR state once for all devices
+    let pir_state = crate::ac_controller::pir_state::get_pir_state();
+    
     // Gather device statuses
     let mut devices = Vec::new();
     
@@ -79,7 +82,6 @@ async fn get_dashboard_status() -> Response {
         });
         
         // Get last PIR detection time
-        let pir_state = crate::ac_controller::pir_state::get_pir_state();
         let last_pir_detection = pir_state.get_last_detection(device_name)
             .map(|dt| dt.timestamp());
         

@@ -258,12 +258,11 @@
 
               <!-- PIR Detection Display -->
               {#if device.last_pir_detection}
-                <div class="pir-detection" class:recent={isPirDetectionRecent(device.last_pir_detection, dashboardData.pir_timeout_minutes)} class:not-recent={!isPirDetectionRecent(device.last_pir_detection, dashboardData.pir_timeout_minutes)}>
+                {@const isRecent = isPirDetectionRecent(device.last_pir_detection, dashboardData.pir_timeout_minutes)}
+                <div class="pir-detection" class:recent={isRecent} class:not-recent={!isRecent}>
                   <span class="pir-label">Last PIR:</span>
                   <span class="pir-value">{formatPirDetectionTime(device.last_pir_detection)}</span>
                 </div>
-              {:else}
-                <div class="pir-spacer"></div>
               {/if}
             </div>
           {/each}
@@ -592,11 +591,6 @@
 
   .pir-detection.not-recent .pir-value {
     color: #4299e1;
-  }
-
-  .pir-spacer {
-    height: 0;
-    margin: 0;
   }
 
   /* Recent Commands Section */
