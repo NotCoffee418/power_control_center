@@ -54,6 +54,9 @@ impl PlanResult {
 pub enum RequestMode {
     Colder(Intensity),
     Warmer(Intensity),
+    /// Explicitly turn the AC off (e.g., due to IceException, PIR detection)
+    Off,
+    /// No change needed - keep current state (e.g., comfortable temperature)
     NoChange,
 }
 
@@ -109,10 +112,10 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
             "PIR detection active for {}, overriding plan to turn off AC",
             device.as_str()
         );
-        // Return NoChange as a signal to turn off or keep off the AC
+        // Return Off to explicitly turn off or keep off the AC
         // The actual turn-off is handled by the PIR detect endpoint
         // This prevents the AC from being turned back on during normal evaluation
-        return PlanResult::new(RequestMode::NoChange, CauseReason::Undefined);
+        return PlanResult::new(RequestMode::Off, CauseReason::Undefined);
     }
 
     // Get current conditions
@@ -156,7 +159,7 @@ pub(super) fn get_plan(input: &PlanInput) -> PlanResult {
             input.current_indoor_temp,
             ICE_EXCEPTION_INDOOR_OVERRIDE
         );
-        return PlanResult::new(RequestMode::NoChange, CauseReason::IceException);
+        return PlanResult::new(RequestMode::Off, CauseReason::IceException);
     }
     
     let mode = calculate_request_mode(input);
@@ -568,8 +571,8 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::NoChange => {}, // Expected: NoChange due to ice exception
-            _ => panic!("Expected NoChange due to ice exception, got {:?}", plan.mode),
+            RequestMode::Off => {}, // Expected: Off due to ice exception
+            _ => panic!("Expected Off due to ice exception, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::IceException);
     }
@@ -633,5 +636,64 @@ mod tests {
             _ => panic!("Expected Warmer(Low), got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::Undefined);
+    }
+
+    #[test]
+    fn test_ice_exception_with_high_solar() {
+        // Ice exception should trigger regardless of solar production
+        // Outdoor temp below 5°C, indoor temp above 12°C, high solar
+        let input = PlanInput {
+            current_indoor_temp: 20.0,
+            solar_production: 3000, // High solar
+            user_is_home: true,
+            current_outdoor_temp: 2.0, // Well below 5°C
+            avg_next_12h_outdoor_temp: 2.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Off => {}, // Expected: Off due to ice exception
+            _ => panic!("Expected Off due to ice exception even with high solar, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::IceException);
+    }
+
+    #[test]
+    fn test_ice_exception_converts_to_off_state() {
+        // Verify that IceException plan results in device being off
+        let input = PlanInput {
+            current_indoor_temp: 18.0,
+            solar_production: 0,
+            user_is_home: true,
+            current_outdoor_temp: 3.0, // Below 5°C
+            avg_next_12h_outdoor_temp: 3.0,
+        };
+        let plan = get_plan(&input);
+        
+        // Verify the plan is Off with IceException cause
+        assert_eq!(plan.mode, RequestMode::Off);
+        assert_eq!(plan.cause, CauseReason::IceException);
+        
+        // Verify that this converts to an off state
+        use super::super::ac_executor::plan_to_state;
+        let state = plan_to_state(&plan.mode, "LivingRoom");
+        assert!(!state.is_on, "Device should be off when IceException triggers");
+    }
+
+    #[test]
+    fn test_ice_exception_just_below_threshold() {
+        // Test with outdoor temp just below threshold
+        let input = PlanInput {
+            current_indoor_temp: 15.0,
+            solar_production: 1000,
+            user_is_home: true,
+            current_outdoor_temp: 4.9, // Just below 5°C
+            avg_next_12h_outdoor_temp: 4.5,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Off => {}, // Expected: Off due to ice exception
+            _ => panic!("Expected Off due to ice exception at 4.9°C outdoor, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::IceException);
     }
 }

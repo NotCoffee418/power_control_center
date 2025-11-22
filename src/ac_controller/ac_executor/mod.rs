@@ -1,12 +1,11 @@
 mod types;
 
-pub use types::{AcState, AC_MODE_COOL, AC_MODE_HEAT};
+pub use types::{plan_to_state, AcState, AC_MODE_COOL, AC_MODE_HEAT};
 
 use super::plan_types::{AcDevices, RequestMode};
 use crate::device_requests;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use types::plan_to_state;
 
 /// Global state manager for all AC devices
 /// Tracks the last known state of each AC to avoid unnecessary API calls
@@ -286,15 +285,18 @@ mod tests {
     #[test]
     fn test_plan_conversion_integration() {
         // Test that plans are correctly converted to states
-        let plan_off = RequestMode::NoChange;
+        let plan_off = RequestMode::Off;
+        let plan_no_change = RequestMode::NoChange;
         let plan_cool = RequestMode::Colder(Intensity::Medium);
         let plan_heat = RequestMode::Warmer(Intensity::High);
 
         let state_off = plan_to_state(&plan_off, "LivingRoom");
+        let state_no_change = plan_to_state(&plan_no_change, "LivingRoom");
         let state_cool = plan_to_state(&plan_cool, "LivingRoom");
         let state_heat = plan_to_state(&plan_heat, "LivingRoom");
 
         assert!(!state_off.is_on);
+        assert!(!state_no_change.is_on);
         assert!(state_cool.is_on);
         assert_eq!(state_cool.mode, Some(4)); // Cool
         assert!(state_heat.is_on);
