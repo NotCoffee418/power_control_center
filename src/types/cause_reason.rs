@@ -123,8 +123,8 @@ mod tests {
     #[test]
     fn test_round_trip_conversion() {
         let causes = vec![
-            CauseReason::Undefined, 
-            CauseReason::IceException, 
+            CauseReason::Undefined,
+            CauseReason::IceException,
             CauseReason::PirDetection,
             CauseReason::NobodyHome,
             CauseReason::MildTemperature,

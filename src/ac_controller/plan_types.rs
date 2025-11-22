@@ -704,7 +704,7 @@ mod tests {
             current_indoor_temp: 17.5, // Too cold
             solar_production: 0,
             user_is_home: false,
-            current_outdoor_temp: 21.0, // Near comfortable (20-24), within 2°C buffer
+            current_outdoor_temp: 21.0, // Near comfortable range, within 2°C buffer
             avg_next_12h_outdoor_temp: 21.0,
         };
         let plan = get_plan(&input);
@@ -776,7 +776,7 @@ mod tests {
             current_indoor_temp: 27.5, // Too hot
             solar_production: 0,
             user_is_home: false,
-            current_outdoor_temp: 23.0, // Near comfortable (20-24), within range
+            current_outdoor_temp: 23.0, // Near comfortable range, within buffer
             avg_next_12h_outdoor_temp: 23.0,
         };
         let plan = get_plan(&input);
