@@ -111,7 +111,7 @@
             </span>
           </div>
           <div class="data-item">
-            <span class="label">Solar Production</span>
+            <span class="label">Raw Solar Production</span>
             <span class="value large">
               {dashboardData.solar_production_watts != null 
                 ? `${dashboardData.solar_production_watts} W` 
