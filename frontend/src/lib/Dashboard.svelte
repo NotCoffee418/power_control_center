@@ -282,9 +282,9 @@
                 <tr>
                   <th>Time</th>
                   <th>Device</th>
-                  <th>Action</th>
                   <th>Temp</th>
                   <th>Net / Solar</th>
+                  <th>Action</th>
                   <th>Cause</th>
                 </tr>
               </thead>
@@ -293,11 +293,6 @@
                   <tr>
                     <td class="timestamp">{formatTimestamp(command.action_timestamp)}</td>
                     <td class="device-name">{command.device_identifier}</td>
-                    <td class="action-cell">
-                      <span class="action-type {getActionTypeClass(command.action_type)}">
-                        {formatActionType(command.action_type)}
-                      </span>
-                    </td>
                     <td class="measured-temp">
                       {command.measured_temperature ? `${command.measured_temperature.toFixed(1)}°C` : '—'}
                     </td>
@@ -312,6 +307,11 @@
                           <span class="power-value">{command.measured_solar_production_watt != null ? `${(command.measured_solar_production_watt / 1000).toFixed(2)} kW` : '—'}</span>
                         </div>
                       </div>
+                    </td>
+                    <td class="action-cell">
+                      <span class="action-type {getActionTypeClass(command.action_type)}">
+                        {formatActionType(command.action_type)}
+                      </span>
                     </td>
                     <td class="cause-cell">
                       {#if command.cause_label && command.cause_label !== 'Undefined'}
@@ -619,9 +619,9 @@
 
   .commands-table th:nth-child(1) { width: 15%; }  /* Time */
   .commands-table th:nth-child(2) { width: 15%; }  /* Device */
-  .commands-table th:nth-child(3) { width: 10%; }  /* Action */
-  .commands-table th:nth-child(4) { width: 12%; }  /* Temp */
-  .commands-table th:nth-child(5) { width: 23%; }  /* Net / Solar */
+  .commands-table th:nth-child(3) { width: 12%; }  /* Temp */
+  .commands-table th:nth-child(4) { width: 23%; }  /* Net / Solar */
+  .commands-table th:nth-child(5) { width: 10%; }  /* Action */
   .commands-table th:nth-child(6) { width: 25%; }  /* Cause */
   /* Total: 100% to allow for borders and padding */
 
