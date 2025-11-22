@@ -24,6 +24,10 @@ const ICE_EXCEPTION_OUTDOOR_THRESHOLD: f64 = 5.0; // °C
 /// Ice Exception: Indoor temperature threshold below which we override the ice exception
 const ICE_EXCEPTION_INDOOR_OVERRIDE: f64 = 12.0; // °C
 
+/// Buffer around comfortable temperature range for "mild temperature" classification
+/// Outdoor temperatures within this buffer of the comfortable range are considered mild
+const MILD_TEMPERATURE_BUFFER: f64 = 2.0; // °C
+
 /// Input parameters for AC planning
 #[derive(Debug, Clone)]
 pub(super) struct PlanInput {
@@ -175,8 +179,8 @@ fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
     
     // Check if outdoor temp is close to comfortable range (mild temperature)
     let outdoor_temp_near_comfortable = 
-        input.current_outdoor_temp >= COMFORTABLE_TEMP_MIN - 2.0 
-        && input.current_outdoor_temp <= COMFORTABLE_TEMP_MAX + 2.0;
+        input.current_outdoor_temp >= COMFORTABLE_TEMP_MIN - MILD_TEMPERATURE_BUFFER 
+        && input.current_outdoor_temp <= COMFORTABLE_TEMP_MAX + MILD_TEMPERATURE_BUFFER;
     
     // Adjust solar threshold based on weather forecast
     // If it's getting significantly colder or warmer, we want to use excess capacity now
