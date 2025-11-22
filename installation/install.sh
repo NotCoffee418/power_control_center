@@ -51,7 +51,7 @@ echo -e "Detected architecture: ${GREEN}$ARCH${NC} (release: $RELEASE_ARCH)"
 
 # Get latest release tag
 echo "Fetching latest release information..."
-LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+LATEST_TAG=$(curl -s --user-agent "power_control_center-installer/1.0" "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ -z "$LATEST_TAG" ]; then
     echo -e "${RED}Error: Could not fetch latest release tag${NC}"
@@ -67,7 +67,7 @@ TEMP_DIR=$(mktemp -d)
 ARCHIVE_FILE="$TEMP_DIR/power_control_center.tar.gz"
 
 echo "Downloading binary from: $DOWNLOAD_URL"
-if ! curl -L -f -o "$ARCHIVE_FILE" "$DOWNLOAD_URL"; then
+if ! curl -L -f --user-agent "power_control_center-installer/1.0" -o "$ARCHIVE_FILE" "$DOWNLOAD_URL"; then
     echo -e "${RED}Error: Failed to download release${NC}"
     echo "URL: $DOWNLOAD_URL"
     rm -rf "$TEMP_DIR"
@@ -92,9 +92,14 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
 fi
 
 # Create service user and group if they don't exist
+if ! getent group "$SERVICE_GROUP" >/dev/null 2>&1; then
+    echo "Creating service group: $SERVICE_GROUP"
+    groupadd --system "$SERVICE_GROUP"
+fi
+
 if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
     echo "Creating service user: $SERVICE_USER"
-    useradd --system --no-create-home --shell /bin/false "$SERVICE_USER"
+    useradd --system --no-create-home --shell /bin/false -g "$SERVICE_GROUP" "$SERVICE_USER"
 fi
 
 # Create necessary directories
