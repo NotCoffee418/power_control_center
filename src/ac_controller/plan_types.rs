@@ -381,6 +381,8 @@ mod tests {
             RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Medium because user is home
             _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan.mode),
         }
+        // Medium intensity = user is home = Undefined cause
+        assert_eq!(plan.cause, CauseReason::Undefined);
     }
 
     #[test]
@@ -398,6 +400,8 @@ mod tests {
             RequestMode::Warmer(Intensity::High) => {}, // Expected: High because high solar
             _ => panic!("Expected Warmer with High intensity, got {:?}", plan.mode),
         }
+        // High intensity, no significant temp change = ExcessiveSolarPower
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
     }
 
     // Warm mode tests
@@ -416,6 +420,8 @@ mod tests {
             RequestMode::Colder(Intensity::Medium) => {}, // Expected: Medium because user is home
             _ => panic!("Expected Colder with Medium intensity, got {:?}", plan.mode),
         }
+        // Medium intensity = user is home = Undefined cause
+        assert_eq!(plan.cause, CauseReason::Undefined);
     }
 
     #[test]
@@ -433,6 +439,8 @@ mod tests {
             RequestMode::Colder(Intensity::High) => {}, // Expected: High because high solar
             _ => panic!("Expected Colder with High intensity, got {:?}", plan.mode),
         }
+        // High intensity, no significant temp change = ExcessiveSolarPower
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
     }
 
     // Additional edge case tests
@@ -451,6 +459,8 @@ mod tests {
             RequestMode::NoChange => {}, // Expected: No change
             _ => panic!("Expected NoChange, got {:?}", plan.mode),
         }
+        // Medium intensity = user is home = Undefined cause
+        assert_eq!(plan.cause, CauseReason::Undefined);
     }
 
     #[test]
@@ -468,6 +478,8 @@ mod tests {
             RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Warm with Medium
             _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan.mode),
         }
+        // Medium intensity = user is home = Undefined cause
+        assert_eq!(plan.cause, CauseReason::Undefined);
     }
 
     #[test]
@@ -485,6 +497,8 @@ mod tests {
             RequestMode::Colder(Intensity::Medium) => {}, // Expected: Cool with Medium
             _ => panic!("Expected Colder with Medium intensity, got {:?}", plan.mode),
         }
+        // Medium intensity = user is home = Undefined cause
+        assert_eq!(plan.cause, CauseReason::Undefined);
     }
 
     #[test]
@@ -502,6 +516,8 @@ mod tests {
             RequestMode::NoChange => {}, // Expected: No change when user not home
             _ => panic!("Expected NoChange, got {:?}", plan.mode),
         }
+        // Low intensity, outdoor temp (18) is at edge of comfortable range (18-26) = MildTemperature
+        assert_eq!(plan.cause, CauseReason::MildTemperature);
     }
 
     // Weather forecast tests
@@ -521,6 +537,8 @@ mod tests {
             RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to weather forecast
             _ => panic!("Expected Warmer with High intensity due to forecast, got {:?}", plan.mode),
         }
+        // High intensity with significant temp change = MajorTemperatureChangePending
+        assert_eq!(plan.cause, CauseReason::MajorTemperatureChangePending);
     }
 
     #[test]
@@ -539,6 +557,8 @@ mod tests {
             RequestMode::Colder(Intensity::High) => {}, // Expected: High due to weather forecast
             _ => panic!("Expected Colder with High intensity due to forecast, got {:?}", plan.mode),
         }
+        // High intensity with significant temp change = MajorTemperatureChangePending
+        assert_eq!(plan.cause, CauseReason::MajorTemperatureChangePending);
     }
 
     #[test]
@@ -556,6 +576,8 @@ mod tests {
             RequestMode::Warmer(Intensity::Low) => {}, // Expected: Low because no solar
             _ => panic!("Expected Warmer with Low intensity, got {:?}", plan.mode),
         }
+        // Low intensity, outdoor temp (15) not near comfortable range = NobodyHome
+        assert_eq!(plan.cause, CauseReason::NobodyHome);
     }
 
     #[test]
@@ -573,6 +595,8 @@ mod tests {
             RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to forecast + moderate solar
             _ => panic!("Expected Warmer with High intensity, got {:?}", plan.mode),
         }
+        // High intensity with significant temp change = MajorTemperatureChangePending
+        assert_eq!(plan.cause, CauseReason::MajorTemperatureChangePending);
     }
 
     // Ice Exception tests
