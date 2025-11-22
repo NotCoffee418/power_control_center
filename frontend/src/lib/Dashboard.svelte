@@ -57,6 +57,11 @@
     if (trend < -0.2) return '↓';
     return '→';
   }
+
+  function formatFanSpeed(fanSpeed) {
+    if (fanSpeed == null) return 'N/A';
+    return fanSpeed === 0 ? 'Auto' : fanSpeed.toString();
+  }
 </script>
 
 <div class="dashboard">
@@ -126,7 +131,7 @@
                   </div>
                   <div class="detail-row">
                     <span class="detail-label">Fan Speed:</span>
-                    <span class="detail-value">{device.fan_speed != null ? (device.fan_speed === 0 ? 'Auto' : device.fan_speed) : 'N/A'}</span>
+                    <span class="detail-value">{formatFanSpeed(device.fan_speed)}</span>
                   </div>
                   {#if device.powerful_mode}
                     <div class="detail-row">

@@ -7,7 +7,7 @@ use axum::{
 use serde::Serialize;
 
 use crate::{
-    ac_controller::ac_executor::AcStateManager,
+    ac_controller::ac_executor::get_state_manager,
     config,
     device_requests,
     types::ApiResponse,
@@ -47,7 +47,7 @@ async fn get_dashboard_status() -> Response {
     let mut devices = Vec::new();
     
     for device_name in cfg.ac_controller_endpoints.keys() {
-        let state = crate::ac_controller::ac_executor::get_state_manager().get_state(device_name);
+        let state = get_state_manager().get_state(device_name);
         
         // Try to get current indoor temperature from the device
         let indoor_temp = match device_requests::ac::get_sensors(device_name).await {
