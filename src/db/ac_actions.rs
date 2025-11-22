@@ -5,8 +5,8 @@ pub async fn insert(ac_action: db_types::AcAction) -> Result<(), sqlx::Error> {
 
     sqlx::query(
         r#"
-        INSERT INTO ac_actions (action_timestamp, device_identifier, action_type, mode, fan_speed, request_temperature, swing)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO ac_actions (action_timestamp, device_identifier, action_type, mode, fan_speed, request_temperature, swing, measured_temperature, measured_net_power_watt, is_human_home)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#
     )
     .bind(&ac_action.action_timestamp)
@@ -16,6 +16,9 @@ pub async fn insert(ac_action: db_types::AcAction) -> Result<(), sqlx::Error> {
     .bind(ac_action.fan_speed)
     .bind(ac_action.request_temperature)
     .bind(ac_action.swing)
+    .bind(ac_action.measured_temperature)
+    .bind(ac_action.measured_net_power_watt)
+    .bind(ac_action.is_human_home)
     .execute(pool)
     .await?;
 

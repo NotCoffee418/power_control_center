@@ -5,7 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use log::info;
-use rust_embed::{Embed, RustEmbed};
+use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
 #[folder = "frontend/dist/"]

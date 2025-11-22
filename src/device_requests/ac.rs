@@ -65,7 +65,14 @@ pub async fn turn_off_ac(endpoint_name: &str) -> Result<bool, AcError> {
         .send()
         .await?;
 
-    handle_response(response).await
+    let result = handle_response(response).await;
+    
+    // Log the command to database
+    if result.is_ok() {
+        log_ac_command(endpoint_name, "off", None, None, None, None).await;
+    }
+    
+    result
 }
 
 pub async fn turn_on_ac(
@@ -97,7 +104,21 @@ pub async fn turn_on_ac(
         .send()
         .await?;
 
-    handle_response(response).await
+    let result = handle_response(response).await;
+    
+    // Log the command to database
+    if result.is_ok() {
+        log_ac_command(
+            endpoint_name,
+            "on",
+            Some(mode),
+            Some(fan_speed),
+            Some(temperature as f32),
+            Some(swing),
+        ).await;
+    }
+    
+    result
 }
 
 pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
@@ -113,7 +134,14 @@ pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
         .send()
         .await?;
 
-    handle_response(response).await
+    let result = handle_response(response).await;
+    
+    // Log the command to database
+    if result.is_ok() {
+        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None).await;
+    }
+    
+    result
 }
 
 pub async fn get_sensors(endpoint_name: &str) -> Result<SensorData, AcError> {
@@ -177,5 +205,59 @@ async fn handle_response<T: for<'de> Deserialize<'de>>(
     } else {
         error!("API request failed: {}", api_response.error);
         Err(AcError::ApiError(api_response.error))
+    }
+}
+
+/// Log AC command to database with environmental context
+async fn log_ac_command(
+    endpoint_name: &str,
+    action_type: &str,
+    mode: Option<i32>,
+    fan_speed: Option<i32>,
+    temperature: Option<f32>,
+    swing: Option<i32>,
+) {
+    // Try to get indoor temperature from the device
+    let measured_temp = match get_sensors(endpoint_name).await {
+        Ok(sensor_data) => Some(sensor_data.temperature as f32),
+        Err(e) => {
+            debug!("Could not fetch sensor data for logging: {}", e);
+            None
+        }
+    };
+    
+    // Try to get current net power usage
+    let net_power = match super::meter::get_latest_reading().await {
+        Ok(reading) => {
+            // Calculate net power: positive means importing, negative means exporting
+            Some(((reading.current_consumption_kw - reading.current_production_kw) * 1000.0) as i32)
+        }
+        Err(e) => {
+            debug!("Could not fetch meter reading for logging: {}", e);
+            None
+        }
+    };
+    
+    // For now, we don't have a reliable way to detect if humans are home
+    // This could be enhanced in the future with presence detection
+    let is_human_home = None;
+    
+    let ac_action = crate::types::db_types::AcAction::new_for_insert(
+        endpoint_name.to_string(),
+        action_type.to_string(),
+        mode,
+        fan_speed,
+        temperature,
+        swing,
+        measured_temp,
+        net_power,
+        is_human_home,
+    );
+    
+    // Log to database asynchronously (don't block on errors)
+    if let Err(e) = crate::db::ac_actions::insert(ac_action).await {
+        error!("Failed to log AC command to database: {}", e);
+    } else {
+        debug!("AC command logged to database successfully");
     }
 }

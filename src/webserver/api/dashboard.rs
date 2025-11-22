@@ -1,14 +1,16 @@
 use axum::{
     Json, Router,
+    extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
 };
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::{
     ac_controller::ac_executor::get_state_manager,
     config,
+    db,
     device_requests,
     types::ApiResponse,
 };
@@ -16,6 +18,7 @@ use crate::{
 pub fn dashboard_routes() -> Router {
     Router::new()
         .route("/status", get(get_dashboard_status))
+        .route("/recent-commands", get(get_recent_commands))
 }
 
 #[derive(Serialize)]
@@ -141,5 +144,64 @@ async fn get_dashboard_status() -> Response {
     };
     
     let response = ApiResponse::success(status);
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct RecentCommandsQuery {
+    #[serde(default = "default_page")]
+    pub page: i64,
+    #[serde(default = "default_per_page")]
+    pub per_page: i64,
+}
+
+fn default_page() -> i64 {
+    1
+}
+
+fn default_per_page() -> i64 {
+    10
+}
+
+#[derive(Serialize)]
+pub struct RecentCommandsResponse {
+    pub commands: Vec<crate::types::db_types::AcAction>,
+    pub total_count: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+/// GET /api/dashboard/recent-commands?page=1&per_page=10
+/// Returns recent AC commands with pagination
+async fn get_recent_commands(Query(params): Query<RecentCommandsQuery>) -> Response {
+    let page = params.page.max(1);
+    let per_page = params.per_page.clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    
+    let commands = match db::ac_actions::get_page(per_page, offset).await {
+        Ok(cmds) => cmds,
+        Err(e) => {
+            log::error!("Failed to fetch recent commands: {}", e);
+            let response = crate::types::ApiError::error("Failed to fetch commands");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+    
+    let total_count = match db::ac_actions::get_count().await {
+        Ok(count) => count,
+        Err(e) => {
+            log::error!("Failed to fetch command count: {}", e);
+            0
+        }
+    };
+    
+    let response_data = RecentCommandsResponse {
+        commands,
+        total_count,
+        page,
+        per_page,
+    };
+    
+    let response = ApiResponse::success(response_data);
     (StatusCode::OK, Json(response)).into_response()
 }
