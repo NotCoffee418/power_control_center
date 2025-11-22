@@ -478,4 +478,38 @@ mod tests {
             _ => panic!("Expected Colder with High intensity due to forecast, got {:?}", plan),
         }
     }
+
+    #[test]
+    fn test_zero_solar_production() {
+        // Test that 0 solar production results in low intensity when user not home
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 0,
+            user_is_home: false,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
+        match plan {
+            RequestMode::Warmer(Intensity::Low) => {}, // Expected: Low because no solar
+            _ => panic!("Expected Warmer with Low intensity, got {:?}", plan),
+        }
+    }
+
+    #[test]
+    fn test_moderate_solar_with_forecast_change() {
+        // Test that moderate solar (1200W) triggers high intensity when forecast changes significantly
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 1200, // Moderate, above half threshold (1000W)
+            user_is_home: false,
+            current_outdoor_temp: 20.0,
+            avg_next_12h_outdoor_temp: 16.0, // Dropping 4°C
+        };
+        let plan = get_plan(&input);
+        match plan {
+            RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to forecast + moderate solar
+            _ => panic!("Expected Warmer with High intensity, got {:?}", plan),
+        }
+    }
 }

@@ -172,4 +172,65 @@ mod tests {
         }).await;
         assert_eq!(result2, Ok(42)); // Should return cached value
     }
+
+    #[tokio::test]
+    async fn test_get_stale() {
+        let cache = DataCache::<String>::new(1); // 1 second TTL
+        
+        cache.set("test".to_string(), "value".to_string()).await;
+        
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        
+        // Normal get should return None (expired)
+        assert!(cache.get("test").await.is_none());
+        
+        // get_stale should still return the value
+        assert_eq!(cache.get_stale("test").await, Some("value".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_or_fetch_with_stale_fallback_success() {
+        let cache = DataCache::<i32>::new(60);
+        
+        // First call should fetch and cache
+        let result = cache.get_or_fetch_with_stale_fallback("test", || async {
+            Ok::<i32, String>(42)
+        }).await;
+        assert_eq!(result, Ok(42));
+        
+        // Second call should return cached value
+        let result2 = cache.get_or_fetch_with_stale_fallback("test", || async {
+            Ok::<i32, String>(99)
+        }).await;
+        assert_eq!(result2, Ok(42));
+    }
+
+    #[tokio::test]
+    async fn test_get_or_fetch_with_stale_fallback_on_error() {
+        let cache = DataCache::<i32>::new(1); // 1 second TTL
+        
+        // First call should fetch and cache
+        cache.set("test".to_string(), 42).await;
+        
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        
+        // Try to fetch but fail - should return stale cache
+        let result = cache.get_or_fetch_with_stale_fallback("test", || async {
+            Err::<i32, String>("API error".to_string())
+        }).await;
+        assert_eq!(result, Ok(42)); // Should return stale cached value
+    }
+
+    #[tokio::test]
+    async fn test_get_or_fetch_with_stale_fallback_no_cache() {
+        let cache = DataCache::<i32>::new(60);
+        
+        // Try to fetch but fail with no cache - should propagate error
+        let result = cache.get_or_fetch_with_stale_fallback("test", || async {
+            Err::<i32, String>("API error".to_string())
+        }).await;
+        assert_eq!(result, Err("API error".to_string()));
+    }
 }
