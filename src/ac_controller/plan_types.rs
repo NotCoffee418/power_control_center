@@ -1,6 +1,7 @@
 use super::plan_helpers;
 use crate::device_requests;
 use crate::config;
+use crate::types::CauseReason;
 
 // Configurable parameters for AC behavior plans
 /// Minimum active solar power to consider Powerful (High Intensity) mode
@@ -17,6 +18,12 @@ const TOO_HOT_THRESHOLD: f64 = 27.0; // °C
 /// Significant temperature change threshold (for weather forecasting logic)
 const SIGNIFICANT_TEMP_CHANGE: f64 = 3.0; // °C
 
+/// Ice Exception: Outdoor temperature threshold below which AC should be off
+const ICE_EXCEPTION_OUTDOOR_THRESHOLD: f64 = 5.0; // °C
+
+/// Ice Exception: Indoor temperature threshold below which we override the ice exception
+const ICE_EXCEPTION_INDOOR_OVERRIDE: f64 = 12.0; // °C
+
 /// Input parameters for AC planning
 #[derive(Debug, Clone)]
 pub(super) struct PlanInput {
@@ -27,6 +34,19 @@ pub(super) struct PlanInput {
     pub avg_next_12h_outdoor_temp: f64,
 }
 
+
+/// Result of AC planning including the mode and the cause/reason
+#[derive(Debug, PartialEq)]
+pub struct PlanResult {
+    pub mode: RequestMode,
+    pub cause: CauseReason,
+}
+
+impl PlanResult {
+    pub fn new(mode: RequestMode, cause: CauseReason) -> Self {
+        Self { mode, cause }
+    }
+}
 
 /// Vague request for changing temperature
 /// To be specified by settings
@@ -79,7 +99,7 @@ impl AcDevices {
 
 /// Fetch data and get the desired AC plan for a specific device
 /// This is the async wrapper that fetches data and calls get_plan
-pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
+pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
     // Check for recent PIR detection first
     let pir_state = super::pir_state::get_pir_state();
     let config = config::get_config();
@@ -92,7 +112,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
         // Return NoChange as a signal to turn off or keep off the AC
         // The actual turn-off is handled by the PIR detect endpoint
         // This prevents the AC from being turned back on during normal evaluation
-        return RequestMode::NoChange;
+        return PlanResult::new(RequestMode::NoChange, CauseReason::Undefined);
     }
 
     // Get current conditions
@@ -100,7 +120,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
         Some(temp) => temp,
         None => {
             // If we can't get temperature, default to no change
-            return RequestMode::NoChange;
+            return PlanResult::new(RequestMode::NoChange, CauseReason::Undefined);
         }
     };
 
@@ -124,7 +144,27 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> RequestMode {
 
 /// Get the desired AC plan based on provided conditions
 /// This is a pure function that can be easily unit tested
-pub(super) fn get_plan(input: &PlanInput) -> RequestMode {
+pub(super) fn get_plan(input: &PlanInput) -> PlanResult {
+    // Ice Exception: If outdoor temp is below 5°C, turn AC OFF to prevent ice formation
+    // UNLESS indoor temp is below 12°C, then we continue with normal planning
+    if input.current_outdoor_temp < ICE_EXCEPTION_OUTDOOR_THRESHOLD 
+        && input.current_indoor_temp >= ICE_EXCEPTION_INDOOR_OVERRIDE {
+        log::info!(
+            "Ice Exception triggered: outdoor temp {:.1}°C < {:.1}°C, indoor temp {:.1}°C >= {:.1}°C. AC will be OFF.",
+            input.current_outdoor_temp,
+            ICE_EXCEPTION_OUTDOOR_THRESHOLD,
+            input.current_indoor_temp,
+            ICE_EXCEPTION_INDOOR_OVERRIDE
+        );
+        return PlanResult::new(RequestMode::NoChange, CauseReason::IceException);
+    }
+    
+    let mode = calculate_request_mode(input);
+    PlanResult::new(mode, CauseReason::Undefined)
+}
+
+/// Calculate the request mode based on temperature and other conditions
+fn calculate_request_mode(input: &PlanInput) -> RequestMode {
     // Calculate temperature forecast trend
     let temp_trend = input.avg_next_12h_outdoor_temp - input.current_outdoor_temp;
     let getting_significantly_colder = temp_trend < -SIGNIFICANT_TEMP_CHANGE;
@@ -316,9 +356,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 15.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Medium because user is home
-            _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan),
+            _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan.mode),
         }
     }
 
@@ -333,9 +373,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 15.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Warmer(Intensity::High) => {}, // Expected: High because high solar
-            _ => panic!("Expected Warmer with High intensity, got {:?}", plan),
+            _ => panic!("Expected Warmer with High intensity, got {:?}", plan.mode),
         }
     }
 
@@ -351,9 +391,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 30.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Colder(Intensity::Medium) => {}, // Expected: Medium because user is home
-            _ => panic!("Expected Colder with Medium intensity, got {:?}", plan),
+            _ => panic!("Expected Colder with Medium intensity, got {:?}", plan.mode),
         }
     }
 
@@ -368,9 +408,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 30.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Colder(Intensity::High) => {}, // Expected: High because high solar
-            _ => panic!("Expected Colder with High intensity, got {:?}", plan),
+            _ => panic!("Expected Colder with High intensity, got {:?}", plan.mode),
         }
     }
 
@@ -386,9 +426,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 20.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::NoChange => {}, // Expected: No change
-            _ => panic!("Expected NoChange, got {:?}", plan),
+            _ => panic!("Expected NoChange, got {:?}", plan.mode),
         }
     }
 
@@ -403,9 +443,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 18.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Warm with Medium
-            _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan),
+            _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan.mode),
         }
     }
 
@@ -420,9 +460,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 26.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Colder(Intensity::Medium) => {}, // Expected: Cool with Medium
-            _ => panic!("Expected Colder with Medium intensity, got {:?}", plan),
+            _ => panic!("Expected Colder with Medium intensity, got {:?}", plan.mode),
         }
     }
 
@@ -437,9 +477,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 18.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::NoChange => {}, // Expected: No change when user not home
-            _ => panic!("Expected NoChange, got {:?}", plan),
+            _ => panic!("Expected NoChange, got {:?}", plan.mode),
         }
     }
 
@@ -456,9 +496,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 15.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to weather forecast
-            _ => panic!("Expected Warmer with High intensity due to forecast, got {:?}", plan),
+            _ => panic!("Expected Warmer with High intensity due to forecast, got {:?}", plan.mode),
         }
     }
 
@@ -474,9 +514,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 25.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Colder(Intensity::High) => {}, // Expected: High due to weather forecast
-            _ => panic!("Expected Colder with High intensity due to forecast, got {:?}", plan),
+            _ => panic!("Expected Colder with High intensity due to forecast, got {:?}", plan.mode),
         }
     }
 
@@ -491,9 +531,9 @@ mod tests {
             avg_next_12h_outdoor_temp: 15.0,
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Warmer(Intensity::Low) => {}, // Expected: Low because no solar
-            _ => panic!("Expected Warmer with Low intensity, got {:?}", plan),
+            _ => panic!("Expected Warmer with Low intensity, got {:?}", plan.mode),
         }
     }
 
@@ -508,9 +548,90 @@ mod tests {
             avg_next_12h_outdoor_temp: 16.0, // Dropping 4°C
         };
         let plan = get_plan(&input);
-        match plan {
+        match plan.mode {
             RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to forecast + moderate solar
-            _ => panic!("Expected Warmer with High intensity, got {:?}", plan),
+            _ => panic!("Expected Warmer with High intensity, got {:?}", plan.mode),
         }
+    }
+
+    // Ice Exception tests
+    #[test]
+    fn test_ice_exception_triggers() {
+        // Outdoor temp below 5°C, indoor temp above 12°C
+        // Should trigger ice exception and turn AC off
+        let input = PlanInput {
+            current_indoor_temp: 18.0,
+            solar_production: 2000,
+            user_is_home: true,
+            current_outdoor_temp: 3.0, // Below 5°C
+            avg_next_12h_outdoor_temp: 3.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::NoChange => {}, // Expected: NoChange due to ice exception
+            _ => panic!("Expected NoChange due to ice exception, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::IceException);
+    }
+
+    #[test]
+    fn test_ice_exception_override_when_too_cold_indoors() {
+        // Outdoor temp below 5°C, but indoor temp below 12°C
+        // Should override ice exception and allow heating
+        let input = PlanInput {
+            current_indoor_temp: 10.0, // Below 12°C
+            solar_production: 0,
+            user_is_home: false,
+            current_outdoor_temp: 3.0, // Below 5°C
+            avg_next_12h_outdoor_temp: 3.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::Low) => {}, // Expected: Heating with low intensity
+            _ => panic!("Expected Warmer with Low intensity, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::Undefined);
+    }
+
+    #[test]
+    fn test_ice_exception_does_not_trigger_above_threshold() {
+        // Outdoor temp above 5°C, should not trigger ice exception
+        let input = PlanInput {
+            current_indoor_temp: 18.0,
+            solar_production: 0,
+            user_is_home: false,
+            current_outdoor_temp: 7.0, // Above 5°C
+            avg_next_12h_outdoor_temp: 7.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::NoChange => {}, // Expected: NoChange but not due to ice exception
+            _ => panic!("Expected NoChange, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::Undefined);
+    }
+
+    #[test]
+    fn test_ice_exception_edge_case_at_boundary() {
+        // Outdoor temp exactly at 5°C, indoor temp exactly at 12°C
+        // At 5°C outdoor: condition is < 5°C, so NO ice exception
+        // At 12°C indoor: condition is >= 12°C, so no override
+        // Result: Normal planning applies, and 12°C is too cold -> heating
+        let input = PlanInput {
+            current_indoor_temp: 12.0,
+            solar_production: 0,
+            user_is_home: false,
+            current_outdoor_temp: 5.0,
+            avg_next_12h_outdoor_temp: 5.0,
+        };
+        let plan = get_plan(&input);
+        // At exactly 5°C outdoor, ice exception should NOT trigger (< 5°C, not <= 5°C)
+        // Temperature is 12°C which is between TOO_COLD (18°C) and comfortable (20°C)
+        // User not home, so no heating
+        match plan.mode {
+            RequestMode::Warmer(Intensity::Low) => {}, // Expected: Heating because too cold
+            _ => panic!("Expected Warmer(Low), got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::Undefined);
     }
 }

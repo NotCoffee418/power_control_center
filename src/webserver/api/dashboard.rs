@@ -169,8 +169,16 @@ fn default_per_page() -> i64 {
 }
 
 #[derive(Serialize)]
+pub struct AcActionWithCause {
+    #[serde(flatten)]
+    pub action: crate::types::db_types::AcAction,
+    pub cause_label: String,
+    pub cause_description: String,
+}
+
+#[derive(Serialize)]
 pub struct RecentCommandsResponse {
-    pub commands: Vec<crate::types::db_types::AcAction>,
+    pub commands: Vec<AcActionWithCause>,
     pub total_count: i64,
     pub page: i64,
     pub per_page: i64,
@@ -192,6 +200,16 @@ async fn get_recent_commands(Query(params): Query<RecentCommandsQuery>) -> Respo
         }
     };
     
+    // Enrich commands with cause information
+    let enriched_commands: Vec<AcActionWithCause> = commands.into_iter().map(|action| {
+        let cause = crate::types::CauseReason::from_id(action.cause_id);
+        AcActionWithCause {
+            action,
+            cause_label: cause.label().to_string(),
+            cause_description: cause.description().to_string(),
+        }
+    }).collect();
+    
     let total_count = match db::ac_actions::get_count().await {
         Ok(count) => count,
         Err(e) => {
@@ -201,7 +219,7 @@ async fn get_recent_commands(Query(params): Query<RecentCommandsQuery>) -> Respo
     };
     
     let response_data = RecentCommandsResponse {
-        commands,
+        commands: enriched_commands,
         total_count,
         page,
         per_page,

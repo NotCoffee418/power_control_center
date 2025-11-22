@@ -52,7 +52,7 @@ impl From<reqwest::Error> for AcError {
 }
 
 // API functions
-pub async fn turn_off_ac(endpoint_name: &str) -> Result<bool, AcError> {
+pub async fn turn_off_ac(endpoint_name: &str, cause_id: i32) -> Result<bool, AcError> {
     const MAX_RETRIES: u32 = 3;
     const RETRY_DELAY_SECS: u64 = 5;
     
@@ -75,7 +75,7 @@ pub async fn turn_off_ac(endpoint_name: &str) -> Result<bool, AcError> {
                 match handle_response(response).await {
                     Ok(result) => {
                         // Success - log to database and return
-                        log_ac_command(endpoint_name, "off", None, None, None, None).await;
+                        log_ac_command(endpoint_name, "off", None, None, None, None, cause_id).await;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -112,6 +112,7 @@ pub async fn turn_on_ac(
     fan_speed: i32,
     temperature: f64,
     swing: i32,
+    cause_id: i32,
 ) -> Result<bool, AcError> {
     const MAX_RETRIES: u32 = 3;
     const RETRY_DELAY_SECS: u64 = 5;
@@ -152,6 +153,7 @@ pub async fn turn_on_ac(
                             Some(fan_speed),
                             Some(temperature as f32),
                             Some(swing),
+                            cause_id,
                         ).await;
                         return Ok(result);
                     }
@@ -183,7 +185,7 @@ pub async fn turn_on_ac(
     unreachable!("Retry loop should have returned within MAX_RETRIES attempts")
 }
 
-pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
+pub async fn toggle_powerful(endpoint_name: &str, cause_id: i32) -> Result<bool, AcError> {
     const MAX_RETRIES: u32 = 3;
     const RETRY_DELAY_SECS: u64 = 5;
     
@@ -206,7 +208,7 @@ pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
                 match handle_response(response).await {
                     Ok(result) => {
                         // Success - log to database and return
-                        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None).await;
+                        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None, cause_id).await;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -309,6 +311,7 @@ async fn log_ac_command(
     fan_speed: Option<i32>,
     temperature: Option<f32>,
     swing: Option<i32>,
+    cause_id: i32,
 ) {
     // Try to get indoor temperature from the device
     let measured_temp = match get_sensors(endpoint_name).await {
@@ -345,6 +348,7 @@ async fn log_ac_command(
         measured_temp,
         net_power,
         is_human_home,
+        cause_id,
     );
     
     // Log to database asynchronously (don't block on errors)
