@@ -53,26 +53,57 @@ impl From<reqwest::Error> for AcError {
 
 // API functions
 pub async fn turn_off_ac(endpoint_name: &str) -> Result<bool, AcError> {
+    const MAX_RETRIES: u32 = 3;
+    const RETRY_DELAY_SECS: u64 = 5;
+    
     let (base_url, api_key) = get_ac_endpoint_config(endpoint_name)?;
 
     info!("Turning off AC '{}'", endpoint_name);
     let url = format!("{}/api/ir/off", base_url);
-    let client = common::get_client().await;
-
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("ApiKey {}", api_key))
-        .send()
-        .await?;
-
-    let result = handle_response(response).await;
     
-    // Log the command to database
-    if result.is_ok() {
-        log_ac_command(endpoint_name, "off", None, None, None, None).await;
+    // Retry loop
+    for attempt in 1..=MAX_RETRIES {
+        let client = common::get_client().await;
+        
+        match client
+            .post(&url)
+            .header("Authorization", format!("ApiKey {}", api_key))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                match handle_response(response).await {
+                    Ok(result) => {
+                        // Success - log to database and return
+                        log_ac_command(endpoint_name, "off", None, None, None, None).await;
+                        return Ok(result);
+                    }
+                    Err(e) => {
+                        if attempt < MAX_RETRIES {
+                            log::warn!("AC turn off failed (attempt {}/{}): {}. Retrying in {}s...", 
+                                attempt, MAX_RETRIES, e, RETRY_DELAY_SECS);
+                            tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                        } else {
+                            log::error!("AC turn off failed after {} attempts: {}", MAX_RETRIES, e);
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                if attempt < MAX_RETRIES {
+                    log::warn!("AC turn off network error (attempt {}/{}): {}. Retrying in {}s...", 
+                        attempt, MAX_RETRIES, e, RETRY_DELAY_SECS);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                } else {
+                    log::error!("AC turn off network error after {} attempts: {}", MAX_RETRIES, e);
+                    return Err(AcError::from(e));
+                }
+            }
+        }
     }
     
-    result
+    unreachable!("Retry loop should have returned within MAX_RETRIES attempts")
 }
 
 pub async fn turn_on_ac(
@@ -82,6 +113,9 @@ pub async fn turn_on_ac(
     temperature: f64,
     swing: i32,
 ) -> Result<bool, AcError> {
+    const MAX_RETRIES: u32 = 3;
+    const RETRY_DELAY_SECS: u64 = 5;
+    
     let (base_url, api_key) = get_ac_endpoint_config(endpoint_name)?;
 
     info!(
@@ -95,53 +129,112 @@ pub async fn turn_on_ac(
         temperature,
         swing,
     };
-    let client = common::get_client().await;
-
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("ApiKey {}", api_key))
-        .json(&request)
-        .send()
-        .await?;
-
-    let result = handle_response(response).await;
     
-    // Log the command to database
-    if result.is_ok() {
-        log_ac_command(
-            endpoint_name,
-            "on",
-            Some(mode),
-            Some(fan_speed),
-            Some(temperature as f32),
-            Some(swing),
-        ).await;
+    // Retry loop
+    for attempt in 1..=MAX_RETRIES {
+        let client = common::get_client().await;
+        
+        match client
+            .post(&url)
+            .header("Authorization", format!("ApiKey {}", api_key))
+            .json(&request)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                match handle_response(response).await {
+                    Ok(result) => {
+                        // Success - log to database and return
+                        log_ac_command(
+                            endpoint_name,
+                            "on",
+                            Some(mode),
+                            Some(fan_speed),
+                            Some(temperature as f32),
+                            Some(swing),
+                        ).await;
+                        return Ok(result);
+                    }
+                    Err(e) => {
+                        if attempt < MAX_RETRIES {
+                            log::warn!("AC turn on failed (attempt {}/{}): {}. Retrying in {}s...", 
+                                attempt, MAX_RETRIES, e, RETRY_DELAY_SECS);
+                            tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                        } else {
+                            log::error!("AC turn on failed after {} attempts: {}", MAX_RETRIES, e);
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                if attempt < MAX_RETRIES {
+                    log::warn!("AC turn on network error (attempt {}/{}): {}. Retrying in {}s...", 
+                        attempt, MAX_RETRIES, e, RETRY_DELAY_SECS);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                } else {
+                    log::error!("AC turn on network error after {} attempts: {}", MAX_RETRIES, e);
+                    return Err(AcError::from(e));
+                }
+            }
+        }
     }
     
-    result
+    unreachable!("Retry loop should have returned within MAX_RETRIES attempts")
 }
 
 pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
+    const MAX_RETRIES: u32 = 3;
+    const RETRY_DELAY_SECS: u64 = 5;
+    
     let (base_url, api_key) = get_ac_endpoint_config(endpoint_name)?;
 
     info!("Toggling powerful mode for AC '{}'", endpoint_name);
     let url = format!("{}/api/ir/toggle-powerful", base_url);
-    let client = common::get_client().await;
-
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("ApiKey {}", api_key))
-        .send()
-        .await?;
-
-    let result = handle_response(response).await;
     
-    // Log the command to database
-    if result.is_ok() {
-        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None).await;
+    // Retry loop
+    for attempt in 1..=MAX_RETRIES {
+        let client = common::get_client().await;
+        
+        match client
+            .post(&url)
+            .header("Authorization", format!("ApiKey {}", api_key))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                match handle_response(response).await {
+                    Ok(result) => {
+                        // Success - log to database and return
+                        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None).await;
+                        return Ok(result);
+                    }
+                    Err(e) => {
+                        if attempt < MAX_RETRIES {
+                            log::warn!("Toggle powerful failed (attempt {}/{}): {}. Retrying in {}s...", 
+                                attempt, MAX_RETRIES, e, RETRY_DELAY_SECS);
+                            tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                        } else {
+                            log::error!("Toggle powerful failed after {} attempts: {}", MAX_RETRIES, e);
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                if attempt < MAX_RETRIES {
+                    log::warn!("Toggle powerful network error (attempt {}/{}): {}. Retrying in {}s...", 
+                        attempt, MAX_RETRIES, e, RETRY_DELAY_SECS);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(RETRY_DELAY_SECS)).await;
+                } else {
+                    log::error!("Toggle powerful network error after {} attempts: {}", MAX_RETRIES, e);
+                    return Err(AcError::from(e));
+                }
+            }
+        }
     }
     
-    result
+    unreachable!("Retry loop should have returned within MAX_RETRIES attempts")
 }
 
 pub async fn get_sensors(endpoint_name: &str) -> Result<SensorData, AcError> {
