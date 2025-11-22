@@ -103,12 +103,6 @@
     }
   }
 
-  function formatSolarProduction(watts) {
-    if (watts == null) return 'N/A';
-    const kw = (watts / 1000).toFixed(2);
-    return `${kw} kW`;
-  }
-
   function formatTimestamp(timestamp) {
     if (timestamp == null) return 'N/A';
     const date = new Date(timestamp * 1000);
