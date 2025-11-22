@@ -1,4 +1,5 @@
 use crate::types::*;
+use log::info;
 use serde_json;
 use std::sync::OnceLock;
 
@@ -13,6 +14,7 @@ static CONFIG: OnceLock<Config> = OnceLock::new();
 /// Config cannot be changed at runtime.
 pub fn get_config() -> &'static Config {
     CONFIG.get_or_init(|| {
+        info!("Loading config from {}", CONFIG_FILE_PATH);
         let config_str = std::fs::read_to_string(CONFIG_FILE_PATH).unwrap_or_else(|e| {
             panic!("Failed to read config file {}: {}", CONFIG_FILE_PATH, e);
         });
