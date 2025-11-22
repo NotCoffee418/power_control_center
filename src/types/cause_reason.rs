@@ -30,7 +30,7 @@ impl CauseReason {
     pub fn description(&self) -> &'static str {
         match self {
             CauseReason::Undefined => "No specific reason recorded",
-            CauseReason::IceException => "AC is OFF because outdoor temperature is below 5°C. The AC will pull hot air out of the room to de-ice itself, so we rely solely on central heating instead. This exception is bypassed if indoor temperature drops below 12°C.",
+            CauseReason::IceException => "AC is OFF because outdoor temperature is below 5°C. When running in cold conditions, the AC unit would go through a defrost cycle that pulls warm air out of the room, making heating inefficient. We rely solely on central heating instead. This exception is bypassed if indoor temperature drops below 12°C to prevent the room from becoming too cold.",
         }
     }
 

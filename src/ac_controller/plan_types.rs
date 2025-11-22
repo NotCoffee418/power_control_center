@@ -146,7 +146,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
 /// This is a pure function that can be easily unit tested
 pub(super) fn get_plan(input: &PlanInput) -> PlanResult {
     // Ice Exception: If outdoor temp is below 5°C, turn AC OFF to prevent ice formation
-    // UNLESS indoor temp is below 12°C, then we continue with normal planning (which would heat)
+    // UNLESS indoor temp is below 12°C, then we continue with normal planning
     if input.current_outdoor_temp < ICE_EXCEPTION_OUTDOOR_THRESHOLD 
         && input.current_indoor_temp >= ICE_EXCEPTION_INDOOR_OVERRIDE {
         log::info!(
