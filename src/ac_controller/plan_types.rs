@@ -181,6 +181,7 @@ async fn get_current_temperature(device: &AcDevices) -> Option<f64> {
 }
 
 /// Get current solar production in watts
+/// Falls back to power meter production value if solar API fails
 async fn get_solar_production_watts() -> Option<u32> {
     match device_requests::meter::get_solar_production().await {
         Ok(production) => {
@@ -192,32 +193,65 @@ async fn get_solar_production_watts() -> Option<u32> {
             }
         },
         Err(e) => {
-            log::error!("Failed to get solar production: {}", e);
-            None
+            log::warn!("Failed to get solar production from API: {}. Trying power meter fallback.", e);
+            
+            // Fallback: Try to get production from power meter
+            match device_requests::meter::get_latest_reading().await {
+                Ok(reading) => {
+                    // current_production_kw is in kilowatts, convert to watts
+                    let production_watts = (reading.current_production_kw * 1000.0) as i32;
+                    
+                    // Only use if production is positive (indicating solar is producing)
+                    if production_watts > 0 {
+                        log::info!("Using power meter production as solar fallback: {} W", production_watts);
+                        Some(production_watts as u32)
+                    } else {
+                        log::info!("Power meter shows no production, assuming 0 solar");
+                        Some(0)
+                    }
+                },
+                Err(meter_err) => {
+                    log::error!("Failed to get power meter reading as fallback: {}. Assuming 0 solar.", meter_err);
+                    Some(0)
+                }
+            }
         }
     }
 }
 
 /// Get current outdoor temperature
+/// Uses cached version with stale fallback on API failure
 async fn get_current_outdoor_temp() -> f64 {
     let cfg = config::get_config();
-    match device_requests::weather::get_current_outdoor_temp(cfg.latitude, cfg.longitude).await {
+    match device_requests::weather::get_current_outdoor_temp_cached(cfg.latitude, cfg.longitude).await {
         Ok(temp) => temp,
         Err(e) => {
             log::error!("Failed to get current outdoor temperature: {}. Using default.", e);
-            20.0 // Default to 20°C on error
+            20.0 // Default to 20°C on error (only if no stale cache exists)
         }
     }
 }
 
 /// Get average outdoor temperature for next 12 hours
+/// Note: This uses the non-cached version as trend needs both current and forecast,
+/// and compute_temperature_trend_cached already handles caching with stale fallback
 async fn get_avg_next_12h_outdoor_temp() -> f64 {
     let cfg = config::get_config();
-    match device_requests::weather::get_avg_next_12h_outdoor_temp(cfg.latitude, cfg.longitude).await {
-        Ok(temp) => temp,
+    // Use current temp from cache since we just fetched it
+    match device_requests::weather::get_current_outdoor_temp_cached(cfg.latitude, cfg.longitude).await {
+        Ok(current) => {
+            // Try to get the trend (which is cached with stale fallback)
+            match device_requests::weather::compute_temperature_trend_cached(cfg.latitude, cfg.longitude).await {
+                Ok(trend) => current + trend,
+                Err(e) => {
+                    log::error!("Failed to get temperature trend: {}. Using current as forecast.", e);
+                    current // Use current temp as forecast if trend unavailable
+                }
+            }
+        }
         Err(e) => {
-            log::error!("Failed to get 12h forecast outdoor temperature: {}. Using default.", e);
-            20.0 // Default to 20°C on error
+            log::error!("Failed to get outdoor temperature for forecast: {}. Using default.", e);
+            20.0 // Default to 20°C on error (only if no stale cache exists)
         }
     }
 }

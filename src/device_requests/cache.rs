@@ -76,6 +76,50 @@ impl<T: Clone> DataCache<T> {
         self.set(key.to_string(), data.clone()).await;
         Ok(data)
     }
+
+    /// Get any cached value ignoring expiration (for fallback scenarios)
+    pub async fn get_stale(&self, key: &str) -> Option<T> {
+        let cache = self.cache.read().await;
+        cache.get(key).map(|entry| entry.data.clone())
+    }
+
+    /// Get or fetch with stale fallback: tries to fetch new data, but returns stale cache on error
+    pub async fn get_or_fetch_with_stale_fallback<F, Fut, E>(
+        &self,
+        key: &str,
+        fetch_fn: F,
+    ) -> Result<T, E>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T, E>>,
+    {
+        // Try to get fresh cached value first
+        if let Some(cached) = self.get(key).await {
+            log::debug!("Cache hit for key: {}", key);
+            return Ok(cached);
+        }
+
+        // Cache miss - try to fetch new data
+        log::debug!("Cache miss for key: {}, attempting to fetch", key);
+        match fetch_fn().await {
+            Ok(data) => {
+                // Success - cache and return
+                self.set(key.to_string(), data.clone()).await;
+                Ok(data)
+            }
+            Err(e) => {
+                // Fetch failed - try to use stale cache as fallback
+                if let Some(stale) = self.get_stale(key).await {
+                    log::warn!("Fetch failed for key: {}, using stale cache", key);
+                    Ok(stale)
+                } else {
+                    // No stale cache available - propagate error
+                    log::error!("Fetch failed for key: {} and no stale cache available", key);
+                    Err(e)
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
