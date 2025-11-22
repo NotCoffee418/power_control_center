@@ -95,7 +95,7 @@ jobs:
                   key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - name: Install cross
-              run: cargo install cross --git https://github.com/cross-rs/cross
+              run: cargo install cross --version 0.2.5
 
             - name: Build binaries
               run: |
