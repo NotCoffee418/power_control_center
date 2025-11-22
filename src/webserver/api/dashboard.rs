@@ -41,6 +41,8 @@ pub struct DeviceStatus {
     pub powerful_mode: bool,
 }
 
+const KW_TO_W_MULTIPLIER: f64 = 1000.0;
+
 /// GET /api/dashboard/status
 /// Returns current status of all configured devices and environmental data
 async fn get_dashboard_status() -> Response {
@@ -115,7 +117,7 @@ async fn get_dashboard_status() -> Response {
     let (current_consumption, current_production, net_power) = match device_requests::meter::get_latest_reading_cached().await {
         Ok(reading) => {
             // Calculate net power: negative means producing more than consuming
-            let net = ((reading.current_consumption_kw - reading.current_production_kw) * 1000.0) as i32;
+            let net = ((reading.current_consumption_kw - reading.current_production_kw) * KW_TO_W_MULTIPLIER) as i32;
             (
                 Some(reading.current_consumption_kw),
                 Some(reading.current_production_kw),
