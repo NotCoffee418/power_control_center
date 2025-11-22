@@ -94,8 +94,32 @@ pub async fn execute_plan(
     let state_manager = get_state_manager();
 
     // Check if device is in manual mode - if so, skip execution entirely
+    // We need to fetch the actual mode if we haven't tracked it yet
     let manual_mode_monitor = super::manual_mode_monitor::get_manual_mode_monitor();
-    if manual_mode_monitor.is_manual_mode(device_name) {
+    let is_automatic_mode = match manual_mode_monitor.get_mode(device_name) {
+        Some(is_auto) => is_auto,
+        None => {
+            // Mode not yet tracked - fetch it from the device
+            match crate::device_requests::ac::get_sensors(device_name).await {
+                Ok(sensor_data) => {
+                    // Store the mode for future reference
+                    manual_mode_monitor.update_mode(device_name, sensor_data.is_automatic_mode);
+                    sensor_data.is_automatic_mode
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to fetch mode for device '{}': {}. Skipping execution for safety.",
+                        device_name,
+                        e
+                    );
+                    return Ok(false);
+                }
+            }
+        }
+    };
+
+    // Skip execution if device is in manual mode
+    if !is_automatic_mode {
         log::info!(
             "Device '{}' is in manual mode, skipping automatic command execution",
             device_name
