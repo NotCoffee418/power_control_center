@@ -9,8 +9,11 @@ pub use plan_types::{AcDevices, RequestMode};
 use std::time::Duration;
 use tokio;
 
+/// Control cycle interval in seconds (5 minutes)
+const CONTROL_CYCLE_INTERVAL_SECS: u64 = 300;
+
 /// Start the AC controller loop
-/// Runs immediately on startup, then repeats every 5 minutes (300 seconds)
+/// Runs immediately on startup, then repeats every 5 minutes
 pub async fn start_ac_controller() {
     log::info!("AC controller starting...");
     
@@ -18,8 +21,8 @@ pub async fn start_ac_controller() {
         // Execute AC control for all devices
         execute_ac_control_cycle().await;
         
-        // Wait 5 minutes (300 seconds) before next cycle
-        tokio::time::sleep(Duration::from_secs(300)).await;
+        // Wait before next cycle
+        tokio::time::sleep(Duration::from_secs(CONTROL_CYCLE_INTERVAL_SECS)).await;
     }
 }
 
@@ -27,14 +30,8 @@ pub async fn start_ac_controller() {
 async fn execute_ac_control_cycle() {
     log::info!("Starting AC control cycle");
     
-    // List of all AC devices to control
-    let devices = vec![
-        AcDevices::LivingRoom,
-        AcDevices::Veranda,
-    ];
-    
     // Process each device
-    for device in devices {
+    for device in AcDevices::all() {
         let device_name = device.as_str();
         log::debug!("Processing device: {}", device_name);
         
