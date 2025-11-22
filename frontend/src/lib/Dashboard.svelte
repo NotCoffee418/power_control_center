@@ -188,15 +188,15 @@
         <h2>AC Devices</h2>
         <div class="device-cards">
           {#each dashboardData.devices as device}
-            <div class="device-card" class:active={device.is_on}>
+            <div class="device-card" class:active={device.is_automatic_mode}>
               <div class="device-header">
                 <h3>{device.name}</h3>
-                <span class="status-badge" class:on={device.is_on}>
-                  {device.is_on ? 'ON' : 'OFF'}
+                <span class="status-badge" class:auto={device.is_automatic_mode} class:manual={!device.is_automatic_mode}>
+                  {device.is_automatic_mode ? 'Auto' : 'Manual'}
                 </span>
               </div>
               
-              {#if device.is_on}
+              {#if device.is_automatic_mode}
                 <div class="device-details">
                   <div class="detail-row">
                     <span class="detail-label">Mode:</span>
@@ -426,8 +426,13 @@
     color: rgba(255, 255, 255, 0.5);
   }
 
-  .status-badge.on {
+  .status-badge.auto {
     background: #4caf50;
+    color: white;
+  }
+
+  .status-badge.manual {
+    background: #ffa726;
     color: white;
   }
 
