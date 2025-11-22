@@ -123,12 +123,17 @@
     return '';
   }
 
+  /**
+   * Calculate the average indoor temperature across all devices
+   * @param {Array} devices - Array of device objects with indoor_temperature property
+   * @returns {number|null} The average temperature, or null if no valid temperatures exist
+   */
   function calculateAverageIndoorTemp(devices) {
     if (!devices || devices.length === 0) return null;
     
     const validTemps = devices
       .map(d => d.indoor_temperature)
-      .filter(t => t != null);
+      .filter(t => t !== null && t !== undefined);
     
     if (validTemps.length === 0) return null;
     
