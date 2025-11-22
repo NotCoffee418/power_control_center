@@ -168,6 +168,21 @@
             <span class="label">Outdoor Temp</span>
             <span class="value large">{formatTemperature(dashboardData.outdoor_temp)}</span>
           </div>
+          <div class="data-item">
+            <span class="label">Forecast Trend</span>
+            <span class="value">
+              {getTrendIndicator(dashboardData.outdoor_temp_trend)} 
+              {formatTrend(dashboardData.outdoor_temp_trend)}
+            </span>
+          </div>
+          <div class="data-item">
+            <span class="label">Raw Solar Production</span>
+            <span class="value large">
+              {dashboardData.solar_production_watts != null 
+                ? `${dashboardData.solar_production_watts} W` 
+                : 'N/A'}
+            </span>
+          </div>
           <div class="data-item net-power" class:importing={dashboardData.net_power_w > 0} class:exporting={dashboardData.net_power_w < 0}>
             <span class="label">Net Power</span>
             <span class="value large">{formatNetPower(dashboardData.net_power_w)}</span>
@@ -632,14 +647,19 @@
   }
 
   .command-details {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .detail-item {
     font-size: 0.8rem;
     opacity: 0.8;
+    margin-right: 0.5rem;
+  }
+
+  .detail-item:last-child {
+    margin-right: 0;
   }
 
   .measured-temp {
