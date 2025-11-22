@@ -10,6 +10,9 @@ pub enum CauseReason {
     /// AC is OFF due to cold outdoor temperature (ice exception)
     /// Prevents AC from running when outdoor temp < 5°C to avoid ice formation
     IceException = 1,
+    /// AC is OFF due to PIR (motion) detection
+    /// Automatically turns off AC when motion is detected to avoid blowing air directly at people
+    PirDetection = 2,
 }
 
 impl CauseReason {
@@ -23,6 +26,7 @@ impl CauseReason {
         match self {
             CauseReason::Undefined => "Undefined",
             CauseReason::IceException => "Ice Exception",
+            CauseReason::PirDetection => "PIR Detection",
         }
     }
 
@@ -31,6 +35,7 @@ impl CauseReason {
         match self {
             CauseReason::Undefined => "No specific reason recorded",
             CauseReason::IceException => "AC is OFF because outdoor temperature is below 5°C. When running in cold conditions, the AC unit would go through a defrost cycle that pulls warm air out of the room, making heating inefficient. We rely solely on central heating instead. This exception is bypassed if indoor temperature drops below 12°C to prevent the room from becoming too cold.",
+            CauseReason::PirDetection => "AC is OFF due to motion detection. The PIR (Passive Infrared) sensor detected movement near the AC unit, and the system automatically turns off the AC to avoid blowing air directly at people, which can be uncomfortable.",
         }
     }
 
@@ -39,6 +44,7 @@ impl CauseReason {
         match id {
             0 => CauseReason::Undefined,
             1 => CauseReason::IceException,
+            2 => CauseReason::PirDetection,
             _ => CauseReason::Undefined, // Default to Undefined for unknown IDs
         }
     }
@@ -52,12 +58,14 @@ mod tests {
     fn test_cause_reason_ids() {
         assert_eq!(CauseReason::Undefined.id(), 0);
         assert_eq!(CauseReason::IceException.id(), 1);
+        assert_eq!(CauseReason::PirDetection.id(), 2);
     }
 
     #[test]
     fn test_cause_reason_labels() {
         assert_eq!(CauseReason::Undefined.label(), "Undefined");
         assert_eq!(CauseReason::IceException.label(), "Ice Exception");
+        assert_eq!(CauseReason::PirDetection.label(), "PIR Detection");
     }
 
     #[test]
@@ -72,12 +80,13 @@ mod tests {
     fn test_from_id() {
         assert_eq!(CauseReason::from_id(0), CauseReason::Undefined);
         assert_eq!(CauseReason::from_id(1), CauseReason::IceException);
+        assert_eq!(CauseReason::from_id(2), CauseReason::PirDetection);
         assert_eq!(CauseReason::from_id(999), CauseReason::Undefined); // Unknown defaults to Undefined
     }
 
     #[test]
     fn test_round_trip_conversion() {
-        let causes = vec![CauseReason::Undefined, CauseReason::IceException];
+        let causes = vec![CauseReason::Undefined, CauseReason::IceException, CauseReason::PirDetection];
         for cause in causes {
             let id = cause.id();
             let converted = CauseReason::from_id(id);

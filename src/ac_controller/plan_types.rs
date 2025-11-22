@@ -115,7 +115,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
         // Return Off to explicitly turn off or keep off the AC
         // The actual turn-off is handled by the PIR detect endpoint
         // This prevents the AC from being turned back on during normal evaluation
-        return PlanResult::new(RequestMode::Off, CauseReason::Undefined);
+        return PlanResult::new(RequestMode::Off, CauseReason::PirDetection);
     }
 
     // Get current conditions
