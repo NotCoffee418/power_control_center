@@ -30,6 +30,7 @@ pub struct DashboardStatus {
     pub current_consumption_kw: Option<f64>,
     pub current_production_kw: Option<f64>,
     pub net_power_w: Option<i32>,
+    pub pir_timeout_minutes: u32,
 }
 
 #[derive(Serialize)]
@@ -43,6 +44,7 @@ pub struct DeviceStatus {
     pub swing: Option<i32>,
     pub powerful_mode: bool,
     pub is_automatic_mode: bool,
+    pub last_pir_detection: Option<i64>, // Unix timestamp in seconds
 }
 
 const KW_TO_W_MULTIPLIER: f64 = 1000.0;
@@ -76,6 +78,11 @@ async fn get_dashboard_status() -> Response {
             _ => format!("mode_{}", m),
         });
         
+        // Get last PIR detection time
+        let pir_state = crate::ac_controller::pir_state::get_pir_state();
+        let last_pir_detection = pir_state.get_last_detection(device_name)
+            .map(|dt| dt.timestamp());
+        
         devices.push(DeviceStatus {
             name: device_name.clone(),
             is_on: state.is_on,
@@ -86,6 +93,7 @@ async fn get_dashboard_status() -> Response {
             swing: state.swing,
             powerful_mode: state.powerful_mode,
             is_automatic_mode,
+            last_pir_detection,
         });
     }
     
@@ -146,6 +154,7 @@ async fn get_dashboard_status() -> Response {
         current_consumption_kw: current_consumption,
         current_production_kw: current_production,
         net_power_w: net_power,
+        pir_timeout_minutes: cfg.pir_timeout_minutes,
     };
     
     let response = ApiResponse::success(status);
