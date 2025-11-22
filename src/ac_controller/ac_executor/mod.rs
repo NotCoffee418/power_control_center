@@ -15,12 +15,16 @@ static AC_STATE_MANAGER: std::sync::OnceLock<AcStateManager> = std::sync::OnceLo
 /// Manages state for all AC devices
 pub struct AcStateManager {
     states: Arc<RwLock<HashMap<String, AcState>>>,
+    /// Tracks whether each device has had its first command sent after startup
+    /// This ensures we always send commands on first execution regardless of state
+    initialized_devices: Arc<RwLock<HashMap<String, bool>>>,
 }
 
 impl AcStateManager {
     fn new() -> Self {
         Self {
             states: Arc::new(RwLock::new(HashMap::new())),
+            initialized_devices: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -37,6 +41,30 @@ impl AcStateManager {
     fn set_state(&self, device_name: &str, state: AcState) {
         let mut states = self.states.write().unwrap();
         states.insert(device_name.to_string(), state);
+    }
+
+    /// Check if a device has been initialized (had its first command sent)
+    fn is_device_initialized(&self, device_name: &str) -> bool {
+        let initialized = self.initialized_devices.read().unwrap();
+        initialized.get(device_name).copied().unwrap_or(false)
+    }
+
+    /// Mark a device as initialized after its first command
+    fn mark_device_initialized(&self, device_name: &str) {
+        let mut initialized = self.initialized_devices.write().unwrap();
+        initialized.insert(device_name.to_string(), true);
+    }
+
+    /// Clear the initialization flag for a specific device
+    fn clear_device_initialization(&self, device_name: &str) {
+        let mut initialized = self.initialized_devices.write().unwrap();
+        initialized.remove(device_name);
+    }
+
+    /// Clear all initialization flags
+    fn clear_all_initialization(&self) {
+        let mut initialized = self.initialized_devices.write().unwrap();
+        initialized.clear();
     }
 }
 
@@ -63,6 +91,9 @@ pub async fn execute_plan(
     let device_name = device.as_str();
     let state_manager = get_state_manager();
 
+    // Check if this is the first execution for this device
+    let is_first_execution = !state_manager.is_device_initialized(device_name);
+
     // Get current state
     let current_state = state_manager.get_state(device_name);
 
@@ -70,12 +101,20 @@ pub async fn execute_plan(
     let desired_state = plan_to_state(plan, device_name);
 
     // Check if we need to make changes
-    if !current_state.requires_change(&desired_state) {
+    // On first execution, always send command regardless of state to ensure sync with physical device
+    if !is_first_execution && !current_state.requires_change(&desired_state) {
         log::debug!(
             "No state change required for device '{}', skipping API call",
             device_name
         );
         return Ok(false);
+    }
+
+    if is_first_execution {
+        log::info!(
+            "First execution for device '{}', sending command to ensure sync with physical state",
+            device_name
+        );
     }
 
     log::info!(
@@ -89,6 +128,7 @@ pub async fn execute_plan(
     // Update state if successful
     if result.is_ok() {
         state_manager.set_state(device_name, desired_state);
+        state_manager.mark_device_initialized(device_name);
         log::info!("Successfully updated state for device '{}'", device_name);
     }
 
@@ -170,14 +210,18 @@ pub fn reset_device_state(device: &AcDevices) {
     let device_name = device.as_str();
     let state_manager = get_state_manager();
     state_manager.set_state(device_name, AcState::new_off());
+    state_manager.clear_device_initialization(device_name);
     log::info!("Reset state for device '{}'", device_name);
 }
 
 /// Reset all device states (useful for testing or system restart)
 pub fn reset_all_states() {
     let state_manager = get_state_manager();
-    let mut states = state_manager.states.write().unwrap();
-    states.clear();
+    {
+        let mut states = state_manager.states.write().unwrap();
+        states.clear();
+    }
+    state_manager.clear_all_initialization();
     log::info!("Reset all device states");
 }
 
@@ -300,5 +344,67 @@ mod tests {
         
         // Should now be off
         assert!(is_device_off(&AcDevices::LivingRoom));
+    }
+
+    #[test]
+    fn test_device_initialization_tracking() {
+        // Create a new manager for testing
+        let manager = AcStateManager::new();
+        
+        // Device should not be initialized initially
+        assert!(!manager.is_device_initialized("TestDevice"));
+        
+        // Mark device as initialized
+        manager.mark_device_initialized("TestDevice");
+        
+        // Device should now be initialized
+        assert!(manager.is_device_initialized("TestDevice"));
+    }
+
+    #[test]
+    fn test_reset_device_state_clears_initialization() {
+        // Reset all first
+        reset_all_states();
+        
+        let manager = get_state_manager();
+        
+        // Set state and mark as initialized
+        manager.set_state("LivingRoom", AcState::new_on(4, 0, 22.0, 1, false));
+        manager.mark_device_initialized("LivingRoom");
+        
+        // Verify it's initialized
+        assert!(manager.is_device_initialized("LivingRoom"));
+        
+        // Reset device state
+        reset_device_state(&AcDevices::LivingRoom);
+        
+        // Device should no longer be initialized
+        assert!(!manager.is_device_initialized("LivingRoom"));
+        
+        // And state should be off
+        let state = manager.get_state("LivingRoom");
+        assert!(!state.is_on);
+    }
+
+    #[test]
+    fn test_reset_all_states_clears_initialization() {
+        let manager = get_state_manager();
+        
+        // Set multiple devices
+        manager.set_state("Device1", AcState::new_on(4, 0, 22.0, 1, false));
+        manager.mark_device_initialized("Device1");
+        manager.set_state("Device2", AcState::new_on(1, 0, 24.0, 0, false));
+        manager.mark_device_initialized("Device2");
+        
+        // Verify they're initialized
+        assert!(manager.is_device_initialized("Device1"));
+        assert!(manager.is_device_initialized("Device2"));
+        
+        // Reset all
+        reset_all_states();
+        
+        // Neither device should be initialized
+        assert!(!manager.is_device_initialized("Device1"));
+        assert!(!manager.is_device_initialized("Device2"));
     }
 }

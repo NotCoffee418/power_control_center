@@ -67,6 +67,14 @@ impl AcDevices {
             _ => None,
         }
     }
+
+    /// Get all AC devices for iteration
+    pub fn all() -> Vec<Self> {
+        vec![
+            AcDevices::LivingRoom,
+            AcDevices::Veranda,
+        ]
+    }
 }
 
 /// Fetch data and get the desired AC plan for a specific device

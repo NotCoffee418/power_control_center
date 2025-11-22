@@ -18,6 +18,7 @@ The AC executor acts as an intelligent middleware between the planning module an
 - Thread-safe singleton that tracks the state of all AC devices
 - Uses `RwLock<HashMap>` for concurrent access
 - Automatically initializes with "off" state for new devices
+- Tracks initialization status to ensure commands are sent on first execution after startup
 
 #### `AcState`
 - Represents the complete state of an AC device:
@@ -75,12 +76,23 @@ The executor automatically handles state transitions:
 3. **On → On (different settings)**: Sends turn_on_ac() with new parameters
 4. **Powerful mode toggle**: Sends toggle_powerful() when needed
 
+### Startup Behavior
+
+On application startup, the executor doesn't know the actual physical state of AC devices. To ensure synchronization:
+
+- **First Execution**: Commands are always sent for each device on the first call to `execute_plan()`, regardless of the tracked state
+- **Subsequent Executions**: Normal state comparison is used to minimize API calls
+- This ensures the physical AC state matches the calculated plan even if the device was left in a different state
+
+The initialization tracking is automatically reset when calling `reset_device_state()` or `reset_all_states()`.
+
 ## API Call Optimization
 
 The module ensures minimal API calls by:
 - Tracking previous state for each device
+- Tracking initialization status for startup synchronization
 - Comparing new plans against current state using `PartialEq`
-- Skipping API calls when state hasn't changed
+- Skipping API calls when state hasn't changed (except on first execution)
 - Only sending the minimum required commands
 
 ## Error Handling
