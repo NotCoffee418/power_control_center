@@ -110,9 +110,9 @@
   }
 
   function formatActionType(actionType) {
-    if (actionType === 'on') return 'Turn On';
-    if (actionType === 'off') return 'Turn Off';
-    if (actionType === 'toggle-powerful') return 'Toggle Powerful';
+    if (actionType === 'on') return 'On';
+    if (actionType === 'off') return 'Off';
+    if (actionType === 'toggle-powerful') return 'Powerful';
     return actionType;
   }
 
@@ -121,6 +121,19 @@
     if (actionType === 'off') return 'action-off';
     if (actionType === 'toggle-powerful') return 'action-powerful';
     return '';
+  }
+
+  function calculateAverageIndoorTemp(devices) {
+    if (!devices || devices.length === 0) return null;
+    
+    const validTemps = devices
+      .map(d => d.indoor_temperature)
+      .filter(t => t != null);
+    
+    if (validTemps.length === 0) return null;
+    
+    const sum = validTemps.reduce((acc, temp) => acc + temp, 0);
+    return sum / validTemps.length;
   }
 </script>
 
@@ -138,43 +151,17 @@
     <div class="error">{error}</div>
   {:else if dashboardData}
     <div class="grid-container">
-      <!-- Environmental Data Section -->
-      <div class="section environmental">
-        <h2>Environmental</h2>
+      <!-- Environmental & Power Data Section -->
+      <div class="section environmental-power">
+        <h2>Environmental & Power</h2>
         <div class="data-grid">
+          <div class="data-item">
+            <span class="label">Avg Indoor Temp</span>
+            <span class="value large">{formatTemperature(calculateAverageIndoorTemp(dashboardData.devices))}</span>
+          </div>
           <div class="data-item">
             <span class="label">Outdoor Temp</span>
             <span class="value large">{formatTemperature(dashboardData.outdoor_temp)}</span>
-          </div>
-          <div class="data-item">
-            <span class="label">Forecast Trend</span>
-            <span class="value">
-              {getTrendIndicator(dashboardData.outdoor_temp_trend)} 
-              {formatTrend(dashboardData.outdoor_temp_trend)}
-            </span>
-          </div>
-          <div class="data-item">
-            <span class="label">Raw Solar Production</span>
-            <span class="value large">
-              {dashboardData.solar_production_watts != null 
-                ? `${dashboardData.solar_production_watts} W` 
-                : 'N/A'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Power Data Section -->
-      <div class="section power">
-        <h2>Power Grid</h2>
-        <div class="data-grid">
-          <div class="data-item">
-            <span class="label">Consumption</span>
-            <span class="value large consumption">{formatPower(dashboardData.current_consumption_kw)}</span>
-          </div>
-          <div class="data-item">
-            <span class="label">Production</span>
-            <span class="value large production">{formatPower(dashboardData.current_production_kw)}</span>
           </div>
           <div class="data-item net-power" class:importing={dashboardData.net_power_w > 0} class:exporting={dashboardData.net_power_w < 0}>
             <span class="label">Net Power</span>
@@ -356,10 +343,9 @@
     color: #646cff;
   }
 
-  .environmental .data-grid,
-  .power .data-grid {
+  .environmental-power .data-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 1.5rem;
   }
 
@@ -385,14 +371,6 @@
 
   .data-item .value.large {
     font-size: 2rem;
-  }
-
-  .data-item .value.consumption {
-    color: #ff6b6b;
-  }
-
-  .data-item .value.production {
-    color: #51cf66;
   }
 
   .data-item.net-power.importing {
@@ -534,12 +512,15 @@
 
   .commands-table-wrapper {
     overflow-x: auto;
+    width: 100%;
   }
 
   .commands-table {
     width: 100%;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: 0.875rem;
+    table-layout: auto;
   }
 
   .commands-table thead {
@@ -574,25 +555,26 @@
   }
 
   .action-type {
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
     display: inline-block;
   }
 
   .action-on {
-    background: rgba(76, 175, 80, 0.2);
-    color: #4caf50;
+    background: #4caf50;
+    color: white;
   }
 
   .action-off {
-    background: rgba(255, 107, 107, 0.2);
-    color: #ff6b6b;
+    background: #ff6b6b;
+    color: white;
   }
 
   .action-powerful {
-    background: rgba(100, 108, 255, 0.2);
-    color: #646cff;
+    background: #646cff;
+    color: white;
   }
 
   .command-details {
@@ -664,7 +646,7 @@
       font-size: 2rem;
     }
 
-    .environmental .data-grid {
+    .environmental-power .data-grid {
       grid-template-columns: 1fr;
     }
 
