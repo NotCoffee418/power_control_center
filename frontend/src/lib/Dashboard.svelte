@@ -2,7 +2,9 @@
   import { onMount, onDestroy } from 'svelte';
 
   let dashboardData = $state(null);
+  let recentCommands = $state([]);
   let loading = $state(true);
+  let commandsLoading = $state(true);
   let error = $state(null);
   let lastUpdate = $state(null);
   let refreshInterval = null;
@@ -27,10 +29,31 @@
     }
   }
 
+  async function fetchRecentCommands() {
+    try {
+      const response = await fetch('/api/dashboard/recent-commands?page=1&per_page=10');
+      const result = await response.json();
+      
+      if (result.success) {
+        recentCommands = result.data.commands;
+      } else {
+        console.error('Failed to fetch recent commands:', result.error);
+      }
+    } catch (e) {
+      console.error('Error fetching recent commands:', e);
+    } finally {
+      commandsLoading = false;
+    }
+  }
+
   onMount(() => {
     fetchDashboardData();
+    fetchRecentCommands();
     // Refresh every 10 seconds
-    refreshInterval = setInterval(fetchDashboardData, 10000);
+    refreshInterval = setInterval(() => {
+      fetchDashboardData();
+      fetchRecentCommands();
+    }, 10000);
   });
 
   onDestroy(() => {
@@ -78,6 +101,26 @@
     } else {
       return '0.00 kW (balanced)';
     }
+  }
+
+  function formatTimestamp(timestamp) {
+    if (timestamp == null) return 'N/A';
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleString();
+  }
+
+  function formatActionType(actionType) {
+    if (actionType === 'on') return 'Turn On';
+    if (actionType === 'off') return 'Turn Off';
+    if (actionType === 'toggle-powerful') return 'Toggle Powerful';
+    return actionType;
+  }
+
+  function getActionTypeClass(actionType) {
+    if (actionType === 'on') return 'action-on';
+    if (actionType === 'off') return 'action-off';
+    if (actionType === 'toggle-powerful') return 'action-powerful';
+    return '';
   }
 </script>
 
@@ -184,6 +227,57 @@
             </div>
           {/each}
         </div>
+      </div>
+
+      <!-- Recent Commands Section -->
+      <div class="section recent-commands">
+        <h2>Recent AC Commands</h2>
+        {#if commandsLoading}
+          <div class="loading-commands">Loading commands...</div>
+        {:else if recentCommands.length === 0}
+          <div class="no-commands">No commands recorded yet</div>
+        {:else}
+          <div class="commands-table-wrapper">
+            <table class="commands-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Device</th>
+                  <th>Action</th>
+                  <th>Details</th>
+                  <th>Temp</th>
+                  <th>Power</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each recentCommands as command}
+                  <tr>
+                    <td class="timestamp">{formatTimestamp(command.action_timestamp)}</td>
+                    <td class="device-name">{command.device_identifier}</td>
+                    <td class="action-type {getActionTypeClass(command.action_type)}">
+                      {formatActionType(command.action_type)}
+                    </td>
+                    <td class="command-details">
+                      {#if command.action_type === 'on'}
+                        <span class="detail-item">Mode: {command.mode === 1 ? 'Heat' : command.mode === 4 ? 'Cool' : command.mode}</span>
+                        <span class="detail-item">Fan: {formatFanSpeed(command.fan_speed)}</span>
+                        <span class="detail-item">Set: {command.request_temperature ? `${command.request_temperature.toFixed(1)}°C` : 'N/A'}</span>
+                      {:else}
+                        <span class="detail-item">—</span>
+                      {/if}
+                    </td>
+                    <td class="measured-temp">
+                      {command.measured_temperature ? `${command.measured_temperature.toFixed(1)}°C` : '—'}
+                    </td>
+                    <td class="measured-power">
+                      {command.measured_net_power_watt != null ? `${(command.measured_net_power_watt / 1000).toFixed(2)} kW` : '—'}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -403,6 +497,96 @@
     color: #646cff;
   }
 
+  /* Recent Commands Section */
+  .recent-commands {
+    margin-top: 1rem;
+  }
+
+  .loading-commands, .no-commands {
+    text-align: center;
+    padding: 1.5rem;
+    opacity: 0.7;
+  }
+
+  .commands-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .commands-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .commands-table thead {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .commands-table th {
+    padding: 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    white-space: nowrap;
+  }
+
+  .commands-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .commands-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .timestamp {
+    white-space: nowrap;
+    opacity: 0.8;
+  }
+
+  .device-name {
+    font-weight: 600;
+    color: #646cff;
+  }
+
+  .action-type {
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  .action-on {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+  }
+
+  .action-off {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+  }
+
+  .action-powerful {
+    background: rgba(100, 108, 255, 0.2);
+    color: #646cff;
+  }
+
+  .command-details {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .detail-item {
+    font-size: 0.8rem;
+    opacity: 0.8;
+  }
+
+  .measured-temp, .measured-power {
+    text-align: right;
+    opacity: 0.8;
+  }
+
   @media (max-width: 768px) {
     h1 {
       font-size: 2rem;
@@ -414,6 +598,15 @@
 
     .device-cards {
       grid-template-columns: 1fr;
+    }
+
+    .commands-table {
+      font-size: 0.75rem;
+    }
+
+    .commands-table th,
+    .commands-table td {
+      padding: 0.5rem;
     }
   }
 </style>
