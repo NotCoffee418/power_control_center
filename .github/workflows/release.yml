@@ -83,7 +83,7 @@ jobs:
             - name: Install cross-compilation tools
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+                  sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf pkg-config
 
             - name: Cache cargo
               uses: actions/cache@v4.3.0
@@ -94,6 +94,9 @@ jobs:
                       target
                   key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+            - name: Install cross
+              run: cargo install cross --version 0.2.5
+
             - name: Build binaries
               run: |
                   # AMD64
@@ -103,15 +106,13 @@ jobs:
                   tar -czf power_control_center-${{ github.ref_name }}-linux-amd64.tar.gz -C dist/amd64 power_control_center
 
                   # ARM64
-                  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
-                  cargo build --release --target aarch64-unknown-linux-gnu
+                  cross build --release --target aarch64-unknown-linux-gnu
                   mkdir -p dist/arm64
                   cp target/aarch64-unknown-linux-gnu/release/power_control_center dist/arm64/
                   tar -czf power_control_center-${{ github.ref_name }}-linux-arm64.tar.gz -C dist/arm64 power_control_center
 
                   # ARMv7
-                  CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc \
-                  cargo build --release --target armv7-unknown-linux-gnueabihf
+                  cross build --release --target armv7-unknown-linux-gnueabihf
                   mkdir -p dist/armv7
                   cp target/armv7-unknown-linux-gnueabihf/release/power_control_center dist/armv7/
                   tar -czf power_control_center-${{ github.ref_name }}-linux-armv7.tar.gz -C dist/armv7 power_control_center

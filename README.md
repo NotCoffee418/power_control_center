@@ -1,5 +1,64 @@
 # power-control-center
 
+## Installation
+
+### Quick Install (One-liner)
+
+Install the latest release with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NotCoffee418/power_control_center/main/installation/install.sh | sudo bash
+```
+
+### Manual Installation
+
+1. Download the installation script:
+```bash
+wget https://raw.githubusercontent.com/NotCoffee418/power_control_center/main/installation/install.sh
+chmod +x install.sh
+```
+
+2. Run the installer:
+```bash
+sudo ./install.sh
+```
+
+The installer will:
+- Detect your system architecture (x86_64, arm64, armv7)
+- Download the latest release binary
+- Create necessary system user and directories
+- Install the systemd service
+- Set appropriate permissions
+
+### Post-Installation Configuration
+
+1. Create a configuration file at `/etc/power_control_center/config.json`:
+```bash
+sudo nano /etc/power_control_center/config.json
+```
+
+Use the example configuration below and adjust to your needs.
+
+2. Enable and start the service:
+```bash
+sudo systemctl enable power_control_center
+sudo systemctl start power_control_center
+```
+
+3. Check the service status:
+```bash
+sudo systemctl status power_control_center
+```
+
+4. View logs:
+```bash
+sudo journalctl -u power_control_center -f
+```
+
+### Supported Architectures
+- Linux x86_64
+- Linux ARM64 (aarch64)
+- Linux ARMv7
 
 ## Files
 ### Config
