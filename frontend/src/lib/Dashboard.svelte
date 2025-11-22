@@ -99,7 +99,7 @@
   function formatNetPower(watts) {
     if (watts == null) return 'N/A';
     // Invert the sign: negative for consuming (importing), positive for producing (exporting)
-    const invertedWatts = -watts;
+    const invertedWatts = watts === 0 ? 0 : -watts;
     return `${invertedWatts} W`;
   }
 
