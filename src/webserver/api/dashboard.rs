@@ -47,6 +47,9 @@ pub struct DeviceStatus {
 
 const KW_TO_W_MULTIPLIER: f64 = 1000.0;
 
+/// Default mode when sensor data is unavailable - assume manual mode for safety
+const DEFAULT_IS_AUTOMATIC_MODE: bool = false;
+
 /// GET /api/dashboard/status
 /// Returns current status of all configured devices and environmental data
 async fn get_dashboard_status() -> Response {
@@ -63,7 +66,7 @@ async fn get_dashboard_status() -> Response {
             Ok(sensor_data) => (Some(sensor_data.temperature), sensor_data.is_automatic_mode),
             Err(e) => {
                 log::warn!("Failed to get sensor data for {}: {}", device_name, e);
-                (None, false)
+                (None, DEFAULT_IS_AUTOMATIC_MODE)
             }
         };
         
