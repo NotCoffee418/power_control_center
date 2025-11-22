@@ -247,8 +247,10 @@
                   <tr>
                     <td class="timestamp">{formatTimestamp(command.action_timestamp)}</td>
                     <td class="device-name">{command.device_identifier}</td>
-                    <td class="action-type {getActionTypeClass(command.action_type)}">
-                      {formatActionType(command.action_type)}
+                    <td class="action-cell">
+                      <span class="action-type {getActionTypeClass(command.action_type)}">
+                        {formatActionType(command.action_type)}
+                      </span>
                     </td>
                     <td class="command-details">
                       {#if command.action_type === 'on'}
@@ -524,7 +526,7 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.875rem;
-    table-layout: auto;
+    table-layout: fixed;
   }
 
   .commands-table thead {
@@ -538,6 +540,14 @@
     border-bottom: 2px solid rgba(255, 255, 255, 0.1);
     white-space: nowrap;
   }
+
+  .commands-table th:nth-child(1) { width: 12%; }  /* Time */
+  .commands-table th:nth-child(2) { width: 10%; }  /* Device */
+  .commands-table th:nth-child(3) { width: 8%; }   /* Action */
+  .commands-table th:nth-child(4) { width: 24%; }  /* Details */
+  .commands-table th:nth-child(5) { width: 8%; }   /* Temp */
+  .commands-table th:nth-child(6) { width: 18%; }  /* Net / Solar */
+  .commands-table th:nth-child(7) { width: 20%; }  /* Cause */
 
   .commands-table td {
     padding: 0.75rem;
@@ -558,27 +568,66 @@
     color: #646cff;
   }
 
+  .action-cell {
+    text-align: center;
+  }
+
   .action-type {
-    padding: 0.15rem 0.5rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
+    padding: 0.25rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    min-width: 52px;
+  }
+
+  .action-type::before {
+    content: '';
     display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
   }
 
   .action-on {
-    background: #4caf50;
+    background: linear-gradient(135deg, #66bb6a 0%, #4caf50 100%);
     color: white;
+    border-color: rgba(76, 175, 80, 0.3);
+  }
+
+  .action-on::before {
+    background: #c8e6c9;
+    box-shadow: 0 0 4px #c8e6c9;
   }
 
   .action-off {
-    background: #ff6b6b;
+    background: linear-gradient(135deg, #ff8a80 0%, #ff6b6b 100%);
     color: white;
+    border-color: rgba(255, 107, 107, 0.3);
+  }
+
+  .action-off::before {
+    background: #ffcdd2;
+    box-shadow: 0 0 4px #ffcdd2;
   }
 
   .action-powerful {
-    background: #646cff;
+    background: linear-gradient(135deg, #7c8cff 0%, #646cff 100%);
     color: white;
+    border-color: rgba(100, 108, 255, 0.3);
+  }
+
+  .action-powerful::before {
+    background: #e3f2fd;
+    box-shadow: 0 0 4px #e3f2fd;
   }
 
   .command-details {
