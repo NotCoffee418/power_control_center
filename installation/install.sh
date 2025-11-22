@@ -51,7 +51,15 @@ echo -e "Detected architecture: ${GREEN}$ARCH${NC} (release: $RELEASE_ARCH)"
 
 # Get latest release tag
 echo "Fetching latest release information..."
-LATEST_TAG=$(curl -s --user-agent "power_control_center-installer/1.0" "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+RELEASE_JSON=$(curl -s --user-agent "power_control_center-installer/1.0" "https://api.github.com/repos/$REPO/releases/latest")
+
+# Try to parse with jq if available, otherwise use grep/sed
+if command -v jq >/dev/null 2>&1; then
+    LATEST_TAG=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+else
+    # Use grep and sed with a more specific pattern to avoid matching content in the body field
+    LATEST_TAG=$(echo "$RELEASE_JSON" | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+fi
 
 if [ -z "$LATEST_TAG" ]; then
     echo -e "${RED}Error: Could not fetch latest release tag${NC}"
