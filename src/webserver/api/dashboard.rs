@@ -42,6 +42,7 @@ pub struct DeviceStatus {
     pub fan_speed: Option<i32>,
     pub swing: Option<i32>,
     pub powerful_mode: bool,
+    pub is_automatic_mode: bool,
 }
 
 const KW_TO_W_MULTIPLIER: f64 = 1000.0;
@@ -57,12 +58,12 @@ async fn get_dashboard_status() -> Response {
     for device_name in cfg.ac_controller_endpoints.keys() {
         let state = get_state_manager().get_state(device_name);
         
-        // Try to get current indoor temperature from the device (using cache)
-        let indoor_temp = match device_requests::ac::get_sensors_cached(device_name).await {
-            Ok(sensor_data) => Some(sensor_data.temperature),
+        // Try to get current indoor temperature and automatic mode from the device (using cache)
+        let (indoor_temp, is_automatic_mode) = match device_requests::ac::get_sensors_cached(device_name).await {
+            Ok(sensor_data) => (Some(sensor_data.temperature), sensor_data.is_automatic_mode),
             Err(e) => {
                 log::warn!("Failed to get sensor data for {}: {}", device_name, e);
-                None
+                (None, false)
             }
         };
         
@@ -81,6 +82,7 @@ async fn get_dashboard_status() -> Response {
             fan_speed: state.fan_speed,
             swing: state.swing,
             powerful_mode: state.powerful_mode,
+            is_automatic_mode,
         });
     }
     
