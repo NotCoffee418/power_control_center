@@ -25,6 +25,10 @@ pub enum CauseReason {
     /// High intensity operation - excessive solar power available
     /// High solar production allows powerful AC operation without grid impact
     ExcessiveSolarPower = 6,
+    /// Device transitioned from Manual to Auto mode
+    /// When a device switches from manual control to automatic mode, we immediately send
+    /// the appropriate command to establish the desired state
+    ManualToAutoTransition = 7,
 }
 
 impl CauseReason {
@@ -43,6 +47,7 @@ impl CauseReason {
             CauseReason::MildTemperature => "Mild Temperature",
             CauseReason::MajorTemperatureChangePending => "Major Temperature Change Pending",
             CauseReason::ExcessiveSolarPower => "Excessive Solar Power",
+            CauseReason::ManualToAutoTransition => "Manual to Auto Transition",
         }
     }
 
@@ -56,6 +61,7 @@ impl CauseReason {
             CauseReason::MildTemperature => "Operating at low intensity because outdoor temperature is close to the desired indoor temperature. Minimal climate control is needed in these mild conditions.",
             CauseReason::MajorTemperatureChangePending => "Operating at high intensity due to a significant temperature change forecast. The system is taking preemptive action to prepare for upcoming weather changes.",
             CauseReason::ExcessiveSolarPower => "Operating at high intensity (Powerful mode) to utilize excess solar power production. This aggressive climate control has minimal environmental and cost impact when solar production is high.",
+            CauseReason::ManualToAutoTransition => "The AC device was switched from manual control to automatic mode. The system is sending the appropriate command to immediately establish the desired climate control state.",
         }
     }
 
@@ -69,6 +75,7 @@ impl CauseReason {
             4 => CauseReason::MildTemperature,
             5 => CauseReason::MajorTemperatureChangePending,
             6 => CauseReason::ExcessiveSolarPower,
+            7 => CauseReason::ManualToAutoTransition,
             _ => CauseReason::Undefined, // Default to Undefined for unknown IDs
         }
     }
@@ -87,6 +94,7 @@ mod tests {
         assert_eq!(CauseReason::MildTemperature.id(), 4);
         assert_eq!(CauseReason::MajorTemperatureChangePending.id(), 5);
         assert_eq!(CauseReason::ExcessiveSolarPower.id(), 6);
+        assert_eq!(CauseReason::ManualToAutoTransition.id(), 7);
     }
 
     #[test]
@@ -98,6 +106,7 @@ mod tests {
         assert_eq!(CauseReason::MildTemperature.label(), "Mild Temperature");
         assert_eq!(CauseReason::MajorTemperatureChangePending.label(), "Major Temperature Change Pending");
         assert_eq!(CauseReason::ExcessiveSolarPower.label(), "Excessive Solar Power");
+        assert_eq!(CauseReason::ManualToAutoTransition.label(), "Manual to Auto Transition");
     }
 
     #[test]
@@ -117,6 +126,7 @@ mod tests {
         assert_eq!(CauseReason::from_id(4), CauseReason::MildTemperature);
         assert_eq!(CauseReason::from_id(5), CauseReason::MajorTemperatureChangePending);
         assert_eq!(CauseReason::from_id(6), CauseReason::ExcessiveSolarPower);
+        assert_eq!(CauseReason::from_id(7), CauseReason::ManualToAutoTransition);
         assert_eq!(CauseReason::from_id(999), CauseReason::Undefined); // Unknown defaults to Undefined
     }
 
@@ -130,6 +140,7 @@ mod tests {
             CauseReason::MildTemperature,
             CauseReason::MajorTemperatureChangePending,
             CauseReason::ExcessiveSolarPower,
+            CauseReason::ManualToAutoTransition,
         ];
         for cause in causes {
             let id = cause.id();

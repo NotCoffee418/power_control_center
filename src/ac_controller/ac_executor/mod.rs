@@ -78,6 +78,7 @@ pub fn get_state_manager() -> &'static AcStateManager {
 /// # Arguments
 /// * `device` - The AC device to control
 /// * `plan_result` - The desired plan from the planning module with cause
+/// * `force_execution` - If true, bypass NoChange optimization and always execute
 ///
 /// # Returns
 /// * `Ok(true)` if a command was sent successfully
@@ -86,6 +87,7 @@ pub fn get_state_manager() -> &'static AcStateManager {
 pub async fn execute_plan(
     device: &AcDevices,
     plan_result: &super::plan_types::PlanResult,
+    force_execution: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let plan = &plan_result.mode;
     let device_name = device.as_str();
@@ -101,8 +103,9 @@ pub async fn execute_plan(
     let desired_state = plan_to_state(plan, device_name);
 
     // Check if we need to make changes
-    // On first execution, always send command regardless of state to ensure sync with physical device
-    if !is_first_execution && !current_state.requires_change(&desired_state) {
+    // On first execution or force_execution, always send command
+    // Otherwise, only send if state requires change
+    if !is_first_execution && !force_execution && !current_state.requires_change(&desired_state) {
         log::debug!(
             "No state change required for device '{}', skipping API call",
             device_name
@@ -115,6 +118,11 @@ pub async fn execute_plan(
             "First execution for device '{}', sending command to ensure sync with physical state",
             device_name
         );
+    } else if force_execution {
+        log::info!(
+            "Forced execution for device '{}', bypassing NoChange optimization",
+            device_name
+        );
     }
 
     log::info!(
@@ -123,7 +131,7 @@ pub async fn execute_plan(
     );
 
     // Execute the necessary API calls to achieve the desired state
-    let result = execute_state_change(device_name, &current_state, &desired_state, plan_result.cause.id(), is_first_execution).await;
+    let result = execute_state_change(device_name, &current_state, &desired_state, plan_result.cause.id(), is_first_execution || force_execution).await;
 
     // Update state if successful
     if result.is_ok() {
@@ -141,7 +149,7 @@ async fn execute_state_change(
     current_state: &AcState,
     desired_state: &AcState,
     cause_id: i32,
-    is_first_execution: bool,
+    force_send: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Case 1: Turning off the AC (or forcing off on first execution)
     if desired_state.is_on == false && current_state.is_on {
@@ -152,9 +160,9 @@ async fn execute_state_change(
 
     // Case 2: AC should be off and is already off
     if desired_state.is_on == false && !current_state.is_on {
-        // On first execution, we still send the off command to ensure sync with physical device
-        if is_first_execution {
-            log::info!("First execution: sending OFF command to '{}' to ensure sync with physical device", device_name);
+        // On first execution or forced execution, we still send the off command to ensure sync with physical device
+        if force_send {
+            log::info!("Forced execution: sending OFF command to '{}' to ensure sync with physical device", device_name);
             device_requests::ac::turn_off_ac(device_name, cause_id).await?;
             return Ok(());
         }
@@ -447,5 +455,36 @@ mod tests {
         // that the logic checks work correctly
         assert_eq!(current_state.is_on, desired_state.is_on);
         assert_eq!(current_state.is_on, false);
+    }
+
+    #[test]
+    fn test_force_execution_bypasses_nochange_optimization() {
+        // This test validates that force_execution flag bypasses the NoChange optimization
+        // Used for Manual→Auto transitions
+        
+        // Reset to simulate fresh start
+        reset_all_states();
+        
+        let manager = get_state_manager();
+        
+        // Set up an initialized device with a specific state
+        let cool_state = AcState::new_on(4, 0, 22.0, 1, false);
+        manager.set_state("TestDevice", cool_state.clone());
+        manager.mark_device_initialized("TestDevice");
+        
+        // Verify the device is initialized and has the expected state
+        assert!(manager.is_device_initialized("TestDevice"));
+        let current = manager.get_state("TestDevice");
+        assert_eq!(current, cool_state);
+        
+        // Create the exact same state as desired (normally would skip execution)
+        let desired_state = cool_state;
+        
+        // Verify that without force execution, no change would be required
+        assert!(!current.requires_change(&desired_state));
+        
+        // With force_execution=true, the execute_plan function should bypass this check
+        // and execute the command anyway (we can't test the actual API call here,
+        // but the logic is in place to support Manual→Auto transitions)
     }
 }

@@ -62,7 +62,7 @@ async fn pir_detect(
 
     // Device is on, use executor to turn it off
     let plan = PlanResult::new(RequestMode::Off, CauseReason::PirDetection);
-    match ac_executor::execute_plan(&device_enum, &plan).await {
+    match ac_executor::execute_plan(&device_enum, &plan, false).await {
         Ok(_) => {
             info!("AC turned off for device {} due to PIR detection", params.device);
             let response = ApiResponse::success("PIR detection recorded and AC turned off");
