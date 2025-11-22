@@ -78,7 +78,7 @@ pub fn get_state_manager() -> &'static AcStateManager {
 ///
 /// # Arguments
 /// * `device` - The AC device to control
-/// * `plan` - The desired plan from the planning module
+/// * `plan_result` - The desired plan from the planning module with cause
 ///
 /// # Returns
 /// * `Ok(true)` if a command was sent successfully
@@ -86,8 +86,9 @@ pub fn get_state_manager() -> &'static AcStateManager {
 /// * `Err` if an API call failed
 pub async fn execute_plan(
     device: &AcDevices,
-    plan: &RequestMode,
+    plan_result: &super::plan_types::PlanResult,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    let plan = &plan_result.mode;
     let device_name = device.as_str();
     let state_manager = get_state_manager();
 
@@ -123,7 +124,7 @@ pub async fn execute_plan(
     );
 
     // Execute the necessary API calls to achieve the desired state
-    let result = execute_state_change(device_name, &current_state, &desired_state).await;
+    let result = execute_state_change(device_name, &current_state, &desired_state, plan_result.cause.id()).await;
 
     // Update state if successful
     if result.is_ok() {
@@ -140,11 +141,12 @@ async fn execute_state_change(
     device_name: &str,
     current_state: &AcState,
     desired_state: &AcState,
+    cause_id: i32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Case 1: Turning off the AC
     if desired_state.is_on == false && current_state.is_on {
         log::info!("Turning off AC '{}'", device_name);
-        device_requests::ac::turn_off_ac(device_name).await?;
+        device_requests::ac::turn_off_ac(device_name, cause_id).await?;
         return Ok(());
     }
 
@@ -176,19 +178,19 @@ async fn execute_state_change(
             temperature,
             swing
         );
-        device_requests::ac::turn_on_ac(device_name, mode, fan_speed, temperature, swing).await?;
+        device_requests::ac::turn_on_ac(device_name, mode, fan_speed, temperature, swing, cause_id).await?;
 
         // Handle powerful mode toggle if needed
         // Note: We need to check if powerful mode changed and is different from what turn_on sets
         if desired_state.powerful_mode != current_state.powerful_mode {
             if desired_state.powerful_mode {
                 log::info!("Enabling powerful mode for AC '{}'", device_name);
-                device_requests::ac::toggle_powerful(device_name).await?;
+                device_requests::ac::toggle_powerful(device_name, cause_id).await?;
             }
             // If powerful mode should be off but was on, we toggle it off
             else if current_state.powerful_mode {
                 log::info!("Disabling powerful mode for AC '{}'", device_name);
-                device_requests::ac::toggle_powerful(device_name).await?;
+                device_requests::ac::toggle_powerful(device_name, cause_id).await?;
             }
         }
     }
