@@ -98,14 +98,9 @@
 
   function formatNetPower(watts) {
     if (watts == null) return 'N/A';
-    const kw = (watts / 1000).toFixed(2);
-    if (watts < 0) {
-      return `${Math.abs(kw)} kW (exporting)`;
-    } else if (watts > 0) {
-      return `${kw} kW (importing)`;
-    } else {
-      return '0.00 kW (balanced)';
-    }
+    // Invert the sign: negative for consuming (importing), positive for producing (exporting)
+    const invertedWatts = -watts;
+    return `${invertedWatts} W`;
   }
 
   function formatTimestamp(timestamp) {
