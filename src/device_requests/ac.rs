@@ -103,8 +103,7 @@ pub async fn turn_off_ac(endpoint_name: &str) -> Result<bool, AcError> {
         }
     }
     
-    // This shouldn't be reached but needed for compilation
-    Err(AcError::ApiError("Max retries exceeded".to_string()))
+    unreachable!("Retry loop should have returned within MAX_RETRIES attempts")
 }
 
 pub async fn turn_on_ac(
@@ -181,8 +180,7 @@ pub async fn turn_on_ac(
         }
     }
     
-    // This shouldn't be reached but needed for compilation
-    Err(AcError::ApiError("Max retries exceeded".to_string()))
+    unreachable!("Retry loop should have returned within MAX_RETRIES attempts")
 }
 
 pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
@@ -236,8 +234,7 @@ pub async fn toggle_powerful(endpoint_name: &str) -> Result<bool, AcError> {
         }
     }
     
-    // This shouldn't be reached but needed for compilation
-    Err(AcError::ApiError("Max retries exceeded".to_string()))
+    unreachable!("Retry loop should have returned within MAX_RETRIES attempts")
 }
 
 pub async fn get_sensors(endpoint_name: &str) -> Result<SensorData, AcError> {

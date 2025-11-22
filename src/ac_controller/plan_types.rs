@@ -199,12 +199,13 @@ async fn get_solar_production_watts() -> Option<u32> {
             match device_requests::meter::get_latest_reading().await {
                 Ok(reading) => {
                     // current_production_kw is in kilowatts, convert to watts
-                    let production_watts = (reading.current_production_kw * 1000.0) as i32;
+                    // Use max(0.0) to ensure non-negative before conversion
+                    let production_watts = (reading.current_production_kw * 1000.0).max(0.0) as u32;
                     
                     // Only use if production is positive (indicating solar is producing)
                     if production_watts > 0 {
                         log::info!("Using power meter production as solar fallback: {} W", production_watts);
-                        Some(production_watts as u32)
+                        Some(production_watts)
                     } else {
                         log::info!("Power meter shows no production, assuming 0 solar");
                         Some(0)
