@@ -1,10 +1,12 @@
 use super::common;
+use super::cache::DataCache;
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::sync::OnceLock;
 
 // Public data types
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct SensorData {
     pub temperature: f64,
     #[serde(rename = "isAutomaticMode")]
@@ -124,6 +126,24 @@ pub async fn get_sensors(endpoint_name: &str) -> Result<SensorData, AcError> {
     let response = client.get(&url).send().await?;
 
     handle_response(response).await
+}
+
+// Cache for sensor data (30 second TTL)
+static SENSOR_CACHE: OnceLock<DataCache<SensorData>> = OnceLock::new();
+
+fn get_sensor_cache() -> &'static DataCache<SensorData> {
+    SENSOR_CACHE.get_or_init(|| DataCache::new(30))
+}
+
+/// Get sensor data with caching (30 second TTL)
+/// Recommended for dashboard use to reduce API calls
+pub async fn get_sensors_cached(endpoint_name: &str) -> Result<SensorData, AcError> {
+    let cache = get_sensor_cache();
+    let cache_key = format!("sensor_{}", endpoint_name);
+    
+    cache.get_or_fetch(&cache_key, || async {
+        get_sensors(endpoint_name).await
+    }).await
 }
 
 // Helper to get endpoint config

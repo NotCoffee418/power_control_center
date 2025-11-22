@@ -1,9 +1,11 @@
 use super::common;
+use super::cache::DataCache;
 use log::{debug, error, info};
 use serde::Deserialize;
+use std::sync::OnceLock;
 
 // Public data types
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct RawMeterReading {
     pub timestamp: String,
 
@@ -44,7 +46,7 @@ pub struct RawMeterReading {
     pub gas_consumption_m3: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct SolarProduction {
     #[serde(rename = "currentProduction")]
     pub current_production: i32,
@@ -140,4 +142,36 @@ pub async fn get_solar_production() -> Result<SolarProduction, SmartMeterError> 
 fn get_smart_meter_base_url() -> String {
     let config = crate::config::get_config();
     config.smart_meter_api_endpoint.clone()
+}
+
+// Cache for meter data (10 second TTL - real-time data)
+static METER_READING_CACHE: OnceLock<DataCache<RawMeterReading>> = OnceLock::new();
+static SOLAR_PRODUCTION_CACHE: OnceLock<DataCache<SolarProduction>> = OnceLock::new();
+
+fn get_meter_reading_cache() -> &'static DataCache<RawMeterReading> {
+    METER_READING_CACHE.get_or_init(|| DataCache::new(10)) // 10 seconds
+}
+
+fn get_solar_production_cache() -> &'static DataCache<SolarProduction> {
+    SOLAR_PRODUCTION_CACHE.get_or_init(|| DataCache::new(10)) // 10 seconds
+}
+
+/// Get latest meter reading with caching (10 second TTL)
+/// Recommended for dashboard use to reduce API calls
+pub async fn get_latest_reading_cached() -> Result<RawMeterReading, SmartMeterError> {
+    let cache = get_meter_reading_cache();
+    
+    cache.get_or_fetch("latest", || async {
+        get_latest_reading().await
+    }).await
+}
+
+/// Get solar production with caching (10 second TTL)
+/// Recommended for dashboard use to reduce API calls
+pub async fn get_solar_production_cached() -> Result<SolarProduction, SmartMeterError> {
+    let cache = get_solar_production_cache();
+    
+    cache.get_or_fetch("solar", || async {
+        get_solar_production().await
+    }).await
 }

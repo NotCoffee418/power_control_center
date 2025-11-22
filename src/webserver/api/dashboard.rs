@@ -24,6 +24,9 @@ pub struct DashboardStatus {
     pub outdoor_temp: Option<f64>,
     pub outdoor_temp_trend: Option<f64>,
     pub solar_production_watts: Option<i32>,
+    pub current_consumption_kw: Option<f64>,
+    pub current_production_kw: Option<f64>,
+    pub net_power_w: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -49,8 +52,8 @@ async fn get_dashboard_status() -> Response {
     for device_name in cfg.ac_controller_endpoints.keys() {
         let state = get_state_manager().get_state(device_name);
         
-        // Try to get current indoor temperature from the device
-        let indoor_temp = match device_requests::ac::get_sensors(device_name).await {
+        // Try to get current indoor temperature from the device (using cache)
+        let indoor_temp = match device_requests::ac::get_sensors_cached(device_name).await {
             Ok(sensor_data) => Some(sensor_data.temperature),
             Err(e) => {
                 log::warn!("Failed to get sensor data for {}: {}", device_name, e);
@@ -76,8 +79,8 @@ async fn get_dashboard_status() -> Response {
         });
     }
     
-    // Get outdoor weather data
-    let outdoor_temp = match device_requests::weather::get_current_outdoor_temp(
+    // Get outdoor weather data (using cache)
+    let outdoor_temp = match device_requests::weather::get_current_outdoor_temp_cached(
         cfg.latitude,
         cfg.longitude,
     ).await {
@@ -88,7 +91,7 @@ async fn get_dashboard_status() -> Response {
         }
     };
     
-    let outdoor_temp_trend = match device_requests::weather::compute_temperature_trend(
+    let outdoor_temp_trend = match device_requests::weather::compute_temperature_trend_cached(
         cfg.latitude,
         cfg.longitude,
     ).await {
@@ -99,12 +102,29 @@ async fn get_dashboard_status() -> Response {
         }
     };
     
-    // Get solar production data
-    let solar_production = match device_requests::meter::get_solar_production().await {
+    // Get solar production data (using cache)
+    let solar_production = match device_requests::meter::get_solar_production_cached().await {
         Ok(production) => Some(production.current_production),
         Err(e) => {
             log::warn!("Failed to get solar production: {}", e);
             None
+        }
+    };
+    
+    // Get real-time power consumption/production from meter (using cache)
+    let (current_consumption, current_production, net_power) = match device_requests::meter::get_latest_reading_cached().await {
+        Ok(reading) => {
+            // Calculate net power: negative means producing more than consuming
+            let net = ((reading.current_consumption_kw - reading.current_production_kw) * 1000.0) as i32;
+            (
+                Some(reading.current_consumption_kw),
+                Some(reading.current_production_kw),
+                Some(net),
+            )
+        }
+        Err(e) => {
+            log::warn!("Failed to get meter reading: {}", e);
+            (None, None, None)
         }
     };
     
@@ -113,6 +133,9 @@ async fn get_dashboard_status() -> Response {
         outdoor_temp,
         outdoor_temp_trend,
         solar_production_watts: solar_production,
+        current_consumption_kw: current_consumption,
+        current_production_kw: current_production,
+        net_power_w: net_power,
     };
     
     let response = ApiResponse::success(status);

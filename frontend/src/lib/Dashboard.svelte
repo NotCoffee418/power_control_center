@@ -62,6 +62,23 @@
     if (fanSpeed == null) return 'N/A';
     return fanSpeed === 0 ? 'Auto' : fanSpeed.toString();
   }
+
+  function formatPower(kw) {
+    if (kw == null) return 'N/A';
+    return `${kw.toFixed(2)} kW`;
+  }
+
+  function formatNetPower(watts) {
+    if (watts == null) return 'N/A';
+    const kw = (watts / 1000).toFixed(2);
+    if (watts < 0) {
+      return `${Math.abs(kw)} kW (exporting)`;
+    } else if (watts > 0) {
+      return `${kw} kW (importing)`;
+    } else {
+      return '0.00 kW (balanced)';
+    }
+  }
 </script>
 
 <div class="dashboard">
@@ -100,6 +117,25 @@
                 ? `${dashboardData.solar_production_watts} W` 
                 : 'N/A'}
             </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Power Data Section -->
+      <div class="section power">
+        <h2>Power Grid</h2>
+        <div class="data-grid">
+          <div class="data-item">
+            <span class="label">Consumption</span>
+            <span class="value large consumption">{formatPower(dashboardData.current_consumption_kw)}</span>
+          </div>
+          <div class="data-item">
+            <span class="label">Production</span>
+            <span class="value large production">{formatPower(dashboardData.current_production_kw)}</span>
+          </div>
+          <div class="data-item net-power" class:importing={dashboardData.net_power_w > 0} class:exporting={dashboardData.net_power_w < 0}>
+            <span class="label">Net Power</span>
+            <span class="value large">{formatNetPower(dashboardData.net_power_w)}</span>
           </div>
         </div>
       </div>
@@ -207,7 +243,8 @@
     color: #646cff;
   }
 
-  .environmental .data-grid {
+  .environmental .data-grid,
+  .power .data-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1.5rem;
@@ -235,6 +272,24 @@
 
   .data-item .value.large {
     font-size: 2rem;
+  }
+
+  .data-item .value.consumption {
+    color: #ff6b6b;
+  }
+
+  .data-item .value.production {
+    color: #51cf66;
+  }
+
+  .data-item.net-power.importing {
+    background: rgba(255, 107, 107, 0.1);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+  }
+
+  .data-item.net-power.exporting {
+    background: rgba(81, 207, 102, 0.1);
+    border: 1px solid rgba(81, 207, 102, 0.3);
   }
 
   .device-cards {

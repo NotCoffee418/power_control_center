@@ -1,4 +1,6 @@
+use super::cache::DataCache;
 use serde::Deserialize;
+use std::sync::OnceLock;
 
 #[derive(Debug)]
 pub enum WeatherError {
@@ -89,6 +91,40 @@ pub async fn compute_temperature_trend(latitude: f64, longitude: f64) -> Result<
     let current_temp = get_current_outdoor_temp(latitude, longitude).await?;
     let avg_next_12h = get_avg_next_12h_outdoor_temp(latitude, longitude).await?;
     Ok(avg_next_12h - current_temp)
+}
+
+// Cache for weather data (5 minute TTL - weather doesn't change that fast)
+static WEATHER_TEMP_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
+static WEATHER_TREND_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
+
+fn get_weather_temp_cache() -> &'static DataCache<f64> {
+    WEATHER_TEMP_CACHE.get_or_init(|| DataCache::new(300)) // 5 minutes
+}
+
+fn get_weather_trend_cache() -> &'static DataCache<f64> {
+    WEATHER_TREND_CACHE.get_or_init(|| DataCache::new(300)) // 5 minutes
+}
+
+/// Get current outdoor temperature with caching (5 minute TTL)
+/// Recommended for dashboard use to reduce API calls
+pub async fn get_current_outdoor_temp_cached(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
+    let cache = get_weather_temp_cache();
+    let cache_key = format!("temp_{}_{}", latitude, longitude);
+    
+    cache.get_or_fetch(&cache_key, || async {
+        get_current_outdoor_temp(latitude, longitude).await
+    }).await
+}
+
+/// Get temperature trend with caching (5 minute TTL)
+/// Recommended for dashboard use to reduce API calls
+pub async fn compute_temperature_trend_cached(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
+    let cache = get_weather_trend_cache();
+    let cache_key = format!("trend_{}_{}", latitude, longitude);
+    
+    cache.get_or_fetch(&cache_key, || async {
+        compute_temperature_trend(latitude, longitude).await
+    }).await
 }
 
 #[cfg(test)]
