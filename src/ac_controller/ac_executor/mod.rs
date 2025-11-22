@@ -54,6 +54,18 @@ impl AcStateManager {
         let mut initialized = self.initialized_devices.write().unwrap();
         initialized.insert(device_name.to_string(), true);
     }
+
+    /// Clear the initialization flag for a specific device
+    fn clear_device_initialization(&self, device_name: &str) {
+        let mut initialized = self.initialized_devices.write().unwrap();
+        initialized.remove(device_name);
+    }
+
+    /// Clear all initialization flags
+    fn clear_all_initialization(&self) {
+        let mut initialized = self.initialized_devices.write().unwrap();
+        initialized.clear();
+    }
 }
 
 /// Get the global state manager instance
@@ -198,8 +210,7 @@ pub fn reset_device_state(device: &AcDevices) {
     let device_name = device.as_str();
     let state_manager = get_state_manager();
     state_manager.set_state(device_name, AcState::new_off());
-    let mut initialized = state_manager.initialized_devices.write().unwrap();
-    initialized.remove(device_name);
+    state_manager.clear_device_initialization(device_name);
     log::info!("Reset state for device '{}'", device_name);
 }
 
@@ -208,8 +219,8 @@ pub fn reset_all_states() {
     let state_manager = get_state_manager();
     let mut states = state_manager.states.write().unwrap();
     states.clear();
-    let mut initialized = state_manager.initialized_devices.write().unwrap();
-    initialized.clear();
+    drop(states); // Release the lock before calling clear_all_initialization
+    state_manager.clear_all_initialization();
     log::info!("Reset all device states");
 }
 
