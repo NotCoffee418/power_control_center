@@ -58,8 +58,14 @@ impl AcState {
 /// Takes the device name to determine appropriate settings (currently unused but reserved for future use)
 pub fn plan_to_state(plan: &RequestMode, _device_name: &str) -> AcState {
     match plan {
+        RequestMode::Off => {
+            // Explicitly turn off the device
+            AcState::new_off()
+        }
         RequestMode::NoChange => {
-            // NoChange means turn off or keep off
+            // NoChange means keep current state, but we can't query current state here
+            // So we default to off as a safe fallback
+            // In practice, this should not cause changes due to state comparison in executor
             AcState::new_off()
         }
         RequestMode::Colder(intensity) => {
@@ -149,6 +155,14 @@ mod tests {
 
         assert!(!state1.requires_change(&state2));
         assert!(state1.requires_change(&state3));
+    }
+
+    #[test]
+    fn test_plan_to_state_off() {
+        let plan = RequestMode::Off;
+        let state = plan_to_state(&plan, "LivingRoom");
+
+        assert_eq!(state, AcState::new_off());
     }
 
     #[test]
