@@ -171,7 +171,7 @@
           <div class="data-item">
             <span class="label">Forecast Trend</span>
             <span class="value">
-              {getTrendIndicator(dashboardData.outdoor_temp_trend)} 
+              {getTrendIndicator(dashboardData.outdoor_temp_trend)}
               {formatTrend(dashboardData.outdoor_temp_trend)}
             </span>
           </div>
