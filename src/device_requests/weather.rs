@@ -20,7 +20,17 @@ impl std::fmt::Display for WeatherError {
 impl std::error::Error for WeatherError {}
 
 #[derive(Debug, Deserialize)]
-struct OpenMeteoResponse {
+struct OpenMeteoCurrentResponse {
+    current: CurrentWeather,
+}
+
+#[derive(Debug, Deserialize)]
+struct CurrentWeather {
+    temperature_2m: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenMeteoForecastResponse {
     hourly: HourlyData,
 }
 
@@ -32,7 +42,7 @@ struct HourlyData {
 /// Get current outdoor temperature from Open-Meteo API
 pub async fn get_current_outdoor_temp(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
     let url = format!(
-        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&hourly=temperature_2m&forecast_days=1",
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m",
         latitude, longitude
     );
     
@@ -40,16 +50,13 @@ pub async fn get_current_outdoor_temp(latitude: f64, longitude: f64) -> Result<f
         .await
         .map_err(|e| WeatherError::RequestFailed(e.to_string()))?;
     
-    let data: OpenMeteoResponse = response
+    let data: OpenMeteoCurrentResponse = response
         .json()
         .await
         .map_err(|e| WeatherError::ParseError(e.to_string()))?;
     
-    // Get the first temperature value (current hour)
-    data.hourly.temperature_2m
-        .first()
-        .copied()
-        .ok_or_else(|| WeatherError::ParseError("No temperature data available".to_string()))
+    // Return the current temperature
+    Ok(data.current.temperature_2m)
 }
 
 /// Get average outdoor temperature for next 12 hours from Open-Meteo API
@@ -63,7 +70,7 @@ pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Res
         .await
         .map_err(|e| WeatherError::RequestFailed(e.to_string()))?;
     
-    let data: OpenMeteoResponse = response
+    let data: OpenMeteoForecastResponse = response
         .json()
         .await
         .map_err(|e| WeatherError::ParseError(e.to_string()))?;
