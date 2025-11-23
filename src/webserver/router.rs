@@ -61,8 +61,11 @@ fn guess_mime(path: &str) -> &'static str {
         Some("css") => "text/css",
         Some("js") => "application/javascript",
         Some("json") => "application/json",
+        Some("webmanifest") => "application/manifest+json",
         Some("png") => "image/png",
         Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("ico") => "image/x-icon",
+        Some("svg") => "image/svg+xml",
         _ => "text/plain",
     }
 }
