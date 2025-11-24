@@ -14,6 +14,7 @@
     "vite": "^7.1.11"
   },
   "dependencies": {
+    "@xyflow/svelte": "^1.4.2",
     "timeago.js": "^4.0.2"
   }
 }

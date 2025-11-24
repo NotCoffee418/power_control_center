@@ -167,7 +167,10 @@
 
 <div class="dashboard">
   <header>
-    <h1>Power Control Center</h1>
+    <div class="header-content">
+      <h1>Power Control Center</h1>
+      <a href="/nodes" class="nav-link">🔧 Node Editor (Prototype)</a>
+    </div>
     {#if lastUpdate}
       <p class="last-update">Last updated: {lastUpdate.toLocaleTimeString()}</p>
     {/if}
@@ -351,10 +354,35 @@
     margin-bottom: 2rem;
   }
 
+  .header-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
   h1 {
     margin: 0;
     font-size: 2.5rem;
     color: #646cff;
+  }
+
+  .nav-link {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: rgba(100, 108, 255, 0.1);
+    border: 1px solid rgba(100, 108, 255, 0.3);
+    border-radius: 8px;
+    color: #646cff;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+
+  .nav-link:hover {
+    background: rgba(100, 108, 255, 0.2);
+    transform: translateY(-2px);
   }
 
   .last-update {

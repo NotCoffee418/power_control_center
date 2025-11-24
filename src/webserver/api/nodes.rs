@@ -38,7 +38,7 @@ async fn get_node_configuration() -> Response {
     let pool = db::get_pool().await;
     
     // Fetch the node configuration from the settings table
-    let result = sqlx::query!(
+    let result = sqlx::query_as::<_, (String,)>(
         "SELECT setting_value FROM settings WHERE setting_key = 'node_configuration'"
     )
     .fetch_optional(pool)
@@ -47,7 +47,7 @@ async fn get_node_configuration() -> Response {
     match result {
         Ok(Some(record)) => {
             // Parse the JSON string to NodeConfiguration
-            match serde_json::from_str::<NodeConfiguration>(&record.setting_value) {
+            match serde_json::from_str::<NodeConfiguration>(&record.0) {
                 Ok(config) => {
                     let response = ApiResponse::success(config);
                     (StatusCode::OK, Json(response)).into_response()
@@ -90,11 +90,12 @@ async fn save_node_configuration(
     };
     
     // Update or insert the configuration
-    let result = sqlx::query!(
-        "INSERT INTO settings (setting_key, setting_value) VALUES ('node_configuration', ?)
-         ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
-        json_str
+    let result = sqlx::query(
+        "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
+         ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value"
     )
+    .bind("node_configuration")
+    .bind(&json_str)
     .execute(pool)
     .await;
     
