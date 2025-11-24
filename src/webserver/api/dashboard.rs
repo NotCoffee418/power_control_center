@@ -31,6 +31,7 @@ pub struct DashboardStatus {
     pub current_production_kw: Option<f64>,
     pub net_power_w: Option<i32>,
     pub pir_timeout_minutes: u32,
+    pub user_is_home: bool,
 }
 
 #[derive(Serialize)]
@@ -148,6 +149,9 @@ async fn get_dashboard_status() -> Response {
         }
     };
     
+    // Get user home status
+    let user_is_home = crate::ac_controller::plan_helpers::is_user_home_and_awake();
+    
     let status = DashboardStatus {
         devices,
         outdoor_temp,
@@ -157,6 +161,7 @@ async fn get_dashboard_status() -> Response {
         current_production_kw: current_production,
         net_power_w: net_power,
         pir_timeout_minutes: cfg.pir_timeout_minutes,
+        user_is_home,
     };
     
     let response = ApiResponse::success(status);
