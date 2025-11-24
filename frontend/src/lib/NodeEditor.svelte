@@ -259,6 +259,13 @@
     }
   }
 
+  // Close context menu on Escape key
+  function handleContextMenuKeyDown(event) {
+    if (event.key === 'Escape' && contextMenu.visible) {
+      resetContextMenu();
+    }
+  }
+
   onMount(async () => {
     await loadNodeDefinitions();
     await loadConfiguration();
@@ -355,24 +362,25 @@
   }
 
   function onConnect(connection) {
-    // Get connection details once
+    // Validate connection using isValidConnection
+    if (!isValidConnection(connection)) {
+      // Get details for error message
+      const details = getConnectionDetails(connection);
+      if (details) {
+        const { sourceOutput, targetInput } = details;
+        const sourceType = sourceOutput.value_type?.type;
+        const targetType = targetInput.value_type?.type;
+        saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        setTimeout(() => saveStatus = '', 3000);
+      }
+      return;
+    }
+
+    // Get connection details for edge creation
     const details = getConnectionDetails(connection);
     if (!details) return;
 
-    const { sourceOutput, targetInput } = details;
-
-    // Validate connection types
-    const sourceType = sourceOutput.value_type?.type;
-    const targetType = targetInput.value_type?.type;
-    
-    if (!sourceType || !targetType) return;
-    
-    // Check compatibility
-    if (sourceType !== targetType && sourceType !== 'Object' && targetType !== 'Object') {
-      saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-      setTimeout(() => saveStatus = '', 3000);
-      return;
-    }
+    const { sourceOutput } = details;
 
     // Create the edge
     edges = [...edges, { 
@@ -464,7 +472,7 @@
     {#if loading}
       <div class="loading">Loading node configuration...</div>
     {:else}
-      <div class="flow-container" onclick={closeContextMenu} onkeydown={closeContextMenu} role="presentation">
+      <div class="flow-container" onclick={closeContextMenu} onkeydown={handleContextMenuKeyDown} role="presentation">
         <SvelteFlow 
           {nodes} 
           {edges}
