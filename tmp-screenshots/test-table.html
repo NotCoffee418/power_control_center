@@ -179,13 +179,72 @@
         }
 
         @media (max-width: 768px) {
-            .commands-table {
-                font-size: 0.75rem;
+            /* Mobile: Convert table to card layout */
+            .commands-table-wrapper {
+                overflow-x: visible;
             }
 
-            .commands-table th,
+            .commands-table {
+                display: block;
+                table-layout: auto;
+            }
+
+            .commands-table thead {
+                display: none;
+            }
+
+            .commands-table tbody {
+                display: block;
+            }
+
+            .commands-table tr {
+                display: block;
+                margin-bottom: 1rem;
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 1rem;
+            }
+
+            .commands-table tr:hover {
+                background: rgba(255, 255, 255, 0.05);
+            }
+
             .commands-table td {
-                padding: 0.5rem;
+                display: block;
+                text-align: left;
+                padding: 0.5rem 0;
+                border-bottom: none;
+            }
+
+            .commands-table td::before {
+                content: attr(data-label);
+                display: block;
+                font-weight: 600;
+                font-size: 0.75rem;
+                opacity: 0.6;
+                margin-bottom: 0.25rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .timestamp {
+                white-space: normal;
+            }
+
+            .action-cell,
+            .cause-cell,
+            .measured-temp,
+            .measured-power {
+                text-align: left;
+            }
+
+            .power-values {
+                align-items: flex-start;
+            }
+
+            .commands-table td:last-child {
+                border-bottom: none;
             }
         }
     </style>
@@ -207,10 +266,10 @@
                 </thead>
                 <tbody>
                     <tr>
-                        <td class="timestamp">11/24/2025, 11:30:15 AM</td>
-                        <td class="device-name">Living Room AC</td>
-                        <td class="measured-temp">24.5°C</td>
-                        <td class="measured-power">
+                        <td class="timestamp" data-label="Time">11/24/2025, 11:30:15 AM</td>
+                        <td class="device-name" data-label="Device">Living Room AC</td>
+                        <td class="measured-temp" data-label="Temperature">24.5°C</td>
+                        <td class="measured-power" data-label="Net / Solar">
                             <div class="power-values">
                                 <div class="power-row">
                                     <span class="power-label">Net:</span>
@@ -222,18 +281,18 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="action-cell">
+                        <td class="action-cell" data-label="Action">
                             <span class="action-type action-on">On</span>
                         </td>
-                        <td class="cause-cell">
+                        <td class="cause-cell" data-label="Cause">
                             <span class="cause-badge">Solar Excess</span>
                         </td>
                     </tr>
                     <tr>
-                        <td class="timestamp">11/24/2025, 11:15:42 AM</td>
-                        <td class="device-name">Bedroom AC</td>
-                        <td class="measured-temp">26.2°C</td>
-                        <td class="measured-power">
+                        <td class="timestamp" data-label="Time">11/24/2025, 11:15:42 AM</td>
+                        <td class="device-name" data-label="Device">Bedroom AC</td>
+                        <td class="measured-temp" data-label="Temperature">26.2°C</td>
+                        <td class="measured-power" data-label="Net / Solar">
                             <div class="power-values">
                                 <div class="power-row">
                                     <span class="power-label">Net:</span>
@@ -245,18 +304,18 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="action-cell">
+                        <td class="action-cell" data-label="Action">
                             <span class="action-type action-off">Off</span>
                         </td>
-                        <td class="cause-cell">
+                        <td class="cause-cell" data-label="Cause">
                             <span class="cause-badge">Temperature Target</span>
                         </td>
                     </tr>
                     <tr>
-                        <td class="timestamp">11/24/2025, 11:00:08 AM</td>
-                        <td class="device-name">Office AC</td>
-                        <td class="measured-temp">23.1°C</td>
-                        <td class="measured-power">
+                        <td class="timestamp" data-label="Time">11/24/2025, 11:00:08 AM</td>
+                        <td class="device-name" data-label="Device">Office AC</td>
+                        <td class="measured-temp" data-label="Temperature">23.1°C</td>
+                        <td class="measured-power" data-label="Net / Solar">
                             <div class="power-values">
                                 <div class="power-row">
                                     <span class="power-label">Net:</span>
@@ -268,10 +327,10 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="action-cell">
+                        <td class="action-cell" data-label="Action">
                             <span class="action-type action-on">On</span>
                         </td>
-                        <td class="cause-cell">
+                        <td class="cause-cell" data-label="Cause">
                             <span class="cause-badge">Manual Override</span>
                         </td>
                     </tr>

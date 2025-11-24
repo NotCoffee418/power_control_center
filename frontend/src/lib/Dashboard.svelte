@@ -291,12 +291,12 @@
               <tbody>
                 {#each recentCommands as command}
                   <tr>
-                    <td class="timestamp">{formatTimestamp(command.action_timestamp)}</td>
-                    <td class="device-name">{command.device_identifier}</td>
-                    <td class="measured-temp">
+                    <td class="timestamp" data-label="Time">{formatTimestamp(command.action_timestamp)}</td>
+                    <td class="device-name" data-label="Device">{command.device_identifier}</td>
+                    <td class="measured-temp" data-label="Temperature">
                       {command.measured_temperature ? `${command.measured_temperature.toFixed(1)}°C` : '—'}
                     </td>
-                    <td class="measured-power">
+                    <td class="measured-power" data-label="Net / Solar">
                       <div class="power-values">
                         <div class="power-row">
                           <span class="power-label">Net:</span>
@@ -308,12 +308,12 @@
                         </div>
                       </div>
                     </td>
-                    <td class="action-cell">
+                    <td class="action-cell" data-label="Action">
                       <span class="action-type {getActionTypeClass(command.action_type)}">
                         {formatActionType(command.action_type)}
                       </span>
                     </td>
-                    <td class="cause-cell">
+                    <td class="cause-cell" data-label="Cause">
                       {#if command.cause_label && command.cause_label !== 'Undefined'}
                         <span class="cause-badge" title={command.cause_description}>
                           {command.cause_label}
@@ -772,13 +772,72 @@
       grid-template-columns: 1fr;
     }
 
-    .commands-table {
-      font-size: 0.75rem;
+    /* Mobile: Convert table to card layout */
+    .commands-table-wrapper {
+      overflow-x: visible;
     }
 
-    .commands-table th,
+    .commands-table {
+      display: block;
+      table-layout: auto;
+    }
+
+    .commands-table thead {
+      display: none;
+    }
+
+    .commands-table tbody {
+      display: block;
+    }
+
+    .commands-table tr {
+      display: block;
+      margin-bottom: 1rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .commands-table tr:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
     .commands-table td {
-      padding: 0.5rem;
+      display: block;
+      text-align: left;
+      padding: 0.5rem 0;
+      border-bottom: none;
+    }
+
+    .commands-table td::before {
+      content: attr(data-label);
+      display: block;
+      font-weight: 600;
+      font-size: 0.75rem;
+      opacity: 0.6;
+      margin-bottom: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .timestamp {
+      white-space: normal;
+    }
+
+    .action-cell,
+    .cause-cell,
+    .measured-temp,
+    .measured-power {
+      text-align: left;
+    }
+
+    .power-values {
+      align-items: flex-start;
+    }
+
+    .commands-table td:last-child {
+      border-bottom: none;
     }
   }
 </style>
