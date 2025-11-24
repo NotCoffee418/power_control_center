@@ -178,7 +178,8 @@
         // Check if node is default (OnEvaluate) - should not be deletable
         const node = nodes.find(n => n.id === change.id);
         if (node?.data?.isDefault) {
-          console.warn('Cannot delete default node:', node.data.label);
+          saveStatus = '⚠ Cannot delete default node';
+          setTimeout(() => saveStatus = '', 3000);
           return;
         }
         // Remove node
