@@ -210,6 +210,10 @@
             <span class="label">Net Power</span>
             <span class="value large">{formatNetPower(dashboardData.net_power_w)}</span>
           </div>
+          <div class="data-item user-home" class:home={dashboardData.user_is_home} class:away={!dashboardData.user_is_home}>
+            <span class="label">User Status</span>
+            <span class="value large">{dashboardData.user_is_home ? '🏠 Home' : '🚶 Away'}</span>
+          </div>
         </div>
       </div>
 
@@ -393,6 +397,12 @@
     gap: 1.5rem;
   }
 
+  @media (min-width: 768px) {
+    .environmental-power .data-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
   .data-item {
     display: flex;
     flex-direction: column;
@@ -425,6 +435,16 @@
   .data-item.net-power.exporting {
     background: rgba(81, 207, 102, 0.1);
     border: 1px solid rgba(81, 207, 102, 0.3);
+  }
+
+  .data-item.user-home.home {
+    background: rgba(81, 207, 102, 0.1);
+    border: 1px solid rgba(81, 207, 102, 0.3);
+  }
+
+  .data-item.user-home.away {
+    background: rgba(100, 108, 255, 0.1);
+    border: 1px solid rgba(100, 108, 255, 0.3);
   }
 
   .device-cards {

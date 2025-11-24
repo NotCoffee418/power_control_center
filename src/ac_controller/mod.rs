@@ -1,4 +1,4 @@
-mod plan_helpers;
+pub mod plan_helpers;
 mod plan_types;
 pub mod pir_state;
 pub mod ac_executor;
