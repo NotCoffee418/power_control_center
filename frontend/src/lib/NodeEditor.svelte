@@ -292,18 +292,29 @@
 
   // Handle node changes (position, selection, removal)
   function onNodesChange(changes) {
+    let nodesModified = false;
+    
     changes.forEach(change => {
-      if (change.type === 'position' && change.dragging === false) {
-        // Update node position
+      if (change.type === 'position') {
+        // Update node position (during and after drag)
         const nodeIndex = nodes.findIndex(n => n.id === change.id);
         if (nodeIndex !== -1 && change.position) {
-          nodes[nodeIndex].position = change.position;
+          nodes[nodeIndex] = {
+            ...nodes[nodeIndex],
+            position: change.position,
+            dragging: change.dragging
+          };
+          nodesModified = true;
         }
       } else if (change.type === 'select') {
         // Update node selection state
         const nodeIndex = nodes.findIndex(n => n.id === change.id);
         if (nodeIndex !== -1) {
-          nodes[nodeIndex].selected = change.selected;
+          nodes[nodeIndex] = {
+            ...nodes[nodeIndex],
+            selected: change.selected
+          };
+          nodesModified = true;
         }
       } else if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
@@ -315,21 +326,41 @@
         }
         // Remove node
         nodes = nodes.filter(n => n.id !== change.id);
+        nodesModified = true;
       }
     });
-    // Trigger reactivity
-    nodes = nodes;
+    
+    // Trigger reactivity only if modified
+    if (nodesModified) {
+      nodes = [...nodes];
+    }
   }
 
   function onEdgesChange(changes) {
+    let edgesModified = false;
+    
     changes.forEach(change => {
       if (change.type === 'remove') {
         // Remove edge
         edges = edges.filter(e => e.id !== change.id);
+        edgesModified = true;
+      } else if (change.type === 'select') {
+        // Update edge selection state
+        const edgeIndex = edges.findIndex(e => e.id === change.id);
+        if (edgeIndex !== -1) {
+          edges[edgeIndex] = {
+            ...edges[edgeIndex],
+            selected: change.selected
+          };
+          edgesModified = true;
+        }
       }
     });
-    // Trigger reactivity
-    edges = edges;
+    
+    // Trigger reactivity only if modified
+    if (edgesModified) {
+      edges = [...edges];
+    }
   }
 
   // Helper function to get connection details
