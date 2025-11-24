@@ -223,8 +223,14 @@
     }
 
     // Check if types are compatible
-    const sourceType = sourceOutput.value_type.type;
-    const targetType = targetInput.value_type.type;
+    // ValueType is serialized as {type: "Float"} or {type: "Enum", value: [...]}
+    const sourceType = sourceOutput.value_type?.type;
+    const targetType = targetInput.value_type?.type;
+    
+    if (!sourceType || !targetType) {
+      console.error('Missing type information', sourceOutput, targetInput);
+      return;
+    }
     
     // Allow Object type to connect to anything (it's a complex/generic type)
     if (sourceType !== targetType && sourceType !== 'Object' && targetType !== 'Object') {
