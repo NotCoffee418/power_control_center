@@ -7,6 +7,9 @@ use crate::types::CauseReason;
 /// Minimum active solar power to consider Powerful (High Intensity) mode
 const SOLAR_HIGH_INTENSITY_WATT_THRESHOLD: u32 = 2000; // Watts
 
+/// Minimum active solar power to consider Medium Intensity mode when user not home
+const SOLAR_MEDIUM_INTENSITY_WATT_THRESHOLD: u32 = 1000; // Watts
+
 /// Temperature thresholds for comfort
 const COMFORTABLE_TEMP_MIN: f64 = 20.0; // °C
 const COMFORTABLE_TEMP_MAX: f64 = 24.0; // °C
@@ -199,7 +202,7 @@ fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
         SOLAR_HIGH_INTENSITY_WATT_THRESHOLD
     };
 
-    // Determine intensity and cause based on solar production and weather forecast
+    // Determine intensity and cause based on solar production, user presence, and weather forecast
     let (intensity, intensity_cause) = if input.solar_production >= effective_solar_threshold {
         // High intensity due to either major temp change or excessive solar
         if significant_temp_change_pending {
@@ -207,6 +210,9 @@ fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
         } else {
             (Intensity::High, CauseReason::ExcessiveSolarPower)
         }
+    } else if input.solar_production >= SOLAR_MEDIUM_INTENSITY_WATT_THRESHOLD {
+        // Medium solar production (1000W+) allows medium intensity even when user not home
+        (Intensity::Medium, CauseReason::ExcessiveSolarPower)
     } else if input.user_is_home {
         (Intensity::Medium, CauseReason::Undefined)
     } else {
@@ -220,24 +226,51 @@ fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
     };
 
     // Decide on the mode based on temperature
+    // First determine if we need heating or cooling based on indoor temp
+    let needs_heating = input.current_indoor_temp < TOO_COLD_THRESHOLD ||
+                       (input.current_indoor_temp < COMFORTABLE_TEMP_MIN && input.user_is_home);
+    let needs_cooling = input.current_indoor_temp > TOO_HOT_THRESHOLD ||
+                       (input.current_indoor_temp > COMFORTABLE_TEMP_MAX && input.user_is_home);
+    
+    // Temperature trend validation: prevent counterproductive operations at high intensity
+    // If we're about to do high intensity heating/cooling, check if weather trend makes it wasteful
+    let (final_intensity, final_cause) = if intensity == Intensity::High {
+        // Check if high intensity heating is counterproductive
+        if needs_heating && getting_significantly_warmer {
+            // Outside is getting hotter than inside - don't use high intensity heating
+            // Use medium intensity instead to keep temperature reasonable
+            (Intensity::Medium, CauseReason::ExcessiveSolarPower)
+        }
+        // Check if high intensity cooling is counterproductive  
+        else if needs_cooling && getting_significantly_colder {
+            // Outside is getting colder than inside - don't use high intensity cooling
+            // Use medium intensity instead to keep temperature reasonable
+            (Intensity::Medium, CauseReason::ExcessiveSolarPower)
+        } else {
+            (intensity, intensity_cause)
+        }
+    } else {
+        (intensity, intensity_cause)
+    };
+    
     let mode = if input.current_indoor_temp < TOO_COLD_THRESHOLD {
         // Too cold - need heating
-        RequestMode::Warmer(intensity)
+        RequestMode::Warmer(final_intensity)
     } else if input.current_indoor_temp > TOO_HOT_THRESHOLD {
         // Too hot - need cooling
-        RequestMode::Colder(intensity)
+        RequestMode::Colder(final_intensity)
     } else if input.current_indoor_temp < COMFORTABLE_TEMP_MIN && input.user_is_home {
         // A bit cold and user is home - use calculated intensity
-        RequestMode::Warmer(intensity)
+        RequestMode::Warmer(final_intensity)
     } else if input.current_indoor_temp > COMFORTABLE_TEMP_MAX && input.user_is_home {
         // A bit warm and user is home - use calculated intensity
-        RequestMode::Colder(intensity)
+        RequestMode::Colder(final_intensity)
     } else {
         // Temperature is comfortable or user is not home
         RequestMode::NoChange
     };
 
-    PlanResult::new(mode, intensity_cause)
+    PlanResult::new(mode, final_cause)
 }
 
 /// Get current temperature for a specific AC device
@@ -923,5 +956,215 @@ mod tests {
         }
         // Should not have IceException cause
         assert_ne!(plan.cause, CauseReason::IceException);
+    }
+
+    // Tests for new solar-based intensity rules when user not home
+    #[test]
+    fn test_high_solar_allows_high_intensity_when_user_not_home() {
+        // High solar (2000W+) should allow high intensity even when user not home
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 2500, // High solar
+            user_is_home: false,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::High) => {},
+            _ => panic!("Expected Warmer(High) with high solar and user not home, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    #[test]
+    fn test_medium_solar_allows_medium_intensity_when_user_not_home() {
+        // Medium solar (1000W+) should allow medium intensity even when user not home
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 1500, // Medium solar, between 1000W and 2000W
+            user_is_home: false,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::Medium) => {},
+            _ => panic!("Expected Warmer(Medium) with medium solar and user not home, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    #[test]
+    fn test_medium_solar_at_threshold_allows_medium_intensity_when_user_not_home() {
+        // Exactly 1000W solar should allow medium intensity when user not home
+        let input = PlanInput {
+            current_indoor_temp: 28.0, // Too hot
+            solar_production: 1000, // Exactly at threshold
+            user_is_home: false,
+            current_outdoor_temp: 30.0,
+            avg_next_12h_outdoor_temp: 30.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Colder(Intensity::Medium) => {},
+            _ => panic!("Expected Colder(Medium) with 1000W solar and user not home, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    #[test]
+    fn test_low_solar_keeps_low_intensity_when_user_not_home() {
+        // Low solar (< 1000W) should remain low intensity when user not home
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 900, // Below medium threshold
+            user_is_home: false,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::Low) => {},
+            _ => panic!("Expected Warmer(Low) with low solar and user not home, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::NobodyHome);
+    }
+
+    // Tests for temperature trend validation
+    #[test]
+    fn test_high_intensity_heating_downgraded_when_outside_getting_hotter() {
+        // High solar + heating needed, but outside is getting significantly warmer
+        // Should downgrade from high to medium intensity
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 2500, // High solar would normally give high intensity
+            user_is_home: false,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 22.0, // Getting 7°C warmer (> 3°C threshold)
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::Medium) => {},
+            _ => panic!("Expected Warmer(Medium) due to counterproductive trend, got {:?}", plan.mode),
+        }
+        // Cause should still be solar-related since that's the underlying reason
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    #[test]
+    fn test_high_intensity_cooling_downgraded_when_outside_getting_colder() {
+        // High solar + cooling needed, but outside is getting significantly colder
+        // Should downgrade from high to medium intensity
+        let input = PlanInput {
+            current_indoor_temp: 28.0, // Too hot
+            solar_production: 2500, // High solar would normally give high intensity
+            user_is_home: false,
+            current_outdoor_temp: 30.0,
+            avg_next_12h_outdoor_temp: 22.0, // Getting 8°C colder (> 3°C threshold)
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Colder(Intensity::Medium) => {},
+            _ => panic!("Expected Colder(Medium) due to counterproductive trend, got {:?}", plan.mode),
+        }
+        // Cause should still be solar-related
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    #[test]
+    fn test_high_intensity_heating_allowed_when_outside_getting_colder() {
+        // High solar + heating needed, and outside is getting colder
+        // Should keep high intensity (trend supports heating)
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 2500, // High solar
+            user_is_home: false,
+            current_outdoor_temp: 20.0,
+            avg_next_12h_outdoor_temp: 15.0, // Getting 5°C colder
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::High) => {},
+            _ => panic!("Expected Warmer(High) when trend supports heating, got {:?}", plan.mode),
+        }
+        // This should be MajorTemperatureChangePending since we have both high solar and significant temp change
+        assert_eq!(plan.cause, CauseReason::MajorTemperatureChangePending);
+    }
+
+    #[test]
+    fn test_high_intensity_cooling_allowed_when_outside_getting_warmer() {
+        // High solar + cooling needed, and outside is getting warmer
+        // Should keep high intensity (trend supports cooling)
+        let input = PlanInput {
+            current_indoor_temp: 28.0, // Too hot
+            solar_production: 2500, // High solar
+            user_is_home: false,
+            current_outdoor_temp: 25.0,
+            avg_next_12h_outdoor_temp: 32.0, // Getting 7°C warmer
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Colder(Intensity::High) => {},
+            _ => panic!("Expected Colder(High) when trend supports cooling, got {:?}", plan.mode),
+        }
+        // This should be MajorTemperatureChangePending since we have both high solar and significant temp change
+        assert_eq!(plan.cause, CauseReason::MajorTemperatureChangePending);
+    }
+
+    #[test]
+    fn test_medium_intensity_not_affected_by_trend_validation() {
+        // Medium intensity should not be affected by trend validation
+        // (only high intensity gets downgraded)
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 1500, // Medium solar
+            user_is_home: false,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 22.0, // Getting warmer
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::Medium) => {},
+            _ => panic!("Expected Warmer(Medium), trend validation only applies to high intensity, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    #[test]
+    fn test_combined_user_home_with_high_solar() {
+        // When user is home AND high solar, should still use high intensity
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 2500, // High solar
+            user_is_home: true, // User is home
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::High) => {},
+            _ => panic!("Expected Warmer(High) with user home and high solar, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    #[test]
+    fn test_combined_user_home_with_medium_solar() {
+        // When user is home AND medium solar (1000-2000W), solar takes priority for medium intensity
+        let input = PlanInput {
+            current_indoor_temp: 17.0, // Too cold
+            solar_production: 1500, // Medium solar
+            user_is_home: true, // User is home
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(Intensity::Medium) => {},
+            _ => panic!("Expected Warmer(Medium) with user home and medium solar, got {:?}", plan.mode),
+        }
+        // With medium solar, the cause should be ExcessiveSolarPower
+        assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
     }
 }
