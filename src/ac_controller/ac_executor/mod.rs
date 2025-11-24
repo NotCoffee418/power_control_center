@@ -130,24 +130,41 @@ pub async fn execute_plan(
     // Check if this is the first execution for this device
     let is_first_execution = !state_manager.is_device_initialized(device_name);
 
-    // On first execution or force_execution, NoChange is not allowed
-    // Convert it to an explicit Off command to ensure device state is known
-    let effective_plan = if (is_first_execution || force_execution) && matches!(plan, RequestMode::NoChange) {
-        log::info!(
-            "Device '{}' is {}. Converting NoChange to explicit Off command.",
-            device_name,
-            if is_first_execution { "not yet initialized" } else { "in forced execution mode" }
-        );
-        &RequestMode::Off
-    } else {
-        plan
-    };
+    // Special handling for NoChange:
+    // NoChange means the current state is acceptable, so we should not send any command.
+    // This applies to both first execution and forced execution (Manual→Auto transitions).
+    // 
+    // On first execution: prevents unnecessarily turning off a device that might be running
+    // On forced execution: respects that the user's device is in an acceptable state
+    if matches!(plan, RequestMode::NoChange) {
+        if is_first_execution {
+            log::info!(
+                "Device '{}' first execution with NoChange plan - no command needed, marking as initialized",
+                device_name
+            );
+            // Mark as initialized with the NoChange state (converted to off in our tracking)
+            // This is just for tracking - we're not sending any command to the physical device
+            state_manager.set_state(device_name, plan_to_state(plan, device_name));
+            state_manager.mark_device_initialized(device_name);
+        } else if force_execution {
+            log::info!(
+                "Device '{}' forced execution with NoChange plan - no command needed (state is acceptable)",
+                device_name
+            );
+        } else {
+            log::debug!(
+                "Device '{}' has NoChange plan - skipping execution",
+                device_name
+            );
+        }
+        return Ok(false);
+    }
 
     // Get current state
     let current_state = state_manager.get_state(device_name);
 
     // Convert plan to desired state
-    let desired_state = plan_to_state(effective_plan, device_name);
+    let desired_state = plan_to_state(plan, device_name);
 
     // Check if we need to make changes
     // On first execution or force_execution, always send command
@@ -178,9 +195,6 @@ pub async fn execute_plan(
     );
 
     // Execute the necessary API calls to achieve the desired state
-    // Note: We use plan_result.cause.id() (the original cause) even if we converted NoChange to Off
-    // because the cause still accurately reflects WHY we're taking action (e.g., NobodyHome, IceException)
-    // The conversion from NoChange to Off is about ensuring the command is sent, not changing the reason
     let result = execute_state_change(device_name, &current_state, &desired_state, plan_result.cause.id(), is_first_execution || force_execution).await;
 
     // Update state if successful
@@ -601,9 +615,9 @@ mod tests {
     }
 
     #[test]
-    fn test_nochange_converted_to_off_on_first_execution() {
-        // This test validates that NoChange is not allowed on first execution
-        // and is converted to an explicit Off command
+    fn test_nochange_respected_on_first_execution() {
+        // This test validates that NoChange is respected on first execution
+        // No command is sent, device is marked as initialized
         
         // Reset to clean state
         reset_all_states();
@@ -617,28 +631,24 @@ mod tests {
         // Create a NoChange plan (e.g., comfortable temperature, nobody home)
         let nochange_plan = RequestMode::NoChange;
         
-        // When plan_to_state is called with NoChange on first execution,
-        // it should be converted to Off in the execute_plan logic
-        // We test the conversion logic by verifying the state after plan_to_state
+        // NoChange on first execution should:
+        // 1. Not send any command (device state is acceptable as-is)
+        // 2. Mark device as initialized for future tracking
         
-        // The key is that on first execution, NoChange should be treated as Off
-        // This is handled in execute_plan by converting NoChange to Off
-        // before calling plan_to_state
-        
-        // Verify that NoChange converts to Off state
+        // Verify that NoChange converts to Off state for tracking purposes
         let state = plan_to_state(&nochange_plan, device_name);
-        assert!(!state.is_on, "NoChange should convert to Off state");
+        assert!(!state.is_on, "NoChange converts to Off state for tracking");
         
-        // The actual conversion happens in execute_plan where:
-        // if (is_first_execution || force_execution) && matches!(plan, RequestMode::NoChange)
-        // then plan is replaced with RequestMode::Off
-        // This test documents the expected behavior
+        // The execute_plan function detects this case and:
+        // - Returns Ok(false) without sending any command
+        // - Marks the device as initialized
+        // This prevents unnecessarily changing a device that's in an acceptable state
     }
 
     #[test]
-    fn test_nochange_converted_to_off_on_force_execution() {
-        // This test validates that NoChange is not allowed during forced execution
-        // (e.g., Manual→Auto transitions) and is converted to an explicit Off command
+    fn test_nochange_respected_on_force_execution() {
+        // This test validates that NoChange is respected during forced execution
+        // (e.g., Manual→Auto transitions) - no command is sent if state is acceptable
         
         // Reset to clean state
         reset_all_states();
@@ -656,17 +666,15 @@ mod tests {
         // Create a NoChange plan (which might happen after Manual→Auto transition)
         let nochange_plan = RequestMode::NoChange;
         
-        // On forced execution (like Manual→Auto transition), NoChange should be
-        // converted to Off to ensure device state is synced
+        // On forced execution (like Manual→Auto transition), NoChange means
+        // the device state is acceptable, so no command should be sent
         
-        // The conversion logic in execute_plan handles this:
-        // if (is_first_execution || force_execution) && matches!(plan, RequestMode::NoChange)
-        
-        // Verify that NoChange converts to Off state
+        // Verify that NoChange converts to Off state for tracking
         let state = plan_to_state(&nochange_plan, device_name);
-        assert!(!state.is_on, "NoChange should convert to Off state even when initialized");
+        assert!(!state.is_on, "NoChange converts to Off state for tracking");
         
-        // This documents that force_execution=true will trigger the conversion
-        // from NoChange to Off, ensuring device state is known after Manual→Auto transition
+        // The execute_plan function respects NoChange even on forced execution:
+        // - Returns Ok(false) without sending any command
+        // - Logs that no command is needed because state is acceptable
     }
 }

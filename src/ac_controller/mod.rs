@@ -23,6 +23,10 @@ const MANUAL_MODE_POLL_INTERVAL_SECS: u64 = 10;
 pub async fn start_ac_controller() {
     log::info!("AC controller starting...");
     
+    // Collect initial device states BEFORE the first control cycle
+    // This ensures we know the device mode (Auto/Manual) before making decisions
+    collect_initial_device_states().await;
+    
     // Start the manual mode monitoring task
     tokio::spawn(async move {
         manual_mode_monitoring_loop().await;
@@ -36,6 +40,35 @@ pub async fn start_ac_controller() {
         // Wait before next cycle
         tokio::time::sleep(Duration::from_secs(CONTROL_CYCLE_INTERVAL_SECS)).await;
     }
+}
+
+/// Collect initial device states on startup
+/// Fetches the mode (Auto/Manual) for each device before the first control cycle
+async fn collect_initial_device_states() {
+    log::info!("Collecting initial device states before first control cycle");
+    let monitor = manual_mode_monitor::get_manual_mode_monitor();
+    
+    for device in AcDevices::all() {
+        let device_name = device.as_str();
+        match crate::device_requests::ac::get_sensors(device_name).await {
+            Ok(sensor_data) => {
+                // Store the initial mode state
+                monitor.update_mode(device_name, sensor_data.is_automatic_mode);
+                log::info!(
+                    "Initial state for {}: {} mode, {}°C", 
+                    device_name,
+                    if sensor_data.is_automatic_mode { "Auto" } else { "Manual" },
+                    sensor_data.temperature
+                );
+            }
+            Err(e) => {
+                log::warn!("Failed to fetch initial state for {}: {}", device_name, e);
+                // Default to Manual mode for safety if we can't fetch state
+                monitor.update_mode(device_name, false);
+            }
+        }
+    }
+    log::info!("Initial state collection complete");
 }
 
 /// Execute one cycle of AC control for all devices
@@ -75,31 +108,11 @@ async fn execute_ac_control_cycle() {
 async fn manual_mode_monitoring_loop() {
     log::info!("Manual mode monitoring loop starting...");
     
-    // Wait a bit before starting to avoid conflicts with initial control cycle
-    // Also allows time for devices to stabilize after system startup
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    // Wait a bit before starting to allow the first control cycle to complete
+    // The initial states were already collected before the first cycle
+    tokio::time::sleep(Duration::from_secs(10)).await;
     
-    // Perform initial state collection without triggering transitions
-    // This prevents false positives during system startup
-    log::info!("Collecting initial device states (no transitions will be triggered)");
-    let monitor = manual_mode_monitor::get_manual_mode_monitor();
-    for device in AcDevices::all() {
-        let device_name = device.as_str();
-        match crate::device_requests::ac::get_sensors(device_name).await {
-            Ok(sensor_data) => {
-                // Just store the initial state, don't check for transitions
-                monitor.update_mode(device_name, sensor_data.is_automatic_mode);
-                log::info!("Initial state for {}: {} mode", 
-                    device_name, 
-                    if sensor_data.is_automatic_mode { "Auto" } else { "Manual" }
-                );
-            }
-            Err(e) => {
-                log::warn!("Failed to fetch initial state for {}: {}", device_name, e);
-            }
-        }
-    }
-    log::info!("Initial state collection complete, starting transition monitoring");
+    log::info!("Starting Manual→Auto transition monitoring");
     
     loop {
         log::debug!("Checking manual mode devices");
