@@ -10,9 +10,10 @@
   import CustomNode from './CustomNode.svelte';
   import ReconnectableEdge from './ReconnectableEdge.svelte';
 
-  // Node and edge state
-  let nodes = $state([]);
-  let edges = $state([]);
+  // Node and edge state - using $state.raw for proper SvelteFlow integration
+  // $state.raw prevents deep reactivity, allowing SvelteFlow to manage internal state
+  let nodes = $state.raw([]);
+  let edges = $state.raw([]);
   let nodeDefinitions = $state([]);
   let loading = $state(true);
   let saveStatus = $state('');
@@ -286,86 +287,27 @@
     await loadConfiguration();
   });
 
-  // Handle node changes (position, selection, removal)
+  // Handle node changes - with bind:nodes, position and selection are handled automatically
+  // We only need to handle removal to protect default nodes
   function onNodesChange(changes) {
-    // Process all changes and build a map of updates to apply
-    const updates = new Map();
-    const removals = new Set();
-    
     changes.forEach(change => {
-      if (change.type === 'position' && change.position) {
-        // Queue position update
-        const existing = updates.get(change.id) || {};
-        updates.set(change.id, {
-          ...existing,
-          position: change.position,
-          dragging: change.dragging
-        });
-      } else if (change.type === 'select') {
-        // Queue selection update
-        const existing = updates.get(change.id) || {};
-        updates.set(change.id, {
-          ...existing,
-          selected: change.selected
-        });
-      } else if (change.type === 'remove') {
+      if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
         const node = nodes.find(n => n.id === change.id);
         if (node?.data?.isDefault) {
           saveStatus = '⚠ Cannot delete default node';
           setTimeout(() => saveStatus = '', 3000);
-          return;
+          // Note: The actual removal is handled by onBeforeDelete which returns false
+          // to prevent SvelteFlow's default behavior for default nodes
         }
-        // Queue removal
-        removals.add(change.id);
       }
     });
-    
-    // Apply all updates immutably using map
-    if (updates.size > 0 || removals.size > 0) {
-      nodes = nodes
-        .filter(n => !removals.has(n.id))
-        .map(node => {
-          const update = updates.get(node.id);
-          if (update) {
-            return { ...node, ...update };
-          }
-          return node;
-        });
-    }
   }
 
+  // Handle edge changes - with bind:edges, changes are handled automatically
+  // This function is kept for API consistency but no custom logic is needed
   function onEdgesChange(changes) {
-    // Process all changes and build maps of updates/removals
-    const updates = new Map();
-    const removals = new Set();
-    
-    changes.forEach(change => {
-      if (change.type === 'remove') {
-        // Queue removal
-        removals.add(change.id);
-      } else if (change.type === 'select') {
-        // Queue selection update
-        const existing = updates.get(change.id) || {};
-        updates.set(change.id, {
-          ...existing,
-          selected: change.selected
-        });
-      }
-    });
-    
-    // Apply all updates immutably using map
-    if (updates.size > 0 || removals.size > 0) {
-      edges = edges
-        .filter(e => !removals.has(e.id))
-        .map(edge => {
-          const update = updates.get(edge.id);
-          if (update) {
-            return { ...edge, ...update };
-          }
-          return edge;
-        });
-    }
+    // No custom logic needed - bind:edges handles all updates
   }
 
   // Helper function to get connection details
@@ -504,14 +446,14 @@
     }, 100);
   }
 
-  // Handle native delete from SvelteFlow (DEL key)
-  function onDelete({ nodes: nodesToDelete, edges: edgesToDelete }) {
+  // Handle deletion validation - called before delete to confirm or block
+  async function onBeforeDelete({ nodes: nodesToDelete, edges: edgesToDelete }) {
     // Check if any nodes to delete are default nodes
     const defaultNodes = nodesToDelete.filter(n => n.data?.isDefault);
     if (defaultNodes.length > 0) {
       const defaultNodeNames = defaultNodes.map(getNodeDisplayName).join(', ');
       alert(`Cannot delete default nodes: ${defaultNodeNames}`);
-      return false; // Prevent deletion
+      return false; // Block deletion
     }
 
     // Build confirmation message
@@ -525,25 +467,8 @@
       message += `Delete ${edgesToDelete.length} connection(s)?`;
     }
 
-    if (message && confirm(message)) {
-      // Remove nodes
-      if (nodesToDelete.length > 0) {
-        const nodeIds = nodesToDelete.map(n => n.id);
-        nodes = nodes.filter(n => !nodeIds.includes(n.id));
-        // Also remove edges connected to deleted nodes
-        edges = edges.filter(e => 
-          !nodeIds.includes(e.source) && !nodeIds.includes(e.target)
-        );
-      }
-      
-      // Remove edges
-      if (edgesToDelete.length > 0) {
-        const edgeIds = edgesToDelete.map(e => e.id);
-        edges = edges.filter(e => !edgeIds.includes(e.id));
-      }
-    }
-    
-    return false; // We handle deletion ourselves
+    // Return true to allow deletion, false to block
+    return message ? confirm(message) : true;
   }
 </script>
 
@@ -629,8 +554,8 @@
     {:else}
       <div class="flow-container" onclick={closeContextMenu} onkeydown={handleContextMenuKeyDown} role="application">
         <SvelteFlow 
-          {nodes} 
-          {edges}
+          bind:nodes
+          bind:edges
           {nodeTypes}
           {edgeTypes}
           onnodeschange={onNodesChange}
@@ -638,7 +563,7 @@
           onconnect={onConnect}
           onreconnect={onReconnect}
           onreconnectend={onReconnectEnd}
-          ondelete={onDelete}
+          onbeforedelete={onBeforeDelete}
           isValidConnection={isValidConnection}
           onnodecontextmenu={handleNodeContextMenu}
           onedgecontextmenu={handleEdgeContextMenu}
