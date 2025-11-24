@@ -107,6 +107,12 @@ impl Node for AcPlannerNode {
 }
 
 /// Node representing the output of AC planning
+/// 
+/// Note: This node flattens the RequestMode enum structure for visual programming convenience.
+/// In Rust, RequestMode::Colder and RequestMode::Warmer contain an Intensity variant,
+/// but for node-based visual programming, separating mode and intensity into distinct outputs
+/// is more intuitive and allows independent connections. The intensity output is only meaningful
+/// when mode is Colder or Warmer.
 pub struct AcPlanResultNode;
 
 impl Node for AcPlanResultNode {
@@ -140,7 +146,7 @@ impl Node for AcPlanResultNode {
                 NodeOutput::new(
                     "intensity",
                     "Intensity",
-                    "Desired intensity level: Low, Medium, or High (only for Colder/Warmer modes)",
+                    "Desired intensity level: Low, Medium, or High (only meaningful for Colder/Warmer modes)",
                     ValueType::Enum(vec![
                         "Low".to_string(),
                         "Medium".to_string(),
