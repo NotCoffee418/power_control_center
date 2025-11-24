@@ -178,6 +178,9 @@ pub async fn execute_plan(
     );
 
     // Execute the necessary API calls to achieve the desired state
+    // Note: We use plan_result.cause.id() (the original cause) even if we converted NoChange to Off
+    // because the cause still accurately reflects WHY we're taking action (e.g., NobodyHome, IceException)
+    // The conversion from NoChange to Off is about ensuring the command is sent, not changing the reason
     let result = execute_state_change(device_name, &current_state, &desired_state, plan_result.cause.id(), is_first_execution || force_execution).await;
 
     // Update state if successful
