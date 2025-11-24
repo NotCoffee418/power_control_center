@@ -67,16 +67,18 @@
   // Validate and handle float input
   function handleFloatInput(event) {
     const value = event.target.value;
-    const parsed = parseFloat(value);
-    isValidInput = !isNaN(parsed) && isFinite(parsed);
+    const trimmed = value.trim();
+    const parsed = parseFloat(trimmed);
+    isValidInput = trimmed !== '' && !isNaN(parsed) && isFinite(parsed);
     primitiveValue = isValidInput ? parsed : value;
   }
 
   // Validate and handle integer input
   function handleIntegerInput(event) {
     const value = event.target.value;
-    const parsed = parseInt(value, 10);
-    isValidInput = !isNaN(parsed) && Number.isInteger(parsed);
+    const trimmed = value.trim();
+    const parsed = Number(trimmed);
+    isValidInput = trimmed !== '' && Number.isInteger(parsed);
     primitiveValue = isValidInput ? parsed : value;
   }
 
