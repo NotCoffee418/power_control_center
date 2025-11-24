@@ -14,9 +14,9 @@ This system integrates with several ESP32-based devices:
 
 1. **[esp32-ir-airco-controller](https://github.com/NotCoffee418/esp32-ir-airco-controller)** - ESP32 device with temperature sensor and IR emitter to control the airco unit. The repository includes a printable case for the device.
 
-2. **[european_smart_meter](https://github.com/NotCoffee418/european_smart_meter)** - Reads european smart meter to determine current power consumption, and reads the Huawei solar inverter.
+2. **[european_smart_meter](https://github.com/NotCoffee418/european_smart_meter)** - Reads European smart meter to determine current power consumption, and reads the Huawei solar inverter.
 
-3. **[ac-pir-detector](https://github.com/NotCoffee418/ac-pir-detector)** *(optional component)* - ESP32 with PIR sensor to disable AC for a few minutes until presence is no longer detected. Intended to maintain a stable temperature near the outside AC unit while in the area. Printable case available at: https://github.com/NotCoffee418/arbitrary-3d-models/tree/main/ac_pir_detector_case
+3. **[ac-pir-detector](https://github.com/NotCoffee418/ac-pir-detector)** *(optional component)* - ESP32 with PIR sensor to disable AC for a few minutes until presence is no longer detected. Intended to maintain a stable temperature near the outside AC unit while in the area. [Printable case available here](https://github.com/NotCoffee418/arbitrary-3d-models/tree/main/ac_pir_detector_case).
 
 ## Installation
 
