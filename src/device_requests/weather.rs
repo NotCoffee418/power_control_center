@@ -170,6 +170,84 @@ mod tests {
         assert_eq!(future_colder - current, -3.0);
     }
 
+    #[test]
+    fn test_deserialize_api_response_with_current() {
+        // Test that we can parse a response with current temperature
+        let json = r#"{
+            "current": {
+                "time": "2025-11-24T11:00",
+                "temperature_2m": 5.7
+            },
+            "hourly": {
+                "time": ["2025-11-24T00:00", "2025-11-24T01:00", "2025-11-24T02:00"],
+                "temperature_2m": [4.1, 4.3, 4.1]
+            }
+        }"#;
+        
+        let response: Result<OpenMeteoResponse, _> = serde_json::from_str(json);
+        assert!(response.is_ok());
+        
+        let response = response.unwrap();
+        assert!(response.current.is_some());
+        assert_eq!(response.current.unwrap().temperature_2m, 5.7);
+        assert_eq!(response.hourly.temperature_2m.len(), 3);
+        assert_eq!(response.hourly.time.len(), 3);
+    }
+
+    #[test]
+    fn test_deserialize_api_response_without_current() {
+        // Test that we can parse a response without current (for backwards compatibility)
+        let json = r#"{
+            "hourly": {
+                "time": ["2025-11-24T00:00", "2025-11-24T01:00"],
+                "temperature_2m": [4.1, 4.3]
+            }
+        }"#;
+        
+        let response: Result<OpenMeteoResponse, _> = serde_json::from_str(json);
+        assert!(response.is_ok());
+        
+        let response = response.unwrap();
+        assert!(response.current.is_none());
+        assert_eq!(response.hourly.temperature_2m.len(), 2);
+    }
+
+    #[test]
+    fn test_hourly_time_matching() {
+        // Test the logic for finding current hour in time array
+        let times = vec![
+            "2025-11-24T00:00".to_string(),
+            "2025-11-24T01:00".to_string(),
+            "2025-11-24T11:00".to_string(),
+            "2025-11-24T12:00".to_string(),
+            "2025-11-24T13:00".to_string(),
+        ];
+        
+        let current_time = "2025-11-24T11:45";
+        let prefix = &current_time[..13]; // "2025-11-24T11"
+        
+        let idx = times.iter().position(|t| t.starts_with(prefix));
+        assert_eq!(idx, Some(2)); // Should find index 2
+    }
+
+    #[test]
+    fn test_next_12_hours_extraction() {
+        // Test that we correctly extract next 12 hours from hourly data
+        let temps: Vec<f64> = (0..48).map(|i| i as f64).collect();
+        let current_hour_idx = 10;
+        
+        // Extract next 12 hours after current hour
+        let forecast: Vec<f64> = temps.iter()
+            .skip(current_hour_idx + 1)
+            .take(12)
+            .copied()
+            .collect();
+        
+        assert_eq!(forecast.len(), 12);
+        assert_eq!(forecast[0], 11.0); // First value should be hour 11
+        assert_eq!(forecast[11], 22.0); // Last value should be hour 22
+    }
+
     // Note: Integration tests with actual API calls are not included here
     // as they would require network access and could be flaky.
     // In a production environment, you might want to:
