@@ -20,6 +20,16 @@
   
   // Context menu state
   let contextMenu = $state({ visible: false, x: 0, y: 0, nodeId: null });
+  const CONTEXT_MENU_HIDDEN = { visible: false, x: 0, y: 0, nodeId: null };
+
+  // Helper functions
+  function getNodeDisplayName(node) {
+    return node?.data?.definition?.name || node?.id || 'Unknown';
+  }
+
+  function resetContextMenu() {
+    contextMenu = { ...CONTEXT_MENU_HIDDEN };
+  }
 
   // Custom node types
   const nodeTypes = {
@@ -177,13 +187,13 @@
       // Check if any selected nodes are default nodes
       const defaultNodes = selectedNodes.filter(n => n.data?.isDefault);
       if (defaultNodes.length > 0) {
-        const defaultNodeNames = defaultNodes.map(n => n.data?.definition?.name || n.id).join(', ');
+        const defaultNodeNames = defaultNodes.map(getNodeDisplayName).join(', ');
         alert(`Cannot delete default nodes: ${defaultNodeNames}`);
         return;
       }
 
       // Confirm deletion
-      const nodeNames = selectedNodes.map(n => n.data?.definition?.name || n.id).join(', ');
+      const nodeNames = selectedNodes.map(getNodeDisplayName).join(', ');
       if (confirm(`Delete ${selectedNodes.length} node(s)?\n\n${nodeNames}`)) {
         // Delete the selected nodes
         const selectedIds = selectedNodes.map(n => n.id);
@@ -217,21 +227,19 @@
     const node = nodes.find(n => n.id === contextMenu.nodeId);
     
     if (!node) {
-      contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+      resetContextMenu();
       return;
     }
 
     // Check if it's a default node
     if (node.data?.isDefault) {
-      const nodeName = node.data?.definition?.name || node.id;
-      alert(`Cannot delete default node: ${nodeName}`);
-      contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+      alert(`Cannot delete default node: ${getNodeDisplayName(node)}`);
+      resetContextMenu();
       return;
     }
 
     // Confirm deletion
-    const nodeName = node.data?.definition?.name || node.id;
-    if (confirm(`Delete node "${nodeName}"?`)) {
+    if (confirm(`Delete node "${getNodeDisplayName(node)}"?`)) {
       // Delete the node
       nodes = nodes.filter(n => n.id !== contextMenu.nodeId);
       
@@ -241,13 +249,13 @@
       );
     }
     
-    contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+    resetContextMenu();
   }
 
   // Close context menu when clicking elsewhere
   function closeContextMenu() {
     if (contextMenu.visible) {
-      contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+      resetContextMenu();
     }
   }
 
@@ -300,13 +308,13 @@
     edges = edges;
   }
 
-  // Check if a connection is valid based on type compatibility
-  function isValidConnection(connection) {
+  // Helper function to get connection details
+  function getConnectionDetails(connection) {
     const sourceNode = nodes.find(n => n.id === connection.source);
     const targetNode = nodes.find(n => n.id === connection.target);
     
     if (!sourceNode || !targetNode) {
-      return false;
+      return null;
     }
 
     const sourceOutput = sourceNode.data.definition.outputs.find(
@@ -317,8 +325,18 @@
     );
 
     if (!sourceOutput || !targetInput) {
-      return false;
+      return null;
     }
+
+    return { sourceNode, targetNode, sourceOutput, targetInput };
+  }
+
+  // Check if a connection is valid based on type compatibility
+  function isValidConnection(connection) {
+    const details = getConnectionDetails(connection);
+    if (!details) return false;
+
+    const { sourceOutput, targetInput } = details;
 
     // Check if types are compatible
     const sourceType = sourceOutput.value_type?.type;
@@ -337,34 +355,24 @@
   }
 
   function onConnect(connection) {
+    // Get connection details once
+    const details = getConnectionDetails(connection);
+    if (!details) return;
+
+    const { sourceOutput, targetInput } = details;
+
     // Validate connection types
-    if (!isValidConnection(connection)) {
-      const sourceNode = nodes.find(n => n.id === connection.source);
-      const targetNode = nodes.find(n => n.id === connection.target);
-      
-      if (sourceNode && targetNode) {
-        const sourceOutput = sourceNode.data.definition.outputs.find(
-          o => o.id === connection.sourceHandle
-        );
-        const targetInput = targetNode.data.definition.inputs.find(
-          i => i.id === connection.targetHandle
-        );
-        
-        if (sourceOutput && targetInput) {
-          const sourceType = sourceOutput.value_type?.type;
-          const targetType = targetInput.value_type?.type;
-          saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-          setTimeout(() => saveStatus = '', 3000);
-        }
-      }
+    const sourceType = sourceOutput.value_type?.type;
+    const targetType = targetInput.value_type?.type;
+    
+    if (!sourceType || !targetType) return;
+    
+    // Check compatibility
+    if (sourceType !== targetType && sourceType !== 'Object' && targetType !== 'Object') {
+      saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+      setTimeout(() => saveStatus = '', 3000);
       return;
     }
-
-    // Get source output for color
-    const sourceNode = nodes.find(n => n.id === connection.source);
-    const sourceOutput = sourceNode.data.definition.outputs.find(
-      o => o.id === connection.sourceHandle
-    );
 
     // Create the edge
     edges = [...edges, { 
