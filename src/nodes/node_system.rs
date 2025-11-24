@@ -137,6 +137,8 @@ impl NodeDefinition {
         match category {
             "System" => "#4CAF50",         // Green for system nodes
             "AC Controller" => "#2196F3",  // Blue for AC controller nodes
+            "Logic" => "#9C27B0",          // Purple for logic nodes
+            "Primitives" => "#FF9800",     // Orange for primitive nodes
             _ => "#757575",                // Gray for others
         }
     }

@@ -8,16 +8,27 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 5 node definitions
-        assert_eq!(definitions.len(), 5);
+        // Verify we have 12 node definitions (5 original + 4 logic + 3 primitives)
+        assert_eq!(definitions.len(), 12);
         
-        // Verify node types
+        // Verify original node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
         assert!(node_types.contains(&"on_evaluate"));
         assert!(node_types.contains(&"ac_plan_input"));
         assert!(node_types.contains(&"ac_planner"));
         assert!(node_types.contains(&"ac_plan_result"));
         assert!(node_types.contains(&"execute_plan"));
+        
+        // Verify logic node types
+        assert!(node_types.contains(&"logic_and"));
+        assert!(node_types.contains(&"logic_or"));
+        assert!(node_types.contains(&"logic_nand"));
+        assert!(node_types.contains(&"logic_if"));
+        
+        // Verify primitive node types
+        assert!(node_types.contains(&"primitive_float"));
+        assert!(node_types.contains(&"primitive_integer"));
+        assert!(node_types.contains(&"primitive_boolean"));
     }
     
     #[test]
@@ -86,8 +97,64 @@ mod integration_tests {
                 "ac_plan_input" | "ac_planner" | "ac_plan_result" => {
                     assert_eq!(def.category, "AC Controller", "AC nodes should be in 'AC Controller' category");
                 }
+                "logic_and" | "logic_or" | "logic_nand" | "logic_if" => {
+                    assert_eq!(def.category, "Logic", "Logic nodes should be in 'Logic' category");
+                }
+                "primitive_float" | "primitive_integer" | "primitive_boolean" => {
+                    assert_eq!(def.category, "Primitives", "Primitive nodes should be in 'Primitives' category");
+                }
                 _ => panic!("Unexpected node type: {}", def.node_type),
             }
         }
+    }
+    
+    #[test]
+    fn test_logic_nodes_have_correct_io() {
+        let definitions = nodes::get_all_node_definitions();
+        
+        // AND, OR, NAND nodes should have 2 boolean inputs and 1 boolean output
+        for node_type in &["logic_and", "logic_or", "logic_nand"] {
+            let node = definitions.iter().find(|d| d.node_type == *node_type).unwrap();
+            assert_eq!(node.inputs.len(), 2, "{} should have 2 inputs", node_type);
+            assert_eq!(node.outputs.len(), 1, "{} should have 1 output", node_type);
+            
+            // Verify all inputs are boolean
+            for input in &node.inputs {
+                assert_eq!(input.value_type, nodes::ValueType::Boolean);
+            }
+            // Verify output is boolean
+            assert_eq!(node.outputs[0].value_type, nodes::ValueType::Boolean);
+        }
+        
+        // If node should have 1 boolean input and 2 boolean outputs
+        let if_node = definitions.iter().find(|d| d.node_type == "logic_if").unwrap();
+        assert_eq!(if_node.inputs.len(), 1);
+        assert_eq!(if_node.outputs.len(), 2);
+        assert_eq!(if_node.inputs[0].value_type, nodes::ValueType::Boolean);
+        for output in &if_node.outputs {
+            assert_eq!(output.value_type, nodes::ValueType::Boolean);
+        }
+    }
+    
+    #[test]
+    fn test_primitive_nodes_are_source_nodes() {
+        let definitions = nodes::get_all_node_definitions();
+        
+        // Primitive nodes should have no inputs (they are source nodes)
+        for node_type in &["primitive_float", "primitive_integer", "primitive_boolean"] {
+            let node = definitions.iter().find(|d| d.node_type == *node_type).unwrap();
+            assert_eq!(node.inputs.len(), 0, "{} should have no inputs", node_type);
+            assert_eq!(node.outputs.len(), 1, "{} should have 1 output", node_type);
+        }
+        
+        // Verify correct output types
+        let float_node = definitions.iter().find(|d| d.node_type == "primitive_float").unwrap();
+        assert_eq!(float_node.outputs[0].value_type, nodes::ValueType::Float);
+        
+        let int_node = definitions.iter().find(|d| d.node_type == "primitive_integer").unwrap();
+        assert_eq!(int_node.outputs[0].value_type, nodes::ValueType::Integer);
+        
+        let bool_node = definitions.iter().find(|d| d.node_type == "primitive_boolean").unwrap();
+        assert_eq!(bool_node.outputs[0].value_type, nodes::ValueType::Boolean);
     }
 }
