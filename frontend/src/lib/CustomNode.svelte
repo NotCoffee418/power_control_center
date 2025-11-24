@@ -42,9 +42,9 @@
           id={input.id}
           style="background: {input.color}; border-color: {input.color}; {getHandleStyle(i, inputs.length)}"
           class="custom-handle"
+          title="{input.label} ({input.value_type.type})"
         />
         <div class="port-label" title={input.description}>
-          <span class="port-dot" style="background: {input.color};"></span>
           {input.label}
           {#if input.required}
             <span class="required">*</span>
@@ -58,7 +58,6 @@
       <div class="port-row output-port">
         <div class="port-label" title={output.description}>
           {output.label}
-          <span class="port-dot" style="background: {output.color};"></span>
         </div>
         <Handle
           type="source"
@@ -66,6 +65,7 @@
           id={output.id}
           style="background: {output.color}; border-color: {output.color}; {getHandleStyle(i, outputs.length)}"
           class="custom-handle"
+          title="{output.label} ({output.value_type.type})"
         />
       </div>
     {/each}
@@ -128,18 +128,18 @@
     display: flex;
     align-items: center;
     position: relative;
-    min-height: 24px;
+    min-height: 20px;
     font-size: 12px;
   }
 
   .input-port {
     justify-content: flex-start;
-    padding-left: 20px;
+    padding-left: 16px;
   }
 
   .output-port {
     justify-content: flex-end;
-    padding-right: 20px;
+    padding-right: 16px;
   }
 
   .port-label {
@@ -149,14 +149,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .port-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
+    line-height: 20px;
   }
 
   .required {
@@ -173,25 +166,23 @@
     font-size: 12px;
   }
 
+  /* Fixed size handles that don't change on hover */
   :global(.custom-handle) {
-    width: 12px;
-    height: 12px;
+    width: 10px !important;
+    height: 10px !important;
     border-width: 2px;
-    transition: all 0.2s;
+    transition: none;
+    cursor: crosshair;
   }
 
-  :global(.custom-handle:hover) {
-    width: 16px;
-    height: 16px;
-    transform: scale(1.2);
-  }
-
-  /* Override default handle positioning */
+  /* Override default handle positioning to align with text */
   :global(.custom-handle.target) {
-    left: -6px;
+    left: -5px;
+    transform: translateY(0);
   }
 
   :global(.custom-handle.source) {
-    right: -6px;
+    right: -5px;
+    transform: translateY(0);
   }
 </style>

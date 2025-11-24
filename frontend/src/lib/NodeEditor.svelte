@@ -354,20 +354,20 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    background: #f5f5f5;
+    background: #1a1a1a;
   }
 
   .toolbar {
-    background: white;
+    background: #2d2d2d;
     padding: 1rem;
-    border-bottom: 2px solid #ddd;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-bottom: 2px solid #404040;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
   }
 
   .toolbar h1 {
     margin: 0 0 1rem 0;
     font-size: 1.5rem;
-    color: #333;
+    color: #e0e0e0;
   }
 
   .toolbar-buttons {
@@ -411,6 +411,7 @@
   .save-status {
     margin-left: 1rem;
     font-weight: 500;
+    color: #e0e0e0;
   }
 
   .main-content {
@@ -421,8 +422,8 @@
 
   .sidebar {
     width: 300px;
-    background: white;
-    border-right: 2px solid #ddd;
+    background: #2d2d2d;
+    border-right: 2px solid #404040;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -431,17 +432,29 @@
   .sidebar h3 {
     margin: 0;
     padding: 1rem;
-    background: #f5f5f5;
-    border-bottom: 1px solid #ddd;
+    background: #252525;
+    border-bottom: 1px solid #404040;
+    color: #e0e0e0;
   }
 
   .search-input {
     width: calc(100% - 2rem);
-    margin: 1rem;
+    margin: 0.5rem 1rem;
     padding: 0.5rem;
-    border: 1px solid #ddd;
+    border: 1px solid #404040;
     border-radius: 4px;
     font-size: 0.9rem;
+    background: #1a1a1a;
+    color: #e0e0e0;
+  }
+
+  .search-input::placeholder {
+    color: #888;
+  }
+
+  .search-input:focus {
+    outline: none;
+    border-color: #00BCD4;
   }
 
   .node-list {
@@ -457,8 +470,8 @@
   .node-add-btn {
     width: 100%;
     padding: 0.75rem;
-    background: white;
-    border: 1px solid #ddd;
+    background: #1a1a1a;
+    border: 1px solid #404040;
     border-radius: 4px;
     cursor: pointer;
     text-align: left;
@@ -466,8 +479,8 @@
   }
 
   .node-add-btn:hover {
-    background: #f5f5f5;
-    border-color: #999;
+    background: #333;
+    border-color: #555;
     transform: translateX(2px);
   }
 
@@ -480,26 +493,26 @@
 
   .node-name {
     font-weight: 600;
-    color: #333;
+    color: #e0e0e0;
   }
 
   .node-category {
     font-size: 0.75rem;
-    color: #666;
-    background: #f0f0f0;
+    color: #aaa;
+    background: #404040;
     padding: 0.125rem 0.5rem;
     border-radius: 3px;
   }
 
   .node-item-desc {
     font-size: 0.8rem;
-    color: #666;
+    color: #aaa;
     margin-bottom: 0.5rem;
   }
 
   .node-item-ports {
     font-size: 0.75rem;
-    color: #999;
+    color: #888;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -515,7 +528,7 @@
   .port-list-title {
     font-weight: 600;
     margin-right: 0.25rem;
-    color: #555;
+    color: #bbb;
   }
 
   .port-badge {
@@ -539,18 +552,18 @@
     align-items: center;
     justify-content: center;
     font-size: 1.2rem;
-    color: #666;
+    color: #aaa;
   }
 
   .loading-text {
     text-align: center;
-    color: #666;
+    color: #aaa;
     padding: 1rem;
   }
 
   .no-results {
     text-align: center;
-    color: #999;
+    color: #888;
     padding: 1rem;
     font-style: italic;
   }
@@ -558,11 +571,38 @@
   .flow-container {
     flex: 1;
     position: relative;
-    background: #fafafa;
+    background: #1a1a1a;
   }
 
   :global(.svelte-flow) {
-    background: #fafafa;
+    background: #1a1a1a;
+  }
+
+  :global(.svelte-flow__background) {
+    background-color: #1a1a1a;
+  }
+
+  :global(.svelte-flow__edge-path) {
+    stroke: #555;
+  }
+
+  :global(.svelte-flow__controls) {
+    background: #2d2d2d;
+    border: 1px solid #404040;
+  }
+
+  :global(.svelte-flow__controls button) {
+    background: #2d2d2d;
+    border-bottom: 1px solid #404040;
+  }
+
+  :global(.svelte-flow__controls button:hover) {
+    background: #3d3d3d;
+  }
+
+  :global(.svelte-flow__minimap) {
+    background: #2d2d2d;
+    border: 1px solid #404040;
   }
 
   :global(.svelte-flow__node) {
