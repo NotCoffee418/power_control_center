@@ -9,9 +9,6 @@
   const outputs = definition?.outputs || [];
   const color = definition?.color || '#757575';
   const isDefault = data.isDefault || false;
-
-  // No longer needed - handles will align naturally with their port rows
-
 </script>
 
 <div 

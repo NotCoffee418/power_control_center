@@ -176,6 +176,11 @@
 
   // Handle keyboard events for node deletion
   function handleKeyDown(event) {
+    // Only handle if the event is not from an input element
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+      return;
+    }
+
     if (event.key === 'Delete' || event.key === 'Backspace') {
       // Find selected nodes
       const selectedNodes = nodes.filter(n => n.selected);
@@ -472,7 +477,7 @@
     {#if loading}
       <div class="loading">Loading node configuration...</div>
     {:else}
-      <div class="flow-container" onclick={closeContextMenu} onkeydown={handleContextMenuKeyDown} role="presentation">
+      <div class="flow-container" onclick={closeContextMenu} onkeydown={handleContextMenuKeyDown} role="application">
         <SvelteFlow 
           {nodes} 
           {edges}
