@@ -214,15 +214,19 @@
 
   // Handle node context menu (right-click)
   function handleNodeContextMenu(event) {
-    event.preventDefault();
+    // The native event is in event.detail.event
+    const nativeEvent = event.detail?.event;
+    if (nativeEvent) {
+      nativeEvent.preventDefault();
+    }
     
     const nodeId = event.detail?.node?.id;
     if (!nodeId) return;
     
     contextMenu = {
       visible: true,
-      x: event.detail.event.clientX,
-      y: event.detail.event.clientY,
+      x: nativeEvent?.clientX || 0,
+      y: nativeEvent?.clientY || 0,
       nodeId: nodeId
     };
   }
@@ -292,6 +296,12 @@
         const nodeIndex = nodes.findIndex(n => n.id === change.id);
         if (nodeIndex !== -1 && change.position) {
           nodes[nodeIndex].position = change.position;
+        }
+      } else if (change.type === 'select') {
+        // Update node selection state
+        const nodeIndex = nodes.findIndex(n => n.id === change.id);
+        if (nodeIndex !== -1) {
+          nodes[nodeIndex].selected = change.selected;
         }
       } else if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
