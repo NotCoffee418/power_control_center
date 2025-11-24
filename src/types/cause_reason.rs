@@ -8,7 +8,7 @@ pub enum CauseReason {
     /// Default/undefined reason
     Undefined = 0,
     /// AC is OFF due to cold outdoor temperature (ice exception)
-    /// Prevents AC from running when outdoor temp < 5°C to avoid ice formation
+    /// Prevents AC from running when outdoor temp < 2°C to avoid ice formation
     IceException = 1,
     /// AC is OFF due to PIR (motion) detection
     /// Automatically turns off AC when motion is detected to avoid blowing air directly at people
@@ -55,7 +55,7 @@ impl CauseReason {
     pub fn description(&self) -> &'static str {
         match self {
             CauseReason::Undefined => "No specific reason recorded",
-            CauseReason::IceException => "AC is OFF because outdoor temperature is below 5°C. When running in cold conditions, the AC unit would go through a defrost cycle that pulls warm air out of the room, making heating inefficient. We rely solely on central heating instead. This exception is bypassed if indoor temperature drops below 12°C to prevent the room from becoming too cold.",
+            CauseReason::IceException => "AC is OFF because outdoor temperature is below 2°C. When running in cold conditions, the AC unit would go through a defrost cycle that pulls warm air out of the room, making heating inefficient. We rely solely on central heating instead. This exception is bypassed if indoor temperature drops below 12°C or if solar production is above 1000W.",
             CauseReason::PirDetection => "AC is OFF due to motion detection. The PIR (Passive Infrared) sensor detected movement near the AC unit, and the system automatically turns off the AC to avoid blowing air directly at people, which can be uncomfortable.",
             CauseReason::NobodyHome => "Operating at low intensity because nobody is home. The system maintains basic temperature control while minimizing energy usage when the space is unoccupied.",
             CauseReason::MildTemperature => "Operating at low intensity because outdoor temperature is close to the desired indoor temperature. Minimal climate control is needed in these mild conditions.",
@@ -113,8 +113,9 @@ mod tests {
     fn test_cause_reason_descriptions() {
         assert!(!CauseReason::Undefined.description().is_empty());
         assert!(!CauseReason::IceException.description().is_empty());
-        assert!(CauseReason::IceException.description().contains("5°C"));
+        assert!(CauseReason::IceException.description().contains("2°C"));
         assert!(CauseReason::IceException.description().contains("12°C"));
+        assert!(CauseReason::IceException.description().contains("1000W"));
     }
 
     #[test]
