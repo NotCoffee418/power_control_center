@@ -168,13 +168,13 @@ The configuration file should be created at `/etc/power_control_center/config.js
 
 - **`listen_port`**: Port number for the web dashboard. Default: `9040` (recommended to keep default)
 
-- **`smart_meter_api_endpoint`**: URL to your [european_smart_meter](https://github.com/NotCoffee418/european_smart_meter) API endpoint. Configure this based on how you set up the smart meter API.
+- **`smart_meter_api_endpoint`**: URL to your [european_smart_meter](https://github.com/NotCoffee418/european_smart_meter) API endpoint (e.g., `http://your-device-ip:9039`). Configure this based on how you set up the smart meter API.
 
 - **`ac_controller_endpoints`**: Object mapping room names to AC controller configurations. Each entry requires:
   - `endpoint`: URL to the [esp32-ir-airco-controller](https://github.com/NotCoffee418/esp32-ir-airco-controller) device
   - `api_key`: API key for the device (generated through the device's dashboard)
 
-- **`latitude`** and **`longitude`**: Geographic coordinates for your location. Used for solar calculations and automation. You'll need to find your own coordinates.
+- **`latitude`** and **`longitude`**: Geographic coordinates for your location. Used for solar calculations and automation. You can find your coordinates using Google Maps or similar services.
 
 - **`pir_api_key`**: API key for authenticating [ac-pir-detector](https://github.com/NotCoffee418/ac-pir-detector) requests. This is an arbitrary key that must match what you configured on the PIR device. (optional, defaults to empty/no auth)
 
