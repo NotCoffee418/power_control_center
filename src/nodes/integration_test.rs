@@ -8,14 +8,16 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 3 node definitions
-        assert_eq!(definitions.len(), 3);
+        // Verify we have 5 node definitions
+        assert_eq!(definitions.len(), 5);
         
         // Verify node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
+        assert!(node_types.contains(&"on_evaluate"));
         assert!(node_types.contains(&"ac_plan_input"));
         assert!(node_types.contains(&"ac_planner"));
         assert!(node_types.contains(&"ac_plan_result"));
+        assert!(node_types.contains(&"execute_plan"));
     }
     
     #[test]
@@ -75,9 +77,17 @@ mod integration_tests {
     fn test_node_definitions_have_categories() {
         let definitions = nodes::get_all_node_definitions();
         
-        // All nodes should be in the AC Controller category
-        for def in definitions {
-            assert_eq!(def.category, "AC Controller");
+        // Verify categories are assigned appropriately
+        for def in &definitions {
+            match def.node_type.as_str() {
+                "on_evaluate" | "execute_plan" => {
+                    assert_eq!(def.category, "System", "System nodes should be in 'System' category");
+                }
+                "ac_plan_input" | "ac_planner" | "ac_plan_result" => {
+                    assert_eq!(def.category, "AC Controller", "AC nodes should be in 'AC Controller' category");
+                }
+                _ => panic!("Unexpected node type: {}", def.node_type),
+            }
         }
     }
 }

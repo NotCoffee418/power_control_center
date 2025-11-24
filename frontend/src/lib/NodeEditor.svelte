@@ -11,16 +11,35 @@
   // Node and edge state
   let nodes = $state([]);
   let edges = $state([]);
+  let nodeDefinitions = $state([]);
   let loading = $state(true);
   let saveStatus = $state('');
+  let searchQuery = $state('');
+  let nodeIdCounter = 100;
 
-  // Define custom node types for AC planner logic
-  const nodeTypes = {
-    trigger: { color: '#4CAF50', label: 'Trigger' },
-    condition: { color: '#2196F3', label: 'Condition' },
-    action: { color: '#FF9800', label: 'Action' },
-    output: { color: '#9C27B0', label: 'Output' }
+  // Category colors
+  const categoryColors = {
+    'System': '#4CAF50',
+    'AC Controller': '#2196F3',
+    'default': '#757575'
   };
+
+  // Load node definitions from backend
+  async function loadNodeDefinitions() {
+    try {
+      const response = await fetch('/api/nodes/definitions');
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        nodeDefinitions = result.data;
+        console.log('Loaded node definitions:', nodeDefinitions);
+      } else {
+        console.error('Failed to load node definitions:', result.error);
+      }
+    } catch (e) {
+      console.error('Error loading node definitions:', e);
+    }
+  }
 
   // Load configuration from backend
   async function loadConfiguration() {
@@ -32,7 +51,7 @@
         nodes = result.data.nodes || [];
         edges = result.data.edges || [];
         
-        // If empty, create initial example nodes
+        // If empty, create initial nodes with OnEvaluate
         if (nodes.length === 0) {
           createInitialNodes();
         }
@@ -45,80 +64,34 @@
     }
   }
 
-  // Create initial example nodes that reflect the AC planner logic
+  // Create initial nodes with OnEvaluate node
   function createInitialNodes() {
-    nodes = [
-      {
-        id: '1',
-        type: 'input',
-        position: { x: 100, y: 100 },
-        data: { 
-          label: '🔄 On Evaluate Event\n(Every 5 minutes)',
-          description: 'Provides: indoor_temp, outdoor_temp, solar_power, user_home'
-        },
-        style: 'background: #4CAF50; color: white; padding: 10px; border-radius: 5px; min-width: 200px;'
-      },
-      {
-        id: '2',
-        type: 'default',
-        position: { x: 100, y: 250 },
-        data: { 
-          label: '❄️ Ice Exception Check',
-          description: 'outdoor_temp < 2°C?'
-        },
-        style: 'background: #2196F3; color: white; padding: 10px; border-radius: 5px; min-width: 180px;'
-      },
-      {
-        id: '3',
-        type: 'default',
-        position: { x: 400, y: 250 },
-        data: { 
-          label: '🌡️ Temperature Check',
-          description: 'indoor_temp vs thresholds'
-        },
-        style: 'background: #2196F3; color: white; padding: 10px; border-radius: 5px; min-width: 180px;'
-      },
-      {
-        id: '4',
-        type: 'default',
-        position: { x: 700, y: 250 },
-        data: { 
-          label: '☀️ Solar Power Check',
-          description: 'solar_power > 2000W?'
-        },
-        style: 'background: #2196F3; color: white; padding: 10px; border-radius: 5px; min-width: 180px;'
-      },
-      {
-        id: '5',
-        type: 'default',
-        position: { x: 400, y: 400 },
-        data: { 
-          label: '🏠 User Home Check',
-          description: 'user_home == true?'
-        },
-        style: 'background: #2196F3; color: white; padding: 10px; border-radius: 5px; min-width: 180px;'
-      },
-      {
-        id: '6',
-        type: 'output',
-        position: { x: 400, y: 550 },
-        data: { 
-          label: '🎯 Output: AC Plan',
-          description: 'Mode: Colder/Warmer/Off\nIntensity: Low/Medium/High'
-        },
-        style: 'background: #9C27B0; color: white; padding: 10px; border-radius: 5px; min-width: 200px;'
-      }
-    ];
+    const onEvaluateDef = nodeDefinitions.find(def => def.node_type === 'on_evaluate');
+    if (onEvaluateDef) {
+      nodes = [
+        createNodeFromDefinition(onEvaluateDef, 'on-evaluate-1', { x: 100, y: 100 }, true)
+      ];
+    }
+  }
 
-    edges = [
-      { id: 'e1-2', source: '1', target: '2', animated: true },
-      { id: 'e1-3', source: '1', target: '3', animated: true },
-      { id: 'e2-6', source: '2', target: '6', label: 'OFF' },
-      { id: 'e3-4', source: '3', target: '4' },
-      { id: 'e3-5', source: '3', target: '5' },
-      { id: 'e4-6', source: '4', target: '6', label: 'High' },
-      { id: 'e5-6', source: '5', target: '6', label: 'Medium' }
-    ];
+  // Create a node from a definition
+  function createNodeFromDefinition(definition, id, position, isDefault = false) {
+    const color = categoryColors[definition.category] || categoryColors['default'];
+    
+    return {
+      id: id,
+      type: 'default',
+      position: position,
+      data: {
+        label: definition.name,
+        description: definition.description,
+        definition: definition,
+        isDefault: isDefault, // OnEvaluate is default and cannot be deleted
+      },
+      style: `background: ${color}; color: white; padding: 10px; border-radius: 5px; min-width: 200px;`,
+      sourcePosition: 'right', // Outputs on the right
+      targetPosition: 'left',  // Inputs on the left
+    };
   }
 
   // Save configuration to backend
@@ -151,25 +124,18 @@
     }
   }
 
-  // Counter for generating unique node IDs
-  let nodeIdCounter = 100;
-
-  // Add new node
-  function addNode(type) {
+  // Add new node from definition
+  function addNodeFromDefinition(definition) {
     nodeIdCounter++;
-    const newNode = {
-      id: `node-${nodeIdCounter}`,
-      type: type === 'trigger' ? 'input' : type === 'output' ? 'output' : 'default',
-      position: { 
+    const newNode = createNodeFromDefinition(
+      definition,
+      `${definition.node_type}-${nodeIdCounter}`,
+      { 
         x: Math.random() * 400 + 200, 
         y: Math.random() * 300 + 200 
       },
-      data: { 
-        label: `New ${nodeTypes[type].label}`,
-        description: 'Edit me'
-      },
-      style: `background: ${nodeTypes[type].color}; color: white; padding: 10px; border-radius: 5px; min-width: 150px;`
-    };
+      false
+    );
     
     nodes = [...nodes, newNode];
   }
@@ -178,12 +144,25 @@
   function resetNodes() {
     if (confirm('Reset to default nodes? This will discard your current configuration.')) {
       createInitialNodes();
+      edges = [];
       saveConfiguration();
     }
   }
 
-  onMount(() => {
-    loadConfiguration();
+  // Computed: Filter nodes based on search query
+  function getFilteredDefinitions() {
+    return nodeDefinitions.filter(def => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return def.name.toLowerCase().includes(query) ||
+             def.description.toLowerCase().includes(query) ||
+             def.category.toLowerCase().includes(query);
+    });
+  }
+
+  onMount(async () => {
+    await loadNodeDefinitions();
+    await loadConfiguration();
   });
 
   // Handle node changes (position, selection, removal)
@@ -196,6 +175,13 @@
           nodes[nodeIndex].position = change.position;
         }
       } else if (change.type === 'remove') {
+        // Check if node is default (OnEvaluate) - should not be deletable
+        const node = nodes.find(n => n.id === change.id);
+        if (node?.data?.isDefault) {
+          saveStatus = '⚠ Cannot delete default node';
+          setTimeout(() => saveStatus = '', 3000);
+          return;
+        }
         // Remove node
         nodes = nodes.filter(n => n.id !== change.id);
       }
@@ -224,18 +210,6 @@
   <div class="toolbar">
     <h1>🔧 Node-Based AC Logic Editor</h1>
     <div class="toolbar-buttons">
-      <button onclick={() => addNode('trigger')} class="btn btn-trigger">
-        + Trigger Node
-      </button>
-      <button onclick={() => addNode('condition')} class="btn btn-condition">
-        + Condition Node
-      </button>
-      <button onclick={() => addNode('action')} class="btn btn-action">
-        + Action Node
-      </button>
-      <button onclick={() => addNode('output')} class="btn btn-output">
-        + Output Node
-      </button>
       <button onclick={saveConfiguration} class="btn btn-save">
         💾 Save
       </button>
@@ -249,38 +223,74 @@
     {/if}
   </div>
 
-  <div class="info-panel">
-    <h3>ℹ️ Prototype Node Editor</h3>
-    <p>
-      This is a prototype node-based logic system that may replace the current AC planner.
-      The nodes represent the logic flow for controlling AC units based on various conditions.
-    </p>
-    <ul>
-      <li><strong>🔄 Trigger Nodes:</strong> Event triggers (e.g., "On Evaluate Event")</li>
-      <li><strong>🌡️ Condition Nodes:</strong> Logic checks (temperature, solar, user presence)</li>
-      <li><strong>🎯 Output Nodes:</strong> Final AC plan decisions</li>
-    </ul>
-    <p><em>Note: This is a visual prototype. Execution logic is not yet implemented.</em></p>
-  </div>
-
-  {#if loading}
-    <div class="loading">Loading node configuration...</div>
-  {:else}
-    <div class="flow-container">
-      <SvelteFlow 
-        {nodes} 
-        {edges}
-        onnodeschange={onNodesChange}
-        onedgeschange={onEdgesChange}
-        onconnect={onConnect}
-        fitView
-      >
-        <Controls />
-        <Background />
-        <MiniMap />
-      </SvelteFlow>
+  <div class="main-content">
+    <div class="sidebar">
+      <h3>Available Nodes</h3>
+      <input 
+        type="text" 
+        placeholder="Search nodes..." 
+        bind:value={searchQuery}
+        class="search-input"
+      />
+      
+      <div class="node-list">
+        {#if loading}
+          <p class="loading-text">Loading...</p>
+        {:else if getFilteredDefinitions().length === 0}
+          <p class="no-results">No nodes found</p>
+        {:else}
+          {#each getFilteredDefinitions() as def}
+            <div class="node-item">
+              <button 
+                onclick={() => addNodeFromDefinition(def)}
+                class="node-add-btn"
+                style="border-left: 4px solid {categoryColors[def.category] || categoryColors['default']}"
+              >
+                <div class="node-item-header">
+                  <span class="node-name">{def.name}</span>
+                  <span class="node-category">{def.category}</span>
+                </div>
+                <div class="node-item-desc">{def.description}</div>
+                <div class="node-item-ports">
+                  <span class="port-info">
+                    {#if def.inputs.length > 0}
+                      ⬅ {def.inputs.length} input{def.inputs.length !== 1 ? 's' : ''}
+                    {/if}
+                    {#if def.outputs.length > 0}
+                      {#if def.inputs.length > 0} • {/if}
+                      {def.outputs.length} output{def.outputs.length !== 1 ? 's' : ''} ➡
+                    {/if}
+                    {#if def.inputs.length === 0 && def.outputs.length === 0}
+                      No ports
+                    {/if}
+                  </span>
+                </div>
+              </button>
+            </div>
+          {/each}
+        {/if}
+      </div>
     </div>
-  {/if}
+
+    {#if loading}
+      <div class="loading">Loading node configuration...</div>
+    {:else}
+      <div class="flow-container">
+        <SvelteFlow 
+          {nodes} 
+          {edges}
+          onnodeschange={onNodesChange}
+          onedgeschange={onEdgesChange}
+          onconnect={onConnect}
+          fitView
+        >
+          <Controls />
+          <Background />
+          <MiniMap />
+        </SvelteFlow>
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -328,26 +338,6 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
 
-  .btn-trigger {
-    background: #4CAF50;
-    color: white;
-  }
-
-  .btn-condition {
-    background: #2196F3;
-    color: white;
-  }
-
-  .btn-action {
-    background: #FF9800;
-    color: white;
-  }
-
-  .btn-output {
-    background: #9C27B0;
-    color: white;
-  }
-
   .btn-save {
     background: #00BCD4;
     color: white;
@@ -368,32 +358,97 @@
     font-weight: 500;
   }
 
-  .info-panel {
-    background: #fffbea;
-    border: 2px solid #ffd700;
-    border-radius: 8px;
+  .main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .sidebar {
+    width: 300px;
+    background: white;
+    border-right: 2px solid #ddd;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar h3 {
+    margin: 0;
     padding: 1rem;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+  }
+
+  .search-input {
+    width: calc(100% - 2rem);
     margin: 1rem;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.9rem;
   }
 
-  .info-panel h3 {
-    margin: 0 0 0.5rem 0;
-    color: #856404;
+  .node-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
   }
 
-  .info-panel p {
-    margin: 0.5rem 0;
-    color: #856404;
+  .node-item {
+    margin-bottom: 0.5rem;
   }
 
-  .info-panel ul {
-    margin: 0.5rem 0;
-    padding-left: 1.5rem;
-    color: #856404;
+  .node-add-btn {
+    width: 100%;
+    padding: 0.75rem;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s;
   }
 
-  .info-panel li {
-    margin: 0.25rem 0;
+  .node-add-btn:hover {
+    background: #f5f5f5;
+    border-color: #999;
+    transform: translateX(2px);
+  }
+
+  .node-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.25rem;
+  }
+
+  .node-name {
+    font-weight: 600;
+    color: #333;
+  }
+
+  .node-category {
+    font-size: 0.75rem;
+    color: #666;
+    background: #f0f0f0;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+  }
+
+  .node-item-desc {
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+  }
+
+  .node-item-ports {
+    font-size: 0.75rem;
+    color: #999;
+  }
+
+  .port-info {
+    font-style: italic;
   }
 
   .loading {
@@ -403,6 +458,19 @@
     justify-content: center;
     font-size: 1.2rem;
     color: #666;
+  }
+
+  .loading-text {
+    text-align: center;
+    color: #666;
+    padding: 1rem;
+  }
+
+  .no-results {
+    text-align: center;
+    color: #999;
+    padding: 1rem;
+    font-style: italic;
   }
 
   .flow-container {
