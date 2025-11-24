@@ -1,5 +1,54 @@
 use super::node_system::{Node, NodeDefinition, NodeInput, NodeOutput, ValueType};
 
+/// OnEvaluate trigger node - fires every 5 minutes to trigger AC evaluation
+/// This is a special trigger node that should be placed by default and cannot be deleted
+pub struct OnEvaluateNode;
+
+impl Node for OnEvaluateNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "on_evaluate",
+            "On Evaluate Event",
+            "Triggers every 5 minutes to evaluate and potentially adjust AC settings. This node cannot be deleted but can be moved.",
+            "System",
+            vec![], // No inputs - this is a trigger node
+            vec![
+                NodeOutput::new(
+                    "trigger",
+                    "Trigger",
+                    "Fires when evaluation cycle begins",
+                    ValueType::Boolean,
+                ),
+            ],
+        )
+    }
+}
+
+/// ExecutePlan node - executes an AC plan
+/// Takes a plan result and sends it to the AC system
+pub struct ExecutePlanNode;
+
+impl Node for ExecutePlanNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "execute_plan",
+            "Execute Plan",
+            "Executes the AC control plan by sending commands to the AC system",
+            "System",
+            vec![
+                NodeInput::new(
+                    "plan",
+                    "AC Plan",
+                    "The complete AC plan to execute (from AC Plan Result node)",
+                    ValueType::Object,
+                    true,
+                ),
+            ],
+            vec![], // No outputs - this is a terminal action node
+        )
+    }
+}
+
 /// Node representing the input data for AC planning
 pub struct AcPlanInputNode;
 
@@ -167,6 +216,35 @@ impl Node for AcPlanResultNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_on_evaluate_node_definition() {
+        let def = OnEvaluateNode::definition();
+        
+        assert_eq!(def.node_type, "on_evaluate");
+        assert_eq!(def.name, "On Evaluate Event");
+        assert_eq!(def.category, "System");
+        assert_eq!(def.inputs.len(), 0); // Trigger node has no inputs
+        assert_eq!(def.outputs.len(), 1); // One trigger output
+        
+        // Verify output
+        assert_eq!(def.outputs[0].id, "trigger");
+    }
+
+    #[test]
+    fn test_execute_plan_node_definition() {
+        let def = ExecutePlanNode::definition();
+        
+        assert_eq!(def.node_type, "execute_plan");
+        assert_eq!(def.name, "Execute Plan");
+        assert_eq!(def.category, "System");
+        assert_eq!(def.inputs.len(), 1); // One input: plan
+        assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
+        
+        // Verify input
+        assert_eq!(def.inputs[0].id, "plan");
+        assert!(def.inputs[0].required);
+    }
 
     #[test]
     fn test_ac_plan_input_node_definition() {
