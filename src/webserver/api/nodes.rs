@@ -15,21 +15,13 @@ pub fn nodes_routes() -> Router {
     Router::new()
         .route("/configuration", get(get_node_configuration))
         .route("/configuration", post(save_node_configuration))
+        .route("/definitions", get(get_node_definitions))
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct NodeConfiguration {
     pub nodes: Vec<serde_json::Value>,
     pub edges: Vec<serde_json::Value>,
-}
-
-impl Default for NodeConfiguration {
-    fn default() -> Self {
-        Self {
-            nodes: vec![],
-            edges: vec![],
-        }
-    }
 }
 
 /// GET /api/nodes/configuration
@@ -111,4 +103,12 @@ async fn save_node_configuration(
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
+}
+
+/// GET /api/nodes/definitions
+/// Returns all available node type definitions
+async fn get_node_definitions() -> Response {
+    let definitions = crate::nodes::get_all_node_definitions();
+    let response = ApiResponse::success(definitions);
+    (StatusCode::OK, Json(response)).into_response()
 }

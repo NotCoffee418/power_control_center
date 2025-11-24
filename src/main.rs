@@ -2,6 +2,7 @@ mod ac_controller;
 mod config;
 mod db;
 mod device_requests;
+mod nodes;
 mod types;
 mod webserver;
 
