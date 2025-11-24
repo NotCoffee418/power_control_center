@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { 
     SvelteFlow, 
     Controls, 
@@ -175,9 +175,10 @@
       }
 
       // Check if any selected nodes are default nodes
-      const hasDefaultNode = selectedNodes.some(n => n.data?.isDefault);
-      if (hasDefaultNode) {
-        alert('Cannot delete default nodes (OnEvaluate)');
+      const defaultNodes = selectedNodes.filter(n => n.data?.isDefault);
+      if (defaultNodes.length > 0) {
+        const defaultNodeNames = defaultNodes.map(n => n.data?.definition?.name || n.id).join(', ');
+        alert(`Cannot delete default nodes: ${defaultNodeNames}`);
         return;
       }
 
@@ -222,7 +223,8 @@
 
     // Check if it's a default node
     if (node.data?.isDefault) {
-      alert('Cannot delete default nodes (OnEvaluate)');
+      const nodeName = node.data?.definition?.name || node.id;
+      alert(`Cannot delete default node: ${nodeName}`);
       contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
       return;
     }
@@ -255,11 +257,11 @@
     
     // Add keyboard event listener
     window.addEventListener('keydown', handleKeyDown);
-    
-    // Clean up on unmount
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+  });
+
+  onDestroy(() => {
+    // Clean up keyboard event listener
+    window.removeEventListener('keydown', handleKeyDown);
   });
 
   // Handle node changes (position, selection, removal)
@@ -454,7 +456,7 @@
     {#if loading}
       <div class="loading">Loading node configuration...</div>
     {:else}
-      <div class="flow-container" onclick={closeContextMenu} onkeydown={closeContextMenu} role="button" tabindex="-1">
+      <div class="flow-container" onclick={closeContextMenu} onkeydown={closeContextMenu} role="presentation">
         <SvelteFlow 
           {nodes} 
           {edges}
@@ -764,11 +766,6 @@
 
   /* Style for invalid connection lines being drawn */
   :global(.svelte-flow__connectionline.invalid) {
-    stroke: #ff0000 !important;
-    stroke-width: 3px !important;
-  }
-
-  :global(.svelte-flow__connectionline:not(.valid)) {
     stroke: #ff0000 !important;
     stroke-width: 3px !important;
   }
