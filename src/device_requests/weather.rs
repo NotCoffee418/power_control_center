@@ -21,18 +21,26 @@ impl std::error::Error for WeatherError {}
 
 #[derive(Debug, Deserialize)]
 struct OpenMeteoResponse {
+    current: Option<CurrentData>,
     hourly: HourlyData,
 }
 
 #[derive(Debug, Deserialize)]
+struct CurrentData {
+    time: String,
+    temperature_2m: f64,
+}
+
+#[derive(Debug, Deserialize)]
 struct HourlyData {
+    time: Vec<String>,
     temperature_2m: Vec<f64>,
 }
 
 /// Get current outdoor temperature from Open-Meteo API
 pub async fn get_current_outdoor_temp(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
     let url = format!(
-        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&hourly=temperature_2m&forecast_days=1",
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&hourly=temperature_2m&forecast_days=2&current=temperature_2m",
         latitude, longitude
     );
     
@@ -45,17 +53,16 @@ pub async fn get_current_outdoor_temp(latitude: f64, longitude: f64) -> Result<f
         .await
         .map_err(|e| WeatherError::ParseError(e.to_string()))?;
     
-    // Get the first temperature value (current hour)
-    data.hourly.temperature_2m
-        .first()
-        .copied()
-        .ok_or_else(|| WeatherError::ParseError("No temperature data available".to_string()))
+    // Get current temperature from the dedicated current field
+    data.current
+        .map(|c| c.temperature_2m)
+        .ok_or_else(|| WeatherError::ParseError("No current temperature data available".to_string()))
 }
 
 /// Get average outdoor temperature for next 12 hours from Open-Meteo API
 pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
     let url = format!(
-        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&hourly=temperature_2m&forecast_days=2",
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&hourly=temperature_2m&forecast_days=2&current=temperature_2m",
         latitude, longitude
     );
     
@@ -68,14 +75,29 @@ pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Res
         .await
         .map_err(|e| WeatherError::ParseError(e.to_string()))?;
     
-    // Calculate average for next 12 hours (skip first hour which is current)
+    // Get the current time from the API response
+    let current_time = data.current
+        .as_ref()
+        .map(|c| &c.time)
+        .ok_or_else(|| WeatherError::ParseError("No current time data available".to_string()))?;
+    
+    // Find the index of the current hour in the hourly data
+    let current_hour_idx = data.hourly.time.iter()
+        .position(|t| t.starts_with(&current_time[..13])) // Match up to hour (YYYY-MM-DDTHH)
+        .ok_or_else(|| WeatherError::ParseError("Current hour not found in hourly data".to_string()))?;
+    
+    // Calculate average for next 12 hours (starting from the next hour after current)
     let temps = &data.hourly.temperature_2m;
-    if temps.len() < 2 {
+    if temps.len() <= current_hour_idx {
         return Err(WeatherError::ParseError("Insufficient forecast data".to_string()));
     }
     
-    // Take hours 1-12 (next 12 hours after current)
-    let forecast_temps: Vec<f64> = temps.iter().skip(1).take(12).copied().collect();
+    // Take hours from current_hour_idx+1 to current_hour_idx+12 (next 12 hours)
+    let forecast_temps: Vec<f64> = temps.iter()
+        .skip(current_hour_idx + 1)
+        .take(12)
+        .copied()
+        .collect();
     
     if forecast_temps.is_empty() {
         return Err(WeatherError::ParseError("No forecast data available".to_string()));
@@ -93,19 +115,20 @@ pub async fn compute_temperature_trend(latitude: f64, longitude: f64) -> Result<
     Ok(avg_next_12h - current_temp)
 }
 
-// Cache for weather data (5 minute TTL - weather doesn't change that fast)
+// Cache for weather data (14 minute TTL to avoid excessive API calls)
+// 14 minutes ensures we don't query more than once per loop cycle (5 minute intervals)
 static WEATHER_TEMP_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
 static WEATHER_TREND_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
 
 fn get_weather_temp_cache() -> &'static DataCache<f64> {
-    WEATHER_TEMP_CACHE.get_or_init(|| DataCache::new(300)) // 5 minutes
+    WEATHER_TEMP_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
 }
 
 fn get_weather_trend_cache() -> &'static DataCache<f64> {
-    WEATHER_TREND_CACHE.get_or_init(|| DataCache::new(300)) // 5 minutes
+    WEATHER_TREND_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
 }
 
-/// Get current outdoor temperature with caching (5 minute TTL)
+/// Get current outdoor temperature with caching (14 minute TTL)
 /// Recommended for dashboard use to reduce API calls
 /// Falls back to stale cache if API request fails
 pub async fn get_current_outdoor_temp_cached(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
@@ -117,7 +140,7 @@ pub async fn get_current_outdoor_temp_cached(latitude: f64, longitude: f64) -> R
     }).await
 }
 
-/// Get temperature trend with caching (5 minute TTL)
+/// Get temperature trend with caching (14 minute TTL)
 /// Recommended for dashboard use to reduce API calls
 /// Falls back to stale cache if API request fails
 pub async fn compute_temperature_trend_cached(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
