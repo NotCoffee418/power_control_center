@@ -19,8 +19,8 @@
   let nodeIdCounter = 100;
   
   // Context menu state
-  let contextMenu = $state({ visible: false, x: 0, y: 0, nodeId: null });
-  const CONTEXT_MENU_HIDDEN = { visible: false, x: 0, y: 0, nodeId: null };
+  let contextMenu = $state({ visible: false, x: 0, y: 0, nodeId: null, edgeId: null, type: null });
+  const CONTEXT_MENU_HIDDEN = { visible: false, x: 0, y: 0, nodeId: null, edgeId: null, type: null };
 
   // Helper functions
   function getNodeDisplayName(node) {
@@ -176,7 +176,7 @@
     });
   }
 
-  // Handle keyboard events for node deletion
+  // Handle keyboard events for node/edge deletion
   function handleKeyDown(event) {
     // Only handle if the event is not from an input element
     if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
@@ -186,50 +186,83 @@
     if (event.key === 'Delete' || event.key === 'Backspace') {
       // Find selected nodes
       const selectedNodes = nodes.filter(n => n.selected);
+      // Find selected edges
+      const selectedEdges = edges.filter(e => e.selected);
       
-      if (selectedNodes.length === 0) {
+      // If nothing selected, return
+      if (selectedNodes.length === 0 && selectedEdges.length === 0) {
         return;
       }
 
-      // Check if any selected nodes are default nodes
-      const defaultNodes = selectedNodes.filter(n => n.data?.isDefault);
-      if (defaultNodes.length > 0) {
-        const defaultNodeNames = defaultNodes.map(getNodeDisplayName).join(', ');
-        alert(`Cannot delete default nodes: ${defaultNodeNames}`);
-        return;
-      }
+      // Handle node deletion
+      if (selectedNodes.length > 0) {
+        // Check if any selected nodes are default nodes
+        const defaultNodes = selectedNodes.filter(n => n.data?.isDefault);
+        if (defaultNodes.length > 0) {
+          const defaultNodeNames = defaultNodes.map(getNodeDisplayName).join(', ');
+          alert(`Cannot delete default nodes: ${defaultNodeNames}`);
+          return;
+        }
 
-      // Confirm deletion
-      const nodeNames = selectedNodes.map(getNodeDisplayName).join(', ');
-      if (confirm(`Delete ${selectedNodes.length} node(s)?\n\n${nodeNames}`)) {
-        // Delete the selected nodes
-        const selectedIds = selectedNodes.map(n => n.id);
-        nodes = nodes.filter(n => !selectedIds.includes(n.id));
-        
-        // Also remove edges connected to deleted nodes
-        edges = edges.filter(e => 
-          !selectedIds.includes(e.source) && !selectedIds.includes(e.target)
-        );
+        // Confirm deletion
+        const nodeNames = selectedNodes.map(getNodeDisplayName).join(', ');
+        if (confirm(`Delete ${selectedNodes.length} node(s)?\n\n${nodeNames}`)) {
+          // Delete the selected nodes
+          const selectedIds = selectedNodes.map(n => n.id);
+          nodes = nodes.filter(n => !selectedIds.includes(n.id));
+          
+          // Also remove edges connected to deleted nodes
+          edges = edges.filter(e => 
+            !selectedIds.includes(e.source) && !selectedIds.includes(e.target)
+          );
+        }
+      }
+      
+      // Handle edge deletion
+      if (selectedEdges.length > 0 && selectedNodes.length === 0) {
+        if (confirm(`Delete ${selectedEdges.length} connection(s)?`)) {
+          const selectedEdgeIds = selectedEdges.map(e => e.id);
+          edges = edges.filter(e => !selectedEdgeIds.includes(e.id));
+        }
       }
     }
   }
 
   // Handle node context menu (right-click)
-  function handleNodeContextMenu(event) {
-    // The native event is in event.detail.event
-    const nativeEvent = event.detail?.event;
-    if (nativeEvent) {
-      nativeEvent.preventDefault();
-    }
+  function handleNodeContextMenu({ node, event }) {
+    // Prevent the browser's default context menu
+    event.preventDefault();
+    event.stopPropagation();
     
-    const nodeId = event.detail?.node?.id;
+    const nodeId = node?.id;
     if (!nodeId) return;
     
     contextMenu = {
       visible: true,
-      x: nativeEvent?.clientX || 0,
-      y: nativeEvent?.clientY || 0,
-      nodeId: nodeId
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: nodeId,
+      edgeId: null,
+      type: 'node'
+    };
+  }
+
+  // Handle edge context menu (right-click)
+  function handleEdgeContextMenu({ edge, event }) {
+    // Prevent the browser's default context menu
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const edgeId = edge?.id;
+    if (!edgeId) return;
+    
+    contextMenu = {
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: null,
+      edgeId: edgeId,
+      type: 'edge'
     };
   }
 
@@ -258,6 +291,23 @@
       edges = edges.filter(e => 
         e.source !== contextMenu.nodeId && e.target !== contextMenu.nodeId
       );
+    }
+    
+    resetContextMenu();
+  }
+
+  // Delete edge from context menu
+  function deleteEdgeFromMenu() {
+    const edgeId = contextMenu.edgeId;
+    
+    if (!edgeId) {
+      resetContextMenu();
+      return;
+    }
+
+    // Confirm deletion
+    if (confirm('Delete this connection?')) {
+      edges = edges.filter(e => e.id !== edgeId);
     }
     
     resetContextMenu();
@@ -392,6 +442,14 @@
     if (!details) return false;
 
     const { sourceOutput, targetInput } = details;
+
+    // Check if the target handle already has a connection (inputs can only have one connection)
+    const existingConnection = edges.find(
+      e => e.target === connection.target && e.targetHandle === connection.targetHandle
+    );
+    if (existingConnection) {
+      return false;
+    }
 
     // Check if types are compatible
     const sourceType = sourceOutput.value_type?.type;
@@ -530,6 +588,7 @@
           onconnect={onConnect}
           isValidConnection={isValidConnection}
           onnodecontextmenu={handleNodeContextMenu}
+          onedgecontextmenu={handleEdgeContextMenu}
           fitView
         >
           <Controls />
@@ -547,9 +606,15 @@
             role="menu"
             tabindex="-1"
           >
-            <button onclick={deleteNodeFromMenu} class="context-menu-item">
-              🗑️ Delete Node
-            </button>
+            {#if contextMenu.type === 'node'}
+              <button onclick={deleteNodeFromMenu} class="context-menu-item">
+                🗑️ Delete Node
+              </button>
+            {:else if contextMenu.type === 'edge'}
+              <button onclick={deleteEdgeFromMenu} class="context-menu-item">
+                🗑️ Delete Connection
+              </button>
+            {/if}
           </div>
         {/if}
       </div>
