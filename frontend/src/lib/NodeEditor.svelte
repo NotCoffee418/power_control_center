@@ -7,6 +7,7 @@
     MiniMap
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
+  import CustomNode from './CustomNode.svelte';
 
   // Node and edge state
   let nodes = $state([]);
@@ -16,6 +17,11 @@
   let saveStatus = $state('');
   let searchQuery = $state('');
   let nodeIdCounter = 100;
+
+  // Custom node types
+  const nodeTypes = {
+    custom: CustomNode
+  };
 
   // Category colors
   const categoryColors = {
@@ -76,11 +82,9 @@
 
   // Create a node from a definition
   function createNodeFromDefinition(definition, id, position, isDefault = false) {
-    const color = categoryColors[definition.category] || categoryColors['default'];
-    
     return {
       id: id,
-      type: 'default',
+      type: 'custom',
       position: position,
       data: {
         label: definition.name,
@@ -88,9 +92,6 @@
         definition: definition,
         isDefault: isDefault, // OnEvaluate is default and cannot be deleted
       },
-      style: `background: ${color}; color: white; padding: 10px; border-radius: 5px; min-width: 200px;`,
-      sourcePosition: 'right', // Outputs on the right
-      targetPosition: 'left',  // Inputs on the left
     };
   }
 
@@ -202,7 +203,43 @@
   }
 
   function onConnect(connection) {
-    edges = [...edges, { ...connection, id: `e${connection.source}-${connection.target}` }];
+    // Validate connection types
+    const sourceNode = nodes.find(n => n.id === connection.source);
+    const targetNode = nodes.find(n => n.id === connection.target);
+    
+    if (!sourceNode || !targetNode) {
+      return;
+    }
+
+    const sourceOutput = sourceNode.data.definition.outputs.find(
+      o => o.id === connection.sourceHandle
+    );
+    const targetInput = targetNode.data.definition.inputs.find(
+      i => i.id === connection.targetHandle
+    );
+
+    if (!sourceOutput || !targetInput) {
+      return;
+    }
+
+    // Check if types are compatible
+    const sourceType = sourceOutput.value_type.type;
+    const targetType = targetInput.value_type.type;
+    
+    // Allow Object type to connect to anything (it's a complex/generic type)
+    if (sourceType !== targetType && sourceType !== 'Object' && targetType !== 'Object') {
+      saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+      setTimeout(() => saveStatus = '', 3000);
+      return;
+    }
+
+    // Create the edge
+    edges = [...edges, { 
+      ...connection, 
+      id: `e${connection.source}-${connection.sourceHandle}-${connection.target}-${connection.targetHandle}`,
+      animated: true,
+      style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
+    }];
   }
 </script>
 
@@ -244,7 +281,7 @@
               <button 
                 onclick={() => addNodeFromDefinition(def)}
                 class="node-add-btn"
-                style="border-left: 4px solid {categoryColors[def.category] || categoryColors['default']}"
+                style="border-left: 4px solid {def.color}"
               >
                 <div class="node-item-header">
                   <span class="node-name">{def.name}</span>
@@ -252,18 +289,29 @@
                 </div>
                 <div class="node-item-desc">{def.description}</div>
                 <div class="node-item-ports">
-                  <span class="port-info">
-                    {#if def.inputs.length > 0}
-                      ⬅ {def.inputs.length} input{def.inputs.length !== 1 ? 's' : ''}
-                    {/if}
-                    {#if def.outputs.length > 0}
-                      {#if def.inputs.length > 0} • {/if}
-                      {def.outputs.length} output{def.outputs.length !== 1 ? 's' : ''} ➡
-                    {/if}
-                    {#if def.inputs.length === 0 && def.outputs.length === 0}
-                      No ports
-                    {/if}
-                  </span>
+                  {#if def.inputs.length > 0}
+                    <div class="port-list">
+                      <span class="port-list-title">⬅ Inputs:</span>
+                      {#each def.inputs as input}
+                        <span class="port-badge" style="background: {input.color};" title={input.description}>
+                          {input.label}
+                        </span>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if def.outputs.length > 0}
+                    <div class="port-list">
+                      <span class="port-list-title">Outputs ➡</span>
+                      {#each def.outputs as output}
+                        <span class="port-badge" style="background: {output.color};" title={output.description}>
+                          {output.label}
+                        </span>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if def.inputs.length === 0 && def.outputs.length === 0}
+                    <span class="port-info">No ports</span>
+                  {/if}
                 </div>
               </button>
             </div>
@@ -279,6 +327,7 @@
         <SvelteFlow 
           {nodes} 
           {edges}
+          {nodeTypes}
           onnodeschange={onNodesChange}
           onedgeschange={onEdgesChange}
           onconnect={onConnect}
@@ -445,6 +494,33 @@
   .node-item-ports {
     font-size: 0.75rem;
     color: #999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .port-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+  }
+
+  .port-list-title {
+    font-weight: 600;
+    margin-right: 0.25rem;
+    color: #555;
+  }
+
+  .port-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    color: white;
+    font-weight: 500;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   }
 
   .port-info {
