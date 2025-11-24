@@ -95,7 +95,7 @@ pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Res
     // Calculate average for next 12 hours (starting from the next hour after current)
     let temps = &data.hourly.temperature_2m;
     if temps.len() <= current_hour_idx {
-        return Err(WeatherError::ParseError("Insufficient forecast data".to_string()));
+        return Err(WeatherError::ParseError("Insufficient forecast data after current hour".to_string()));
     }
     
     // Take hours from current_hour_idx+1 to current_hour_idx+12 (next 12 hours)
@@ -105,8 +105,17 @@ pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Res
         .copied()
         .collect();
     
+    // We need at least some forecast data (even if less than 12 hours)
     if forecast_temps.is_empty() {
-        return Err(WeatherError::ParseError("No forecast data available".to_string()));
+        return Err(WeatherError::ParseError("No forecast data available for next hours".to_string()));
+    }
+    
+    // Log a warning if we have less than 12 hours of forecast
+    if forecast_temps.len() < 12 {
+        log::warn!(
+            "Only {} hours of forecast available (requested 12). Using available data for average.",
+            forecast_temps.len()
+        );
     }
     
     let sum: f64 = forecast_temps.iter().sum();
@@ -253,6 +262,25 @@ mod tests {
         assert_eq!(forecast.len(), 12);
         assert_eq!(forecast[0], 11.0); // First value should be hour 11
         assert_eq!(forecast[11], 22.0); // Last value should be hour 22
+    }
+
+    #[test]
+    fn test_next_12_hours_with_limited_data() {
+        // Test that we handle cases where less than 12 hours are available
+        let temps: Vec<f64> = (0..20).map(|i| i as f64).collect();
+        let current_hour_idx = 15;
+        
+        // Extract next hours (should get less than 12)
+        let forecast: Vec<f64> = temps.iter()
+            .skip(current_hour_idx + 1)
+            .take(12)
+            .copied()
+            .collect();
+        
+        // Should get only 4 hours (16, 17, 18, 19)
+        assert_eq!(forecast.len(), 4);
+        assert_eq!(forecast[0], 16.0);
+        assert_eq!(forecast[3], 19.0);
     }
 
     // Note: Integration tests with actual API calls are not included here
