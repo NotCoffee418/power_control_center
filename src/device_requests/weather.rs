@@ -81,9 +81,15 @@ pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Res
         .map(|c| &c.time)
         .ok_or_else(|| WeatherError::ParseError("No current time data available".to_string()))?;
     
+    // Extract hour prefix (YYYY-MM-DDTHH) - validate length first
+    let hour_prefix = current_time.get(..13)
+        .ok_or_else(|| WeatherError::ParseError(
+            format!("Invalid current time format: {}", current_time)
+        ))?;
+    
     // Find the index of the current hour in the hourly data
     let current_hour_idx = data.hourly.time.iter()
-        .position(|t| t.starts_with(&current_time[..13])) // Match up to hour (YYYY-MM-DDTHH)
+        .position(|t| t.starts_with(hour_prefix))
         .ok_or_else(|| WeatherError::ParseError("Current hour not found in hourly data".to_string()))?;
     
     // Calculate average for next 12 hours (starting from the next hour after current)
@@ -224,7 +230,8 @@ mod tests {
         ];
         
         let current_time = "2025-11-24T11:45";
-        let prefix = &current_time[..13]; // "2025-11-24T11"
+        // Use safe string slicing with get()
+        let prefix = current_time.get(..13).expect("Valid time format");
         
         let idx = times.iter().position(|t| t.starts_with(prefix));
         assert_eq!(idx, Some(2)); // Should find index 2
