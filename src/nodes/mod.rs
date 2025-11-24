@@ -1,5 +1,7 @@
 mod node_system;
 mod ac_planner_nodes;
+#[cfg(test)]
+mod integration_test;
 
 pub use node_system::{Node, NodeInput, NodeOutput, NodeDefinition, ValueType};
 pub use ac_planner_nodes::{
