@@ -4,6 +4,10 @@
   <img src="preview.png" alt="Power Control Center Dashboard" width="400">
 </a>
 
+## About
+
+Power Control Center is a central hub for temperature and power management in your home. It integrates with various ESP32-based devices to monitor and control air conditioning units based on temperature, power consumption, and presence detection. The system provides a unified web dashboard to monitor and manage all connected devices.
+
 ## Web Dashboard
 
 The web dashboard is accessible on port 9040 by default. For example: http://raspberrypi.local:9040
@@ -55,7 +59,7 @@ The installer will:
 sudo nano /etc/power_control_center/config.json
 ```
 
-Use the example configuration below and adjust to your needs.
+See the [Configuration](#configuration) section below for detailed information about all available options. You can also reference [config-example.json](config-example.json) for a complete example.
 
 2. Enable and start the service:
 ```bash
@@ -127,16 +131,51 @@ curl -X POST "http://localhost:9040/api/pir/alive?device=Veranda" \
   -H "Authorization: ApiKey your_pir_api_key_here"
 ```
 
-### Configuration
+## Configuration
 
-Add the following fields to your config.json:
+The configuration file should be created at `/etc/power_control_center/config.json`. See [config-example.json](config-example.json) for a complete example.
+
+### Configuration Fields
 
 ```json
 {
-  "pir_api_key": "your_secure_api_key_here",
-  "pir_timeout_minutes": 5
+    "database_path": "/var/lib/power_control_center/pcc.db",
+    "listen_address": "0.0.0.0",
+    "listen_port": 9040,
+    "smart_meter_api_endpoint": "http://raspberrypi.local:9039",
+    "ac_controller_endpoints": {
+        "LivingRoom": {
+            "endpoint": "http://192.168.50.201",
+            "api_key": "secret123"
+        },
+        "Veranda": {
+            "endpoint": "http://192.168.50.202",
+            "api_key": "secret456"
+        }
+    },
+    "latitude": 51.5074,
+    "longitude": -0.1278,
+    "pir_api_key": "your_pir_api_key_here",
+    "pir_timeout_minutes": 5
 }
 ```
 
-- `pir_api_key`: API key for authenticating PIR device requests (optional, defaults to empty/no auth)
-- `pir_timeout_minutes`: Number of minutes to keep AC off after PIR detection (optional, defaults to 5)
+#### Field Descriptions
+
+- **`database_path`**: Path to the SQLite database file. Default: `/var/lib/power_control_center/pcc.db` (recommended to keep default)
+
+- **`listen_address`**: IP address the web server will bind to. Default: `0.0.0.0` (all interfaces, recommended to keep default)
+
+- **`listen_port`**: Port number for the web dashboard. Default: `9040` (recommended to keep default)
+
+- **`smart_meter_api_endpoint`**: URL to your [european_smart_meter](https://github.com/NotCoffee418/european_smart_meter) API endpoint. Configure this based on how you set up the smart meter API.
+
+- **`ac_controller_endpoints`**: Object mapping room names to AC controller configurations. Each entry requires:
+  - `endpoint`: URL to the [esp32-ir-airco-controller](https://github.com/NotCoffee418/esp32-ir-airco-controller) device
+  - `api_key`: API key for the device (generated through the device's dashboard)
+
+- **`latitude`** and **`longitude`**: Geographic coordinates for your location. Used for solar calculations and automation. You'll need to find your own coordinates.
+
+- **`pir_api_key`**: API key for authenticating [ac-pir-detector](https://github.com/NotCoffee418/ac-pir-detector) requests. This is an arbitrary key that must match what you configured on the PIR device. (optional, defaults to empty/no auth)
+
+- **`pir_timeout_minutes`**: Number of minutes to keep AC off after PIR motion detection. Default: `5` (optional)
