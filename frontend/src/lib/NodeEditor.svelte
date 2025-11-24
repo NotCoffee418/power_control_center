@@ -8,6 +8,7 @@
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import CustomNode from './CustomNode.svelte';
+  import ReconnectableEdge from './ReconnectableEdge.svelte';
 
   // Node and edge state
   let nodes = $state([]);
@@ -17,10 +18,28 @@
   let saveStatus = $state('');
   let searchQuery = $state('');
   let nodeIdCounter = 100;
+  
+  // Context menu state
+  let contextMenu = $state({ visible: false, x: 0, y: 0, nodeId: null, edgeId: null, type: null });
+  const CONTEXT_MENU_HIDDEN = { visible: false, x: 0, y: 0, nodeId: null, edgeId: null, type: null };
+
+  // Helper functions
+  function getNodeDisplayName(node) {
+    return node?.data?.definition?.name || node?.id || 'Unknown';
+  }
+
+  function resetContextMenu() {
+    contextMenu = { ...CONTEXT_MENU_HIDDEN };
+  }
 
   // Custom node types
   const nodeTypes = {
     custom: CustomNode
+  };
+
+  // Custom edge types with reconnect anchors
+  const edgeTypes = {
+    default: ReconnectableEdge
   };
 
   // Category colors
@@ -163,6 +182,105 @@
     });
   }
 
+  // Handle node context menu (right-click)
+  function handleNodeContextMenu({ node, event }) {
+    // Prevent the browser's default context menu
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const nodeId = node?.id;
+    if (!nodeId) return;
+    
+    contextMenu = {
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: nodeId,
+      edgeId: null,
+      type: 'node'
+    };
+  }
+
+  // Handle edge context menu (right-click)
+  function handleEdgeContextMenu({ edge, event }) {
+    // Prevent the browser's default context menu
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const edgeId = edge?.id;
+    if (!edgeId) return;
+    
+    contextMenu = {
+      visible: true,
+      x: event.clientX,
+      y: event.clientY,
+      nodeId: null,
+      edgeId: edgeId,
+      type: 'edge'
+    };
+  }
+
+  // Delete node from context menu
+  function deleteNodeFromMenu() {
+    const node = nodes.find(n => n.id === contextMenu.nodeId);
+    
+    if (!node) {
+      resetContextMenu();
+      return;
+    }
+
+    // Check if it's a default node
+    if (node.data?.isDefault) {
+      alert(`Cannot delete default node: ${getNodeDisplayName(node)}`);
+      resetContextMenu();
+      return;
+    }
+
+    // Confirm deletion
+    if (confirm(`Delete node "${getNodeDisplayName(node)}"?`)) {
+      // Delete the node
+      nodes = nodes.filter(n => n.id !== contextMenu.nodeId);
+      
+      // Also remove edges connected to deleted node
+      edges = edges.filter(e => 
+        e.source !== contextMenu.nodeId && e.target !== contextMenu.nodeId
+      );
+    }
+    
+    resetContextMenu();
+  }
+
+  // Delete edge from context menu
+  function deleteEdgeFromMenu() {
+    const edgeId = contextMenu.edgeId;
+    
+    if (!edgeId) {
+      resetContextMenu();
+      return;
+    }
+
+    // Confirm deletion
+    if (confirm('Delete this connection?')) {
+      edges = edges.filter(e => e.id !== edgeId);
+    }
+    
+    resetContextMenu();
+  }
+
+  // Close context menu when clicking elsewhere
+  function closeContextMenu() {
+    if (contextMenu.visible) {
+      resetContextMenu();
+    }
+  }
+
+  // Close context menu on Escape key
+  function handleContextMenuKeyDown(event) {
+    if (event.key === 'Escape' && contextMenu.visible) {
+      resetContextMenu();
+    }
+  }
+
   onMount(async () => {
     await loadNodeDefinitions();
     await loadConfiguration();
@@ -170,12 +288,29 @@
 
   // Handle node changes (position, selection, removal)
   function onNodesChange(changes) {
+    let nodesModified = false;
+    
     changes.forEach(change => {
-      if (change.type === 'position' && change.dragging === false) {
-        // Update node position
+      if (change.type === 'position') {
+        // Update node position (during and after drag)
         const nodeIndex = nodes.findIndex(n => n.id === change.id);
         if (nodeIndex !== -1 && change.position) {
-          nodes[nodeIndex].position = change.position;
+          nodes[nodeIndex] = {
+            ...nodes[nodeIndex],
+            position: change.position,
+            dragging: change.dragging
+          };
+          nodesModified = true;
+        }
+      } else if (change.type === 'select') {
+        // Update node selection state
+        const nodeIndex = nodes.findIndex(n => n.id === change.id);
+        if (nodeIndex !== -1) {
+          nodes[nodeIndex] = {
+            ...nodes[nodeIndex],
+            selected: change.selected
+          };
+          nodesModified = true;
         }
       } else if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
@@ -187,30 +322,50 @@
         }
         // Remove node
         nodes = nodes.filter(n => n.id !== change.id);
+        nodesModified = true;
       }
     });
-    // Trigger reactivity
-    nodes = nodes;
+    
+    // Trigger reactivity only if modified
+    if (nodesModified) {
+      nodes = [...nodes];
+    }
   }
 
   function onEdgesChange(changes) {
+    let edgesModified = false;
+    
     changes.forEach(change => {
       if (change.type === 'remove') {
         // Remove edge
         edges = edges.filter(e => e.id !== change.id);
+        edgesModified = true;
+      } else if (change.type === 'select') {
+        // Update edge selection state
+        const edgeIndex = edges.findIndex(e => e.id === change.id);
+        if (edgeIndex !== -1) {
+          edges[edgeIndex] = {
+            ...edges[edgeIndex],
+            selected: change.selected
+          };
+          edgesModified = true;
+        }
       }
     });
-    // Trigger reactivity
-    edges = edges;
+    
+    // Trigger reactivity only if modified
+    if (edgesModified) {
+      edges = [...edges];
+    }
   }
 
-  function onConnect(connection) {
-    // Validate connection types
+  // Helper function to get connection details
+  function getConnectionDetails(connection) {
     const sourceNode = nodes.find(n => n.id === connection.source);
     const targetNode = nodes.find(n => n.id === connection.target);
     
     if (!sourceNode || !targetNode) {
-      return;
+      return null;
     }
 
     const sourceOutput = sourceNode.data.definition.outputs.find(
@@ -221,33 +376,165 @@
     );
 
     if (!sourceOutput || !targetInput) {
-      return;
+      return null;
+    }
+
+    return { sourceNode, targetNode, sourceOutput, targetInput };
+  }
+
+  // Check if a connection is valid based on type compatibility
+  function isValidConnection(connection) {
+    const details = getConnectionDetails(connection);
+    if (!details) return false;
+
+    const { sourceOutput, targetInput } = details;
+
+    // Check if the target handle already has a connection (inputs can only have one connection)
+    const existingConnection = edges.find(
+      e => e.target === connection.target && e.targetHandle === connection.targetHandle
+    );
+    if (existingConnection) {
+      return false;
     }
 
     // Check if types are compatible
-    // ValueType is serialized as {type: "Float"} or {type: "Enum", value: [...]}
     const sourceType = sourceOutput.value_type?.type;
     const targetType = targetInput.value_type?.type;
     
     if (!sourceType || !targetType) {
-      console.error('Missing type information', sourceOutput, targetInput);
-      return;
+      return false;
     }
     
     // Allow Object type to connect to anything (it's a complex/generic type)
     if (sourceType !== targetType && sourceType !== 'Object' && targetType !== 'Object') {
-      saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-      setTimeout(() => saveStatus = '', 3000);
+      return false;
+    }
+
+    return true;
+  }
+
+  function onConnect(connection) {
+    // Validate connection using isValidConnection
+    if (!isValidConnection(connection)) {
+      // Get details for error message
+      const details = getConnectionDetails(connection);
+      if (details) {
+        const { sourceOutput, targetInput } = details;
+        const sourceType = sourceOutput.value_type?.type;
+        const targetType = targetInput.value_type?.type;
+        saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        setTimeout(() => saveStatus = '', 3000);
+      }
       return;
     }
 
-    // Create the edge
+    // Get connection details for edge creation
+    const details = getConnectionDetails(connection);
+    if (!details) return;
+
+    const { sourceOutput } = details;
+
+    // Create the edge with reconnectable enabled
     edges = [...edges, { 
       ...connection, 
       id: `e${connection.source}-${connection.sourceHandle}-${connection.target}-${connection.targetHandle}`,
       animated: true,
+      reconnectable: true,
+      type: 'default',
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
+  }
+
+  // Handle edge reconnection
+  function onReconnect(oldEdge, newConnection) {
+    // Validate the new connection
+    if (!isValidConnection(newConnection)) {
+      const details = getConnectionDetails(newConnection);
+      if (details) {
+        const { sourceOutput, targetInput } = details;
+        const sourceType = sourceOutput.value_type?.type;
+        const targetType = targetInput.value_type?.type;
+        saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        setTimeout(() => saveStatus = '', 3000);
+      }
+      return;
+    }
+
+    // Get connection details for edge styling
+    const details = getConnectionDetails(newConnection);
+    if (!details) return;
+
+    const { sourceOutput } = details;
+
+    // Update edges: remove old edge, add new one
+    edges = edges.filter(e => e.id !== oldEdge.id);
+    edges = [...edges, {
+      ...newConnection,
+      id: `e${newConnection.source}-${newConnection.sourceHandle}-${newConnection.target}-${newConnection.targetHandle}`,
+      animated: true,
+      reconnectable: true,
+      type: 'default',
+      style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
+    }];
+  }
+
+  // Handle reconnection end - if dropped without a valid target, remove the edge
+  function onReconnectEnd(event, edge, handleType) {
+    // Check if the edge still has valid connections
+    // If the user right-clicked or dropped without connecting, we should remove the edge
+    // The edge will be removed if it was being reconnected and dropped on empty space
+    
+    // We use a small timeout to check if a new connection was made
+    setTimeout(() => {
+      // Check if the original edge still exists (wasn't replaced by onReconnect)
+      const originalEdge = edges.find(e => e.id === edge.id);
+      if (originalEdge) {
+        // Edge still exists, check if user canceled (right-click usually cancels)
+        // For now we keep the edge - the user can use context menu to delete
+      }
+    }, 100);
+  }
+
+  // Handle native delete from SvelteFlow (DEL key)
+  function onDelete({ nodes: nodesToDelete, edges: edgesToDelete }) {
+    // Check if any nodes to delete are default nodes
+    const defaultNodes = nodesToDelete.filter(n => n.data?.isDefault);
+    if (defaultNodes.length > 0) {
+      const defaultNodeNames = defaultNodes.map(getNodeDisplayName).join(', ');
+      alert(`Cannot delete default nodes: ${defaultNodeNames}`);
+      return false; // Prevent deletion
+    }
+
+    // Build confirmation message
+    let message = '';
+    if (nodesToDelete.length > 0) {
+      const nodeNames = nodesToDelete.map(getNodeDisplayName).join(', ');
+      message += `Delete ${nodesToDelete.length} node(s)?\n\n${nodeNames}`;
+    }
+    if (edgesToDelete.length > 0) {
+      if (message) message += '\n\n';
+      message += `Delete ${edgesToDelete.length} connection(s)?`;
+    }
+
+    if (message && confirm(message)) {
+      // Remove nodes
+      if (nodesToDelete.length > 0) {
+        const nodeIds = nodesToDelete.map(n => n.id);
+        nodes = nodes.filter(n => !nodeIds.includes(n.id));
+        // Also remove edges connected to deleted nodes
+        edges = edges.filter(e => 
+          !nodeIds.includes(e.source) && !nodeIds.includes(e.target)
+        );
+      }
+      
+      // Remove edges
+      if (edgesToDelete.length > 0) {
+        const edgeIds = edgesToDelete.map(e => e.id);
+        edges = edges.filter(e => !edgeIds.includes(e.id));
+      }
+    }
+    
+    return false; // We handle deletion ourselves
   }
 </script>
 
@@ -331,20 +618,50 @@
     {#if loading}
       <div class="loading">Loading node configuration...</div>
     {:else}
-      <div class="flow-container">
+      <div class="flow-container" onclick={closeContextMenu} onkeydown={handleContextMenuKeyDown} role="application">
         <SvelteFlow 
           {nodes} 
           {edges}
           {nodeTypes}
+          {edgeTypes}
           onnodeschange={onNodesChange}
           onedgeschange={onEdgesChange}
           onconnect={onConnect}
+          onreconnect={onReconnect}
+          onreconnectend={onReconnectEnd}
+          ondelete={onDelete}
+          isValidConnection={isValidConnection}
+          onnodecontextmenu={handleNodeContextMenu}
+          onedgecontextmenu={handleEdgeContextMenu}
+          deleteKeyCode="Delete"
           fitView
         >
           <Controls />
           <Background />
           <MiniMap />
         </SvelteFlow>
+        
+        <!-- Context menu -->
+        {#if contextMenu.visible}
+          <div 
+            class="context-menu" 
+            style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="menu"
+            tabindex="-1"
+          >
+            {#if contextMenu.type === 'node'}
+              <button onclick={deleteNodeFromMenu} class="context-menu-item">
+                🗑️ Delete Node
+              </button>
+            {:else if contextMenu.type === 'edge'}
+              <button onclick={deleteEdgeFromMenu} class="context-menu-item">
+                🗑️ Delete Connection
+              </button>
+            {/if}
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -619,6 +936,40 @@
   :global(.svelte-flow__edge.animated path) {
     stroke-dasharray: 5;
     animation: dashdraw 0.5s linear infinite;
+  }
+
+  /* Style for invalid connection lines being drawn */
+  :global(.svelte-flow__connectionline.invalid) {
+    stroke: #ff0000 !important;
+    stroke-width: 3px !important;
+  }
+
+  /* Context menu */
+  .context-menu {
+    position: fixed;
+    background: #2d2d2d;
+    border: 1px solid #404040;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    min-width: 150px;
+    overflow: hidden;
+  }
+
+  .context-menu-item {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    color: #e0e0e0;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+  }
+
+  .context-menu-item:hover {
+    background: #3d3d3d;
   }
 
   @keyframes dashdraw {

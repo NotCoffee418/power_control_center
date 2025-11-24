@@ -35,14 +35,6 @@
     }
   });
 
-  // Calculate handle positions
-  function getHandleStyle(index, total) {
-    // Distribute handles evenly along the side
-    const spacing = 100 / (total + 1);
-    const position = spacing * (index + 1);
-    return `top: ${position}%`;
-  }
-
   // Add a new input pin for dynamic logic nodes
   function addInput() {
     const nextIndex = dynamicInputs.length + 1;
@@ -165,7 +157,7 @@
           type="target"
           position={Position.Left}
           id={input.id}
-          style="background: {input.color}; border-color: {input.color}; {getHandleStyle(i, getDisplayInputs().length)}"
+          style="background: {input.color}; border-color: {input.color};"
           class="custom-handle"
           title="{input.label} ({input.value_type.type})"
         />
@@ -188,7 +180,7 @@
           type="source"
           position={Position.Right}
           id={output.id}
-          style="background: {output.color}; border-color: {output.color}; {getHandleStyle(i, outputs.length)}"
+          style="background: {output.color}; border-color: {output.color};"
           class="custom-handle"
           title="{output.label} ({output.value_type.type})"
         />
@@ -330,7 +322,8 @@
     display: flex;
     align-items: center;
     position: relative;
-    min-height: 20px;
+    min-height: 28px;
+    height: 28px;
     font-size: 12px;
   }
 
@@ -380,11 +373,15 @@
   /* Override default handle positioning to align with text */
   :global(.custom-handle.target) {
     left: -5px;
-    transform: translateY(0);
+    transform: translateY(-50%);
+    top: 50%;
+    position: absolute;
   }
 
   :global(.custom-handle.source) {
     right: -5px;
-    transform: translateY(0);
+    transform: translateY(-50%);
+    top: 50%;
+    position: absolute;
   }
 </style>
