@@ -288,30 +288,26 @@
 
   // Handle node changes (position, selection, removal)
   function onNodesChange(changes) {
-    let nodesModified = false;
+    // Process all changes and build a map of updates to apply
+    const updates = new Map();
+    const removals = new Set();
     
     changes.forEach(change => {
-      if (change.type === 'position') {
-        // Update node position (during and after drag)
-        const nodeIndex = nodes.findIndex(n => n.id === change.id);
-        if (nodeIndex !== -1 && change.position) {
-          nodes[nodeIndex] = {
-            ...nodes[nodeIndex],
-            position: change.position,
-            dragging: change.dragging
-          };
-          nodesModified = true;
-        }
+      if (change.type === 'position' && change.position) {
+        // Queue position update
+        const existing = updates.get(change.id) || {};
+        updates.set(change.id, {
+          ...existing,
+          position: change.position,
+          dragging: change.dragging
+        });
       } else if (change.type === 'select') {
-        // Update node selection state
-        const nodeIndex = nodes.findIndex(n => n.id === change.id);
-        if (nodeIndex !== -1) {
-          nodes[nodeIndex] = {
-            ...nodes[nodeIndex],
-            selected: change.selected
-          };
-          nodesModified = true;
-        }
+        // Queue selection update
+        const existing = updates.get(change.id) || {};
+        updates.set(change.id, {
+          ...existing,
+          selected: change.selected
+        });
       } else if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
         const node = nodes.find(n => n.id === change.id);
@@ -320,42 +316,55 @@
           setTimeout(() => saveStatus = '', 3000);
           return;
         }
-        // Remove node
-        nodes = nodes.filter(n => n.id !== change.id);
-        nodesModified = true;
+        // Queue removal
+        removals.add(change.id);
       }
     });
     
-    // Trigger reactivity only if modified
-    if (nodesModified) {
-      nodes = [...nodes];
+    // Apply all updates immutably using map
+    if (updates.size > 0 || removals.size > 0) {
+      nodes = nodes
+        .filter(n => !removals.has(n.id))
+        .map(node => {
+          const update = updates.get(node.id);
+          if (update) {
+            return { ...node, ...update };
+          }
+          return node;
+        });
     }
   }
 
   function onEdgesChange(changes) {
-    let edgesModified = false;
+    // Process all changes and build maps of updates/removals
+    const updates = new Map();
+    const removals = new Set();
     
     changes.forEach(change => {
       if (change.type === 'remove') {
-        // Remove edge
-        edges = edges.filter(e => e.id !== change.id);
-        edgesModified = true;
+        // Queue removal
+        removals.add(change.id);
       } else if (change.type === 'select') {
-        // Update edge selection state
-        const edgeIndex = edges.findIndex(e => e.id === change.id);
-        if (edgeIndex !== -1) {
-          edges[edgeIndex] = {
-            ...edges[edgeIndex],
-            selected: change.selected
-          };
-          edgesModified = true;
-        }
+        // Queue selection update
+        const existing = updates.get(change.id) || {};
+        updates.set(change.id, {
+          ...existing,
+          selected: change.selected
+        });
       }
     });
     
-    // Trigger reactivity only if modified
-    if (edgesModified) {
-      edges = [...edges];
+    // Apply all updates immutably using map
+    if (updates.size > 0 || removals.size > 0) {
+      edges = edges
+        .filter(e => !removals.has(e.id))
+        .map(edge => {
+          const update = updates.get(edge.id);
+          if (update) {
+            return { ...edge, ...update };
+          }
+          return edge;
+        });
     }
   }
 
