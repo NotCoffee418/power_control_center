@@ -19,10 +19,13 @@ const TOO_HOT_THRESHOLD: f64 = 27.0; // °C
 const SIGNIFICANT_TEMP_CHANGE: f64 = 3.0; // °C
 
 /// Ice Exception: Outdoor temperature threshold below which AC should be off
-const ICE_EXCEPTION_OUTDOOR_THRESHOLD: f64 = 5.0; // °C
+const ICE_EXCEPTION_OUTDOOR_THRESHOLD: f64 = 2.0; // °C
 
 /// Ice Exception: Indoor temperature threshold below which we override the ice exception
 const ICE_EXCEPTION_INDOOR_OVERRIDE: f64 = 12.0; // °C
+
+/// Ice Exception: Solar production threshold above which we ignore the ice exception (in Watts)
+const ICE_EXCEPTION_SOLAR_BYPASS_THRESHOLD: u32 = 1000; // Watts
 
 /// Buffer around comfortable temperature range for "mild temperature" classification
 /// Outdoor temperatures within this buffer of the comfortable range are considered mild
@@ -152,16 +155,21 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
 /// Get the desired AC plan based on provided conditions
 /// This is a pure function that can be easily unit tested
 pub(super) fn get_plan(input: &PlanInput) -> PlanResult {
-    // Ice Exception: If outdoor temp is below 5°C, turn AC OFF to prevent ice formation
-    // UNLESS indoor temp is below 12°C, then we continue with normal planning
+    // Ice Exception: If outdoor temp is below 2°C, turn AC OFF to prevent ice formation
+    // UNLESS:
+    // - indoor temp is below 12°C, then we continue with normal planning
+    // - solar production is above 1000W, which indicates sufficient energy/warmth to bypass the exception
     if input.current_outdoor_temp < ICE_EXCEPTION_OUTDOOR_THRESHOLD 
-        && input.current_indoor_temp >= ICE_EXCEPTION_INDOOR_OVERRIDE {
+        && input.current_indoor_temp >= ICE_EXCEPTION_INDOOR_OVERRIDE 
+        && input.solar_production < ICE_EXCEPTION_SOLAR_BYPASS_THRESHOLD {
         log::info!(
-            "Ice Exception triggered: outdoor temp {:.1}°C < {:.1}°C, indoor temp {:.1}°C >= {:.1}°C. AC will be OFF.",
+            "Ice Exception triggered: outdoor temp {:.1}°C < {:.1}°C, indoor temp {:.1}°C >= {:.1}°C, solar {:.0}W < {}W. AC will be OFF.",
             input.current_outdoor_temp,
             ICE_EXCEPTION_OUTDOOR_THRESHOLD,
             input.current_indoor_temp,
-            ICE_EXCEPTION_INDOOR_OVERRIDE
+            ICE_EXCEPTION_INDOOR_OVERRIDE,
+            input.solar_production,
+            ICE_EXCEPTION_SOLAR_BYPASS_THRESHOLD
         );
         return PlanResult::new(RequestMode::Off, CauseReason::IceException);
     }
@@ -606,14 +614,14 @@ mod tests {
     // Ice Exception tests
     #[test]
     fn test_ice_exception_triggers() {
-        // Outdoor temp below 5°C, indoor temp above 12°C
+        // Outdoor temp below 2°C, indoor temp above 12°C, low solar
         // Should trigger ice exception and turn AC off
         let input = PlanInput {
             current_indoor_temp: 18.0,
-            solar_production: 2000,
+            solar_production: 500, // Low solar, below bypass threshold
             user_is_home: true,
-            current_outdoor_temp: 3.0, // Below 5°C
-            avg_next_12h_outdoor_temp: 3.0,
+            current_outdoor_temp: 1.0, // Below 2°C
+            avg_next_12h_outdoor_temp: 1.0,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -625,14 +633,14 @@ mod tests {
 
     #[test]
     fn test_ice_exception_override_when_too_cold_indoors() {
-        // Outdoor temp below 5°C, but indoor temp below 12°C
+        // Outdoor temp below 2°C, but indoor temp below 12°C
         // Should override ice exception and allow heating
         let input = PlanInput {
             current_indoor_temp: 10.0, // Below 12°C
             solar_production: 0,
             user_is_home: false,
-            current_outdoor_temp: 3.0, // Below 5°C
-            avg_next_12h_outdoor_temp: 3.0,
+            current_outdoor_temp: 1.0, // Below 2°C
+            avg_next_12h_outdoor_temp: 1.0,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -645,13 +653,13 @@ mod tests {
 
     #[test]
     fn test_ice_exception_does_not_trigger_above_threshold() {
-        // Outdoor temp above 5°C, should not trigger ice exception
+        // Outdoor temp above 2°C, should not trigger ice exception
         let input = PlanInput {
             current_indoor_temp: 18.0,
             solar_production: 0,
             user_is_home: false,
-            current_outdoor_temp: 7.0, // Above 5°C
-            avg_next_12h_outdoor_temp: 7.0,
+            current_outdoor_temp: 4.0, // Above 2°C
+            avg_next_12h_outdoor_temp: 4.0,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -664,19 +672,19 @@ mod tests {
 
     #[test]
     fn test_ice_exception_edge_case_at_boundary() {
-        // Outdoor temp exactly at 5°C, indoor temp exactly at 12°C
-        // At 5°C outdoor: condition is < 5°C, so NO ice exception
+        // Outdoor temp exactly at 2°C, indoor temp exactly at 12°C
+        // At 2°C outdoor: condition is < 2°C, so NO ice exception
         // At 12°C indoor: condition is >= 12°C, so no override
         // Result: Normal planning applies, and 12°C is too cold -> heating
         let input = PlanInput {
             current_indoor_temp: 12.0,
             solar_production: 0,
             user_is_home: false,
-            current_outdoor_temp: 5.0,
-            avg_next_12h_outdoor_temp: 5.0,
+            current_outdoor_temp: 2.0,
+            avg_next_12h_outdoor_temp: 2.0,
         };
         let plan = get_plan(&input);
-        // At exactly 5°C outdoor, ice exception should NOT trigger (< 5°C, not <= 5°C)
+        // At exactly 2°C outdoor, ice exception should NOT trigger (< 2°C, not <= 2°C)
         // Temperature is 12°C which is between TOO_COLD (18°C) and comfortable (20°C)
         // User not home, so no heating
         match plan.mode {
@@ -688,22 +696,24 @@ mod tests {
     }
 
     #[test]
-    fn test_ice_exception_with_high_solar() {
-        // Ice exception should trigger regardless of solar production
-        // Outdoor temp below 5°C, indoor temp above 12°C, high solar
+    fn test_ice_exception_bypassed_by_high_solar() {
+        // Ice exception should be bypassed when solar production is high (> 1000W)
+        // Outdoor temp below 2°C, indoor temp above 12°C, high solar
         let input = PlanInput {
             current_indoor_temp: 20.0,
-            solar_production: 3000, // High solar
+            solar_production: 3000, // High solar, above bypass threshold
             user_is_home: true,
-            current_outdoor_temp: 2.0, // Well below 5°C
-            avg_next_12h_outdoor_temp: 2.0,
+            current_outdoor_temp: 1.0, // Below 2°C
+            avg_next_12h_outdoor_temp: 1.0,
         };
         let plan = get_plan(&input);
+        // Should NOT be off, ice exception bypassed due to high solar
         match plan.mode {
-            RequestMode::Off => {}, // Expected: Off due to ice exception
-            _ => panic!("Expected Off due to ice exception even with high solar, got {:?}", plan.mode),
+            RequestMode::Off => panic!("Ice exception should be bypassed with high solar, but got Off"),
+            _ => {}, // Expected: Any other mode is fine (normal planning)
         }
-        assert_eq!(plan.cause, CauseReason::IceException);
+        // Should not have IceException cause
+        assert_ne!(plan.cause, CauseReason::IceException);
     }
 
     // Tests for new CauseReason assignments
@@ -822,8 +832,8 @@ mod tests {
             current_indoor_temp: 18.0,
             solar_production: 0,
             user_is_home: true,
-            current_outdoor_temp: 3.0, // Below 5°C
-            avg_next_12h_outdoor_temp: 3.0,
+            current_outdoor_temp: 1.0, // Below 2°C
+            avg_next_12h_outdoor_temp: 1.0,
         };
         let plan = get_plan(&input);
         
@@ -842,16 +852,76 @@ mod tests {
         // Test with outdoor temp just below threshold
         let input = PlanInput {
             current_indoor_temp: 15.0,
-            solar_production: 1000,
+            solar_production: 500, // Below bypass threshold
             user_is_home: true,
-            current_outdoor_temp: 4.9, // Just below 5°C
-            avg_next_12h_outdoor_temp: 4.5,
+            current_outdoor_temp: 1.9, // Just below 2°C
+            avg_next_12h_outdoor_temp: 1.5,
         };
         let plan = get_plan(&input);
         match plan.mode {
             RequestMode::Off => {}, // Expected: Off due to ice exception
-            _ => panic!("Expected Off due to ice exception at 4.9°C outdoor, got {:?}", plan.mode),
+            _ => panic!("Expected Off due to ice exception at 1.9°C outdoor, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::IceException);
+    }
+
+    #[test]
+    fn test_ice_exception_solar_bypass_at_boundary() {
+        // Test solar bypass at exactly 1000W - should NOT bypass (needs > 1000W, i.e., < 1000W triggers exception)
+        let input = PlanInput {
+            current_indoor_temp: 18.0,
+            solar_production: 1000, // Exactly at threshold
+            user_is_home: true,
+            current_outdoor_temp: 1.0, // Below 2°C
+            avg_next_12h_outdoor_temp: 1.0,
+        };
+        let plan = get_plan(&input);
+        // At exactly 1000W, the condition is `solar_production < 1000`, which is false
+        // So ice exception is bypassed and normal planning applies
+        match plan.mode {
+            RequestMode::Off => panic!("Ice exception should be bypassed at exactly 1000W solar, got Off"),
+            _ => {}, // Expected: Normal planning applies
+        }
+        assert_ne!(plan.cause, CauseReason::IceException);
+    }
+
+    #[test]
+    fn test_ice_exception_solar_bypass_just_below_threshold() {
+        // Test with solar just below 1000W - should trigger ice exception
+        let input = PlanInput {
+            current_indoor_temp: 18.0,
+            solar_production: 999, // Just below threshold
+            user_is_home: true,
+            current_outdoor_temp: 1.0, // Below 2°C
+            avg_next_12h_outdoor_temp: 1.0,
+        };
+        let plan = get_plan(&input);
+        // Should be off, ice exception not bypassed
+        match plan.mode {
+            RequestMode::Off => {}, // Expected: Off due to ice exception
+            _ => panic!("Expected Off at 999W solar, got {:?}", plan.mode),
+        }
+        assert_eq!(plan.cause, CauseReason::IceException);
+    }
+
+    #[test]
+    fn test_ice_exception_solar_bypass_does_not_affect_indoor_override() {
+        // Solar bypass should not matter when indoor temp is too cold (< 12°C)
+        // Indoor override takes precedence
+        let input = PlanInput {
+            current_indoor_temp: 10.0, // Below 12°C, should allow heating regardless
+            solar_production: 500, // Low solar
+            user_is_home: false,
+            current_outdoor_temp: 1.0, // Below 2°C
+            avg_next_12h_outdoor_temp: 1.0,
+        };
+        let plan = get_plan(&input);
+        // Should allow heating because indoor is too cold
+        match plan.mode {
+            RequestMode::Warmer(_) => {}, // Expected: Heating allowed
+            _ => panic!("Expected Warmer mode when indoor < 12°C, got {:?}", plan.mode),
+        }
+        // Should not have IceException cause
+        assert_ne!(plan.cause, CauseReason::IceException);
     }
 }
