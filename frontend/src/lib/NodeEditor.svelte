@@ -4,8 +4,7 @@
     SvelteFlow, 
     Controls, 
     Background, 
-    MiniMap,
-    useSvelteFlow
+    MiniMap
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
 
@@ -152,10 +151,14 @@
     }
   }
 
+  // Counter for generating unique node IDs
+  let nodeIdCounter = 100;
+
   // Add new node
   function addNode(type) {
+    nodeIdCounter++;
     const newNode = {
-      id: `node-${Date.now()}`,
+      id: `node-${nodeIdCounter}`,
       type: type === 'trigger' ? 'input' : type === 'output' ? 'output' : 'default',
       position: { 
         x: Math.random() * 400 + 200, 
@@ -183,14 +186,32 @@
     loadConfiguration();
   });
 
-  // Handle node changes
+  // Handle node changes (position, selection, removal)
   function onNodesChange(changes) {
-    // Apply changes to nodes
+    changes.forEach(change => {
+      if (change.type === 'position' && change.dragging === false) {
+        // Update node position
+        const nodeIndex = nodes.findIndex(n => n.id === change.id);
+        if (nodeIndex !== -1 && change.position) {
+          nodes[nodeIndex].position = change.position;
+        }
+      } else if (change.type === 'remove') {
+        // Remove node
+        nodes = nodes.filter(n => n.id !== change.id);
+      }
+    });
+    // Trigger reactivity
     nodes = nodes;
   }
 
   function onEdgesChange(changes) {
-    // Apply changes to edges
+    changes.forEach(change => {
+      if (change.type === 'remove') {
+        // Remove edge
+        edges = edges.filter(e => e.id !== change.id);
+      }
+    });
+    // Trigger reactivity
     edges = edges;
   }
 
