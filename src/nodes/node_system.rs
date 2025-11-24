@@ -18,6 +18,20 @@ pub enum ValueType {
     Object,
 }
 
+impl ValueType {
+    /// Get the display color for this value type
+    pub fn get_color(&self) -> &'static str {
+        match self {
+            ValueType::Float => "#FF6B6B",      // Red for floats (temperatures, etc.)
+            ValueType::Integer => "#4ECDC4",    // Teal for integers (watts, etc.)
+            ValueType::Boolean => "#95E1D3",    // Light green for booleans
+            ValueType::String => "#FFA07A",     // Light salmon for strings
+            ValueType::Enum(_) => "#C7A5E0",    // Purple for enums
+            ValueType::Object => "#FFD93D",     // Yellow for complex objects
+        }
+    }
+}
+
 /// Represents an input port on a node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeInput {
@@ -31,16 +45,20 @@ pub struct NodeInput {
     pub value_type: ValueType,
     /// Whether this input is required
     pub required: bool,
+    /// Color for visual representation
+    pub color: String,
 }
 
 impl NodeInput {
     pub fn new(id: &str, label: &str, description: &str, value_type: ValueType, required: bool) -> Self {
+        let color = value_type.get_color().to_string();
         Self {
             id: id.to_string(),
             label: label.to_string(),
             description: description.to_string(),
             value_type,
             required,
+            color,
         }
     }
 }
@@ -56,15 +74,19 @@ pub struct NodeOutput {
     pub description: String,
     /// Type of value this output produces
     pub value_type: ValueType,
+    /// Color for visual representation
+    pub color: String,
 }
 
 impl NodeOutput {
     pub fn new(id: &str, label: &str, description: &str, value_type: ValueType) -> Self {
+        let color = value_type.get_color().to_string();
         Self {
             id: id.to_string(),
             label: label.to_string(),
             description: description.to_string(),
             value_type,
+            color,
         }
     }
 }
@@ -84,6 +106,8 @@ pub struct NodeDefinition {
     pub inputs: Vec<NodeInput>,
     /// List of output ports
     pub outputs: Vec<NodeOutput>,
+    /// Color for the node background
+    pub color: String,
 }
 
 impl NodeDefinition {
@@ -95,6 +119,8 @@ impl NodeDefinition {
         inputs: Vec<NodeInput>,
         outputs: Vec<NodeOutput>,
     ) -> Self {
+        // Assign color based on category
+        let color = Self::get_category_color(category);
         Self {
             node_type: node_type.to_string(),
             name: name.to_string(),
@@ -102,6 +128,16 @@ impl NodeDefinition {
             category: category.to_string(),
             inputs,
             outputs,
+            color: color.to_string(),
+        }
+    }
+
+    /// Get the color for a category
+    fn get_category_color(category: &str) -> &'static str {
+        match category {
+            "System" => "#4CAF50",         // Green for system nodes
+            "AC Controller" => "#2196F3",  // Blue for AC controller nodes
+            _ => "#757575",                // Gray for others
         }
     }
 }

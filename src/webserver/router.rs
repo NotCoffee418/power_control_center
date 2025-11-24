@@ -51,7 +51,20 @@ async fn serve_static(uri: Uri) -> Response {
                 .body(Body::from(content.data))
                 .unwrap()
         }
-        None => (StatusCode::NOT_FOUND, "not found").into_response(),
+        None => {
+            // For SPA routing: if the path doesn't contain a file extension
+            // and the file doesn't exist, serve index.html
+            if !path.contains('.') && !path.is_empty() {
+                if let Some(index) = Static::get("index.html") {
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "text/html")
+                        .body(Body::from(index.data))
+                        .unwrap();
+                }
+            }
+            (StatusCode::NOT_FOUND, "not found").into_response()
+        }
     }
 }
 
