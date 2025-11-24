@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { 
     SvelteFlow, 
     Controls, 
@@ -176,58 +176,6 @@
     });
   }
 
-  // Handle keyboard events for node/edge deletion
-  function handleKeyDown(event) {
-    // Only handle if the event is not from an input element
-    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
-      return;
-    }
-
-    if (event.key === 'Delete' || event.key === 'Backspace') {
-      // Find selected nodes
-      const selectedNodes = nodes.filter(n => n.selected);
-      // Find selected edges
-      const selectedEdges = edges.filter(e => e.selected);
-      
-      // If nothing selected, return
-      if (selectedNodes.length === 0 && selectedEdges.length === 0) {
-        return;
-      }
-
-      // Handle node deletion
-      if (selectedNodes.length > 0) {
-        // Check if any selected nodes are default nodes
-        const defaultNodes = selectedNodes.filter(n => n.data?.isDefault);
-        if (defaultNodes.length > 0) {
-          const defaultNodeNames = defaultNodes.map(getNodeDisplayName).join(', ');
-          alert(`Cannot delete default nodes: ${defaultNodeNames}`);
-          return;
-        }
-
-        // Confirm deletion
-        const nodeNames = selectedNodes.map(getNodeDisplayName).join(', ');
-        if (confirm(`Delete ${selectedNodes.length} node(s)?\n\n${nodeNames}`)) {
-          // Delete the selected nodes
-          const selectedIds = selectedNodes.map(n => n.id);
-          nodes = nodes.filter(n => !selectedIds.includes(n.id));
-          
-          // Also remove edges connected to deleted nodes
-          edges = edges.filter(e => 
-            !selectedIds.includes(e.source) && !selectedIds.includes(e.target)
-          );
-        }
-      }
-      
-      // Handle edge deletion
-      if (selectedEdges.length > 0 && selectedNodes.length === 0) {
-        if (confirm(`Delete ${selectedEdges.length} connection(s)?`)) {
-          const selectedEdgeIds = selectedEdges.map(e => e.id);
-          edges = edges.filter(e => !selectedEdgeIds.includes(e.id));
-        }
-      }
-    }
-  }
-
   // Handle node context menu (right-click)
   function handleNodeContextMenu({ node, event }) {
     // Prevent the browser's default context menu
@@ -330,14 +278,6 @@
   onMount(async () => {
     await loadNodeDefinitions();
     await loadConfiguration();
-    
-    // Add keyboard event listener
-    window.addEventListener('keydown', handleKeyDown);
-  });
-
-  onDestroy(() => {
-    // Clean up keyboard event listener
-    window.removeEventListener('keydown', handleKeyDown);
   });
 
   // Handle node changes (position, selection, removal)
@@ -488,13 +428,88 @@
 
     const { sourceOutput } = details;
 
-    // Create the edge
+    // Create the edge with reconnectable enabled
     edges = [...edges, { 
       ...connection, 
       id: `e${connection.source}-${connection.sourceHandle}-${connection.target}-${connection.targetHandle}`,
       animated: true,
+      reconnectable: true,
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
+  }
+
+  // Handle edge reconnection
+  function onReconnect(oldEdge, newConnection) {
+    // Validate the new connection
+    if (!isValidConnection(newConnection)) {
+      const details = getConnectionDetails(newConnection);
+      if (details) {
+        const { sourceOutput, targetInput } = details;
+        const sourceType = sourceOutput.value_type?.type;
+        const targetType = targetInput.value_type?.type;
+        saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        setTimeout(() => saveStatus = '', 3000);
+      }
+      return;
+    }
+
+    // Get connection details for edge styling
+    const details = getConnectionDetails(newConnection);
+    if (!details) return;
+
+    const { sourceOutput } = details;
+
+    // Update edges: remove old edge, add new one
+    edges = edges.filter(e => e.id !== oldEdge.id);
+    edges = [...edges, {
+      ...newConnection,
+      id: `e${newConnection.source}-${newConnection.sourceHandle}-${newConnection.target}-${newConnection.targetHandle}`,
+      animated: true,
+      reconnectable: true,
+      style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
+    }];
+  }
+
+  // Handle native delete from SvelteFlow (DEL key)
+  function onDelete({ nodes: nodesToDelete, edges: edgesToDelete }) {
+    // Check if any nodes to delete are default nodes
+    const defaultNodes = nodesToDelete.filter(n => n.data?.isDefault);
+    if (defaultNodes.length > 0) {
+      const defaultNodeNames = defaultNodes.map(getNodeDisplayName).join(', ');
+      alert(`Cannot delete default nodes: ${defaultNodeNames}`);
+      return false; // Prevent deletion
+    }
+
+    // Build confirmation message
+    let message = '';
+    if (nodesToDelete.length > 0) {
+      const nodeNames = nodesToDelete.map(getNodeDisplayName).join(', ');
+      message += `Delete ${nodesToDelete.length} node(s)?\n\n${nodeNames}`;
+    }
+    if (edgesToDelete.length > 0) {
+      if (message) message += '\n\n';
+      message += `Delete ${edgesToDelete.length} connection(s)?`;
+    }
+
+    if (message && confirm(message)) {
+      // Remove nodes
+      if (nodesToDelete.length > 0) {
+        const nodeIds = nodesToDelete.map(n => n.id);
+        nodes = nodes.filter(n => !nodeIds.includes(n.id));
+        // Also remove edges connected to deleted nodes
+        edges = edges.filter(e => 
+          !nodeIds.includes(e.source) && !nodeIds.includes(e.target)
+        );
+      }
+      
+      // Remove edges
+      if (edgesToDelete.length > 0) {
+        const edgeIds = edgesToDelete.map(e => e.id);
+        edges = edges.filter(e => !edgeIds.includes(e.id));
+      }
+    }
+    
+    return false; // We handle deletion ourselves
   }
 </script>
 
@@ -586,9 +601,12 @@
           onnodeschange={onNodesChange}
           onedgeschange={onEdgesChange}
           onconnect={onConnect}
+          onreconnect={onReconnect}
+          ondelete={onDelete}
           isValidConnection={isValidConnection}
           onnodecontextmenu={handleNodeContextMenu}
           onedgecontextmenu={handleEdgeContextMenu}
+          deleteKeyCode="Delete"
           fitView
         >
           <Controls />
