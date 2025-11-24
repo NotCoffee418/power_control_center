@@ -14,6 +14,75 @@
   const outputs = definition?.outputs || [];
   const color = definition?.color || '#757575';
   const isDefault = data.isDefault || false;
+
+  // Determine node behavior flags
+  const isDynamicLogicNode = ['logic_and', 'logic_or', 'logic_nand'].includes(nodeType);
+  const isPrimitiveNode = ['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType);
+
+  // Get default value based on primitive type
+  function getDefaultPrimitiveValue() {
+    if (nodeType === 'primitive_boolean') return false;
+    return 0;
+  }
+
+  // Sync state changes back to node data for persistence
+  $effect(() => {
+    if (isDynamicLogicNode) {
+      data.dynamicInputs = dynamicInputs;
+    }
+    if (isPrimitiveNode) {
+      data.primitiveValue = primitiveValue;
+    }
+  });
+
+  // Add a new input pin for dynamic logic nodes
+  function addInput() {
+    const nextIndex = dynamicInputs.length + 1;
+    const newInput = {
+      id: `input_${nextIndex}`,
+      label: `Input ${nextIndex}`,
+      description: `Boolean input ${nextIndex}`,
+      value_type: { type: 'Boolean' },
+      required: true,
+      color: '#95E1D3' // Boolean color
+    };
+    dynamicInputs = [...dynamicInputs, newInput];
+  }
+
+  // Remove the last input pin (minimum 2)
+  function removeInput() {
+    if (dynamicInputs.length > 2) {
+      dynamicInputs = dynamicInputs.slice(0, -1);
+    }
+  }
+
+  // Validate and handle float input
+  function handleFloatInput(event) {
+    const value = event.target.value;
+    const trimmed = value.trim();
+    const parsed = parseFloat(trimmed);
+    isValidInput = trimmed !== '' && !isNaN(parsed) && isFinite(parsed);
+    primitiveValue = isValidInput ? parsed : value;
+  }
+
+  // Validate and handle integer input
+  function handleIntegerInput(event) {
+    const value = event.target.value;
+    const trimmed = value.trim();
+    const parsed = Number(trimmed);
+    isValidInput = trimmed !== '' && Number.isInteger(parsed);
+    primitiveValue = isValidInput ? parsed : value;
+  }
+
+  // Handle boolean toggle
+  function handleBooleanToggle(event) {
+    primitiveValue = event.target.checked;
+  }
+
+  // Get the inputs to display (either dynamic or static)
+  function getDisplayInputs() {
+    return isDynamicLogicNode ? dynamicInputs : (definition?.inputs || []);
+  }
 </script>
 
 <div 
