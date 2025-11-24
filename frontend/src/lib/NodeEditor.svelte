@@ -17,6 +17,9 @@
   let saveStatus = $state('');
   let searchQuery = $state('');
   let nodeIdCounter = 100;
+  
+  // Context menu state
+  let contextMenu = $state({ visible: false, x: 0, y: 0, nodeId: null });
 
   // Custom node types
   const nodeTypes = {
@@ -161,9 +164,102 @@
     });
   }
 
+  // Handle keyboard events for node deletion
+  function handleKeyDown(event) {
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      // Find selected nodes
+      const selectedNodes = nodes.filter(n => n.selected);
+      
+      if (selectedNodes.length === 0) {
+        return;
+      }
+
+      // Check if any selected nodes are default nodes
+      const hasDefaultNode = selectedNodes.some(n => n.data?.isDefault);
+      if (hasDefaultNode) {
+        alert('Cannot delete default nodes (OnEvaluate)');
+        return;
+      }
+
+      // Confirm deletion
+      const nodeNames = selectedNodes.map(n => n.data?.definition?.name || n.id).join(', ');
+      if (confirm(`Delete ${selectedNodes.length} node(s)?\n\n${nodeNames}`)) {
+        // Delete the selected nodes
+        const selectedIds = selectedNodes.map(n => n.id);
+        nodes = nodes.filter(n => !selectedIds.includes(n.id));
+        
+        // Also remove edges connected to deleted nodes
+        edges = edges.filter(e => 
+          !selectedIds.includes(e.source) && !selectedIds.includes(e.target)
+        );
+      }
+    }
+  }
+
+  // Handle node context menu (right-click)
+  function handleNodeContextMenu(event) {
+    event.preventDefault();
+    
+    const nodeId = event.detail?.node?.id;
+    if (!nodeId) return;
+    
+    contextMenu = {
+      visible: true,
+      x: event.detail.event.clientX,
+      y: event.detail.event.clientY,
+      nodeId: nodeId
+    };
+  }
+
+  // Delete node from context menu
+  function deleteNodeFromMenu() {
+    const node = nodes.find(n => n.id === contextMenu.nodeId);
+    
+    if (!node) {
+      contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+      return;
+    }
+
+    // Check if it's a default node
+    if (node.data?.isDefault) {
+      alert('Cannot delete default nodes (OnEvaluate)');
+      contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+      return;
+    }
+
+    // Confirm deletion
+    const nodeName = node.data?.definition?.name || node.id;
+    if (confirm(`Delete node "${nodeName}"?`)) {
+      // Delete the node
+      nodes = nodes.filter(n => n.id !== contextMenu.nodeId);
+      
+      // Also remove edges connected to deleted node
+      edges = edges.filter(e => 
+        e.source !== contextMenu.nodeId && e.target !== contextMenu.nodeId
+      );
+    }
+    
+    contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+  }
+
+  // Close context menu when clicking elsewhere
+  function closeContextMenu() {
+    if (contextMenu.visible) {
+      contextMenu = { visible: false, x: 0, y: 0, nodeId: null };
+    }
+  }
+
   onMount(async () => {
     await loadNodeDefinitions();
     await loadConfiguration();
+    
+    // Add keyboard event listener
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up on unmount
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   });
 
   // Handle node changes (position, selection, removal)
@@ -202,13 +298,13 @@
     edges = edges;
   }
 
-  function onConnect(connection) {
-    // Validate connection types
+  // Check if a connection is valid based on type compatibility
+  function isValidConnection(connection) {
     const sourceNode = nodes.find(n => n.id === connection.source);
     const targetNode = nodes.find(n => n.id === connection.target);
     
     if (!sourceNode || !targetNode) {
-      return;
+      return false;
     }
 
     const sourceOutput = sourceNode.data.definition.outputs.find(
@@ -219,25 +315,54 @@
     );
 
     if (!sourceOutput || !targetInput) {
-      return;
+      return false;
     }
 
     // Check if types are compatible
-    // ValueType is serialized as {type: "Float"} or {type: "Enum", value: [...]}
     const sourceType = sourceOutput.value_type?.type;
     const targetType = targetInput.value_type?.type;
     
     if (!sourceType || !targetType) {
-      console.error('Missing type information', sourceOutput, targetInput);
-      return;
+      return false;
     }
     
     // Allow Object type to connect to anything (it's a complex/generic type)
     if (sourceType !== targetType && sourceType !== 'Object' && targetType !== 'Object') {
-      saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-      setTimeout(() => saveStatus = '', 3000);
+      return false;
+    }
+
+    return true;
+  }
+
+  function onConnect(connection) {
+    // Validate connection types
+    if (!isValidConnection(connection)) {
+      const sourceNode = nodes.find(n => n.id === connection.source);
+      const targetNode = nodes.find(n => n.id === connection.target);
+      
+      if (sourceNode && targetNode) {
+        const sourceOutput = sourceNode.data.definition.outputs.find(
+          o => o.id === connection.sourceHandle
+        );
+        const targetInput = targetNode.data.definition.inputs.find(
+          i => i.id === connection.targetHandle
+        );
+        
+        if (sourceOutput && targetInput) {
+          const sourceType = sourceOutput.value_type?.type;
+          const targetType = targetInput.value_type?.type;
+          saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+          setTimeout(() => saveStatus = '', 3000);
+        }
+      }
       return;
     }
+
+    // Get source output for color
+    const sourceNode = nodes.find(n => n.id === connection.source);
+    const sourceOutput = sourceNode.data.definition.outputs.find(
+      o => o.id === connection.sourceHandle
+    );
 
     // Create the edge
     edges = [...edges, { 
@@ -329,7 +454,7 @@
     {#if loading}
       <div class="loading">Loading node configuration...</div>
     {:else}
-      <div class="flow-container">
+      <div class="flow-container" onclick={closeContextMenu} onkeydown={closeContextMenu} role="button" tabindex="-1">
         <SvelteFlow 
           {nodes} 
           {edges}
@@ -337,12 +462,30 @@
           onnodeschange={onNodesChange}
           onedgeschange={onEdgesChange}
           onconnect={onConnect}
+          isValidConnection={isValidConnection}
+          onnodecontextmenu={handleNodeContextMenu}
           fitView
         >
           <Controls />
           <Background />
           <MiniMap />
         </SvelteFlow>
+        
+        <!-- Context menu -->
+        {#if contextMenu.visible}
+          <div 
+            class="context-menu" 
+            style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="menu"
+            tabindex="-1"
+          >
+            <button onclick={deleteNodeFromMenu} class="context-menu-item">
+              🗑️ Delete Node
+            </button>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -617,6 +760,45 @@
   :global(.svelte-flow__edge.animated path) {
     stroke-dasharray: 5;
     animation: dashdraw 0.5s linear infinite;
+  }
+
+  /* Style for invalid connection lines being drawn */
+  :global(.svelte-flow__connectionline.invalid) {
+    stroke: #ff0000 !important;
+    stroke-width: 3px !important;
+  }
+
+  :global(.svelte-flow__connectionline:not(.valid)) {
+    stroke: #ff0000 !important;
+    stroke-width: 3px !important;
+  }
+
+  /* Context menu */
+  .context-menu {
+    position: fixed;
+    background: #2d2d2d;
+    border: 1px solid #404040;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    min-width: 150px;
+    overflow: hidden;
+  }
+
+  .context-menu-item {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    color: #e0e0e0;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+  }
+
+  .context-menu-item:hover {
+    background: #3d3d3d;
   }
 
   @keyframes dashdraw {
