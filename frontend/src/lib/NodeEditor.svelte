@@ -49,6 +49,8 @@
     'AC Controller': '#2196F3',
     'Logic': '#9C27B0',
     'Primitives': '#FF9800',
+    'Sensors': '#00BCD4',
+    'Enums': '#E91E63',
     'default': '#757575'
   };
 
@@ -92,14 +94,9 @@
     }
   }
 
-  // Create initial nodes with OnEvaluate node
+  // Create initial nodes (empty canvas by default)
   function createInitialNodes() {
-    const onEvaluateDef = nodeDefinitions.find(def => def.node_type === 'on_evaluate');
-    if (onEvaluateDef) {
-      nodes = [
-        createNodeFromDefinition(onEvaluateDef, 'on-evaluate-1', { x: 100, y: 100 }, true)
-      ];
-    }
+    nodes = [];
   }
 
   // Create a node from a definition
@@ -338,7 +335,7 @@
     const details = getConnectionDetails(connection);
     if (!details) return false;
 
-    const { sourceOutput, targetInput } = details;
+    const { sourceOutput, targetInput, targetNode } = details;
 
     // Check if the target handle already has a connection (inputs can only have one connection)
     const existingConnection = edges.find(
@@ -356,8 +353,11 @@
       return false;
     }
     
-    // Allow Object type to connect to anything (it's a complex/generic type)
-    if (sourceType !== targetType && sourceType !== 'Object' && targetType !== 'Object') {
+    // Allow Any type to connect to anything (for dynamic type matching like Equals node)
+    // Also allow Object type to connect to anything (it's a complex/generic type)
+    if (sourceType !== targetType && 
+        sourceType !== 'Object' && targetType !== 'Object' &&
+        sourceType !== 'Any' && targetType !== 'Any') {
       return false;
     }
 

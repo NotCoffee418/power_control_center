@@ -1,29 +1,5 @@
 use super::node_system::{Node, NodeDefinition, NodeInput, NodeOutput, ValueType};
 
-/// OnEvaluate trigger node - fires every 5 minutes to trigger AC evaluation
-/// This is a special trigger node that should be placed by default and cannot be deleted
-pub struct OnEvaluateNode;
-
-impl Node for OnEvaluateNode {
-    fn definition() -> NodeDefinition {
-        NodeDefinition::new(
-            "on_evaluate",
-            "On Evaluate Event",
-            "Triggers every 5 minutes to evaluate and potentially adjust AC settings. This node cannot be deleted but can be moved.",
-            "System",
-            vec![], // No inputs - this is a trigger node
-            vec![
-                NodeOutput::new(
-                    "trigger",
-                    "Trigger",
-                    "Fires when evaluation cycle begins",
-                    ValueType::Boolean,
-                ),
-            ],
-        )
-    }
-}
-
 /// ExecutePlan node - executes an AC plan
 /// Takes a plan result and sends it to the AC system
 pub struct ExecutePlanNode;
@@ -96,14 +72,14 @@ impl Node for AcPlanInputNode {
     }
 }
 
-/// Node representing the AC planning logic
-pub struct AcPlannerNode;
+/// Node representing the classic AC planning logic
+pub struct ClassicPlannerNode;
 
-impl Node for AcPlannerNode {
+impl Node for ClassicPlannerNode {
     fn definition() -> NodeDefinition {
         NodeDefinition::new(
-            "ac_planner",
-            "AC Planner Logic",
+            "classic_planner",
+            "Classic Planner Logic",
             "Determines the desired AC mode and intensity based on inputs. Includes Ice Exception, temperature checks, solar power evaluation, and user presence logic.",
             "AC Controller",
             vec![
@@ -218,20 +194,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_on_evaluate_node_definition() {
-        let def = OnEvaluateNode::definition();
-        
-        assert_eq!(def.node_type, "on_evaluate");
-        assert_eq!(def.name, "On Evaluate Event");
-        assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 0); // Trigger node has no inputs
-        assert_eq!(def.outputs.len(), 1); // One trigger output
-        
-        // Verify output
-        assert_eq!(def.outputs[0].id, "trigger");
-    }
-
-    #[test]
     fn test_execute_plan_node_definition() {
         let def = ExecutePlanNode::definition();
         
@@ -264,11 +226,11 @@ mod tests {
     }
 
     #[test]
-    fn test_ac_planner_node_definition() {
-        let def = AcPlannerNode::definition();
+    fn test_classic_planner_node_definition() {
+        let def = ClassicPlannerNode::definition();
         
-        assert_eq!(def.node_type, "ac_planner");
-        assert_eq!(def.name, "AC Planner Logic");
+        assert_eq!(def.node_type, "classic_planner");
+        assert_eq!(def.name, "Classic Planner Logic");
         assert_eq!(def.category, "AC Controller");
         assert_eq!(def.inputs.len(), 5); // Five inputs matching PlanInput struct
         assert_eq!(def.outputs.len(), 1); // One output: plan_result
@@ -331,7 +293,7 @@ mod tests {
     fn test_node_definitions_are_serializable() {
         let definitions = vec![
             AcPlanInputNode::definition(),
-            AcPlannerNode::definition(),
+            ClassicPlannerNode::definition(),
             AcPlanResultNode::definition(),
         ];
         
