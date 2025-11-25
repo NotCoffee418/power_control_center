@@ -4,20 +4,19 @@
   // Props passed by SvelteFlow
   let { data, id, selected } = $props();
 
-  // Initialize node state from saved data or defaults
-  let nodeType = $state(data.definition?.node_type || '');
-  let dynamicInputs = $state(data.dynamicInputs || data.definition?.inputs || []);
-  let primitiveValue = $state(data.primitiveValue ?? getDefaultPrimitiveValue());
-  let isValidInput = $state(true);
-
-  const definition = data.definition;
+  // Initialize constants first (these don't depend on state)
+  const definition = data?.definition;
   const outputs = definition?.outputs || [];
   const color = definition?.color || '#757575';
-  const isDefault = data.isDefault || false;
+  const isDefault = data?.isDefault || false;
+  
+  // Get node type safely
+  const nodeType = definition?.node_type || '';
 
   // Determine node behavior flags
   const isDynamicLogicNode = ['logic_and', 'logic_or', 'logic_nand'].includes(nodeType);
   const isPrimitiveNode = ['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType);
+  const isEnumNode = ['device', 'intensity'].includes(nodeType);
 
   // Get default value based on primitive type
   function getDefaultPrimitiveValue() {
@@ -25,13 +24,33 @@
     return 0;
   }
 
+  // Get default value for enum nodes (first enum value)
+  function getDefaultEnumValue() {
+    if (isEnumNode && outputs.length > 0) {
+      const enumOutput = outputs[0];
+      if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value?.length > 0) {
+        return enumOutput.value_type.value[0];
+      }
+    }
+    return '';
+  }
+
+  // Initialize state variables after functions are defined
+  let dynamicInputs = $state(data?.dynamicInputs || definition?.inputs || []);
+  let primitiveValue = $state(data?.primitiveValue ?? getDefaultPrimitiveValue());
+  let enumValue = $state(data?.enumValue ?? getDefaultEnumValue());
+  let isValidInput = $state(true);
+
   // Sync state changes back to node data for persistence
   $effect(() => {
-    if (isDynamicLogicNode) {
+    if (isDynamicLogicNode && data) {
       data.dynamicInputs = dynamicInputs;
     }
-    if (isPrimitiveNode) {
+    if (isPrimitiveNode && data) {
       data.primitiveValue = primitiveValue;
+    }
+    if (isEnumNode && data) {
+      data.enumValue = enumValue;
     }
   });
 
@@ -77,6 +96,22 @@
   // Handle boolean toggle
   function handleBooleanToggle(event) {
     primitiveValue = event.target.checked;
+  }
+
+  // Handle enum selection change
+  function handleEnumChange(event) {
+    enumValue = event.target.value;
+  }
+
+  // Get enum options for dropdown
+  function getEnumOptions() {
+    if (outputs.length > 0) {
+      const enumOutput = outputs[0];
+      if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value) {
+        return enumOutput.value_type.value;
+      }
+    }
+    return [];
   }
 
   // Get the inputs to display (either dynamic or static)
@@ -150,6 +185,21 @@
       </div>
     {/if}
 
+    <!-- Enum node dropdown -->
+    {#if isEnumNode}
+      <div class="enum-input">
+        <select 
+          class="enum-select"
+          value={enumValue}
+          onchange={handleEnumChange}
+        >
+          {#each getEnumOptions() as option}
+            <option value={option}>{option}</option>
+          {/each}
+        </select>
+      </div>
+    {/if}
+
     <!-- Input handles on the left -->
     {#each getDisplayInputs() as input, i}
       <div class="port-row input-port">
@@ -187,8 +237,8 @@
       </div>
     {/each}
 
-    <!-- If no inputs or outputs, show a message (for non-primitive nodes) -->
-    {#if !isPrimitiveNode && getDisplayInputs().length === 0 && outputs.length === 0}
+    <!-- If no inputs or outputs, show a message (for non-primitive/non-enum nodes) -->
+    {#if !isPrimitiveNode && !isEnumNode && getDisplayInputs().length === 0 && outputs.length === 0}
       <div class="no-ports">No ports</div>
     {/if}
   </div>
@@ -316,6 +366,37 @@
   .checkbox-label {
     font-size: 13px;
     font-weight: 500;
+  }
+
+  .enum-input {
+    margin-bottom: 4px;
+  }
+
+  .enum-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    font-size: 13px;
+    box-sizing: border-box;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+  }
+
+  .enum-select:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.6);
+  }
+
+  .enum-select option {
+    background: #2d2d2d;
+    color: white;
   }
 
   .port-row {

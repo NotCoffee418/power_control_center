@@ -16,6 +16,8 @@ pub enum ValueType {
     Enum(Vec<String>),
     /// Structured object (for complex types like PlanResult)
     Object,
+    /// Any type - used for dynamic type matching (e.g., Equals node)
+    Any,
 }
 
 impl ValueType {
@@ -28,6 +30,7 @@ impl ValueType {
             ValueType::String => "#FFA07A",     // Light salmon for strings
             ValueType::Enum(_) => "#C7A5E0",    // Purple for enums
             ValueType::Object => "#FFD93D",     // Yellow for complex objects
+            ValueType::Any => "#AAAAAA",        // Gray for any type (dynamic matching)
         }
     }
 }
@@ -139,6 +142,8 @@ impl NodeDefinition {
             "AC Controller" => "#2196F3",  // Blue for AC controller nodes
             "Logic" => "#9C27B0",          // Purple for logic nodes
             "Primitives" => "#FF9800",     // Orange for primitive nodes
+            "Sensors" => "#00BCD4",        // Cyan for sensor nodes
+            "Enums" => "#E91E63",          // Pink for enum nodes
             _ => "#757575",                // Gray for others
         }
     }
