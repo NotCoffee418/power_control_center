@@ -40,6 +40,7 @@
   let primitiveValue = $state(data?.primitiveValue ?? getDefaultPrimitiveValue());
   let enumValue = $state(data?.enumValue ?? getDefaultEnumValue());
   let isValidInput = $state(true);
+  let comment = $state(data?.comment || '');
 
   // Sync state changes back to node data for persistence
   $effect(() => {
@@ -51,6 +52,9 @@
     }
     if (isEnumNode && data) {
       data.enumValue = enumValue;
+    }
+    if (data) {
+      data.comment = comment;
     }
   });
 
@@ -101,6 +105,11 @@
   // Handle enum selection change
   function handleEnumChange(event) {
     enumValue = event.target.value;
+  }
+
+  // Handle comment input change
+  function handleCommentChange(event) {
+    comment = event.target.value;
   }
 
   // Get enum options for dropdown
@@ -241,6 +250,18 @@
     {#if !isPrimitiveNode && !isEnumNode && getDisplayInputs().length === 0 && outputs.length === 0}
       <div class="no-ports">No ports</div>
     {/if}
+
+    <!-- Optional comment field at the bottom -->
+    <div class="comment-section">
+      <input
+        type="text"
+        class="comment-input"
+        value={comment}
+        oninput={handleCommentChange}
+        placeholder="Add comment..."
+        title="Optional comment for this node"
+      />
+    </div>
   </div>
 </div>
 
@@ -440,6 +461,35 @@
     font-style: italic;
     opacity: 0.7;
     font-size: 12px;
+  }
+
+  .comment-section {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  .comment-input {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.15);
+    color: white;
+    font-size: 11px;
+    box-sizing: border-box;
+    font-style: italic;
+  }
+
+  .comment-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+    font-style: italic;
+  }
+
+  .comment-input:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(0, 0, 0, 0.25);
   }
 
   /* Fixed size handles that don't change on hover */

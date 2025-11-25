@@ -329,6 +329,28 @@
     return { sourceNode, targetNode, sourceOutput, targetInput };
   }
 
+  // Helper function to check if two enum types are compatible (same values)
+  function areEnumsCompatible(sourceValueType, targetValueType) {
+    const sourceValues = sourceValueType?.value || [];
+    const targetValues = targetValueType?.value || [];
+    
+    // Both must have values
+    if (sourceValues.length === 0 || targetValues.length === 0) {
+      return false;
+    }
+    
+    // Check if they have the same values (same length and all values match)
+    if (sourceValues.length !== targetValues.length) {
+      return false;
+    }
+    
+    // Sort and compare values
+    const sortedSource = [...sourceValues].sort();
+    const sortedTarget = [...targetValues].sort();
+    
+    return sortedSource.every((val, idx) => val === sortedTarget[idx]);
+  }
+
   // Check if a connection is valid based on type compatibility
   function isValidConnection(connection) {
     const details = getConnectionDetails(connection);
@@ -354,10 +376,21 @@
     
     // Allow Any type to connect to anything (for dynamic type matching like Equals node)
     // Also allow Object type to connect to anything (it's a complex/generic type)
-    if (sourceType !== targetType && 
-        sourceType !== 'Object' && targetType !== 'Object' &&
-        sourceType !== 'Any' && targetType !== 'Any') {
+    if (sourceType === 'Any' || targetType === 'Any' ||
+        sourceType === 'Object' || targetType === 'Object') {
+      return true;
+    }
+    
+    // Types must match
+    if (sourceType !== targetType) {
       return false;
+    }
+    
+    // For Enum types, additionally check that enum values are compatible
+    if (sourceType === 'Enum') {
+      if (!areEnumsCompatible(sourceOutput.value_type, targetInput.value_type)) {
+        return false;
+      }
     }
 
     return true;
@@ -372,7 +405,13 @@
         const { sourceOutput, targetInput } = details;
         const sourceType = sourceOutput.value_type?.type;
         const targetType = targetInput.value_type?.type;
-        saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        
+        // Provide a more detailed error message for enum type mismatches
+        if (sourceType === 'Enum' && targetType === 'Enum') {
+          saveStatus = `⚠ Incompatible enum types`;
+        } else {
+          saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        }
         setTimeout(() => saveStatus = '', 3000);
       }
       return;
@@ -404,7 +443,13 @@
         const { sourceOutput, targetInput } = details;
         const sourceType = sourceOutput.value_type?.type;
         const targetType = targetInput.value_type?.type;
-        saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        
+        // Provide a more detailed error message for enum type mismatches
+        if (sourceType === 'Enum' && targetType === 'Enum') {
+          saveStatus = `⚠ Incompatible enum types`;
+        } else {
+          saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+        }
         setTimeout(() => saveStatus = '', 3000);
       }
       return;
