@@ -46,7 +46,6 @@
   // Category colors
   const categoryColors = {
     'System': '#4CAF50',
-    'AC Controller': '#2196F3',
     'Logic': '#9C27B0',
     'Primitives': '#FF9800',
     'Sensors': '#00BCD4',
