@@ -4,17 +4,14 @@
   // Props passed by SvelteFlow
   let { data, id, selected } = $props();
 
-  // Initialize node state from saved data or defaults
-  let nodeType = $state(data.definition?.node_type || '');
-  let dynamicInputs = $state(data.dynamicInputs || data.definition?.inputs || []);
-  let primitiveValue = $state(data.primitiveValue ?? getDefaultPrimitiveValue());
-  let enumValue = $state(data.enumValue ?? getDefaultEnumValue());
-  let isValidInput = $state(true);
-
-  const definition = data.definition;
+  // Initialize constants first (these don't depend on state)
+  const definition = data?.definition;
   const outputs = definition?.outputs || [];
   const color = definition?.color || '#757575';
-  const isDefault = data.isDefault || false;
+  const isDefault = data?.isDefault || false;
+  
+  // Get node type safely
+  const nodeType = definition?.node_type || '';
 
   // Determine node behavior flags
   const isDynamicLogicNode = ['logic_and', 'logic_or', 'logic_nand'].includes(nodeType);
@@ -31,22 +28,28 @@
   function getDefaultEnumValue() {
     if (isEnumNode && outputs.length > 0) {
       const enumOutput = outputs[0];
-      if (enumOutput.value_type?.type === 'Enum' && enumOutput.value_type?.value?.length > 0) {
+      if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value?.length > 0) {
         return enumOutput.value_type.value[0];
       }
     }
     return '';
   }
 
+  // Initialize state variables after functions are defined
+  let dynamicInputs = $state(data?.dynamicInputs || definition?.inputs || []);
+  let primitiveValue = $state(data?.primitiveValue ?? getDefaultPrimitiveValue());
+  let enumValue = $state(data?.enumValue ?? getDefaultEnumValue());
+  let isValidInput = $state(true);
+
   // Sync state changes back to node data for persistence
   $effect(() => {
-    if (isDynamicLogicNode) {
+    if (isDynamicLogicNode && data) {
       data.dynamicInputs = dynamicInputs;
     }
-    if (isPrimitiveNode) {
+    if (isPrimitiveNode && data) {
       data.primitiveValue = primitiveValue;
     }
-    if (isEnumNode) {
+    if (isEnumNode && data) {
       data.enumValue = enumValue;
     }
   });
@@ -104,7 +107,7 @@
   function getEnumOptions() {
     if (outputs.length > 0) {
       const enumOutput = outputs[0];
-      if (enumOutput.value_type?.type === 'Enum' && enumOutput.value_type?.value) {
+      if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value) {
         return enumOutput.value_type.value;
       }
     }
