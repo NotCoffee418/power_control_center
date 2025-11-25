@@ -261,6 +261,7 @@
         oninput={handleCommentChange}
         placeholder="Add comment..."
         title="Optional comment for this node"
+        aria-label="Node comment"
       />
     </div>
   </div>

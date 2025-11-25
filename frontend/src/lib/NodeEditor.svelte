@@ -330,11 +330,12 @@
   }
 
   // Helper function to check if two enum types are compatible (same values)
+  // Enums are compatible only if they have the exact same set of values
   function areEnumsCompatible(sourceValueType, targetValueType) {
     const sourceValues = sourceValueType?.value || [];
     const targetValues = targetValueType?.value || [];
     
-    // Require both enums to have values defined - empty enum definitions are invalid for connections
+    // Enums without values cannot be matched - they represent incomplete type definitions
     if (sourceValues.length === 0 || targetValues.length === 0) {
       return false;
     }
