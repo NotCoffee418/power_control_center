@@ -334,7 +334,7 @@
     const sourceValues = sourceValueType?.value || [];
     const targetValues = targetValueType?.value || [];
     
-    // Both must have values
+    // Require both enums to have values defined - empty enum definitions are invalid for connections
     if (sourceValues.length === 0 || targetValues.length === 0) {
       return false;
     }

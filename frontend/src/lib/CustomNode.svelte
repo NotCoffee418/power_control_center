@@ -53,7 +53,8 @@
     if (isEnumNode && data) {
       data.enumValue = enumValue;
     }
-    if (data) {
+    // Always sync comment - available for all node types
+    if (data && data.comment !== comment) {
       data.comment = comment;
     }
   });
