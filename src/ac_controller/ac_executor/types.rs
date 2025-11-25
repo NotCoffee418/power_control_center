@@ -55,7 +55,7 @@ impl AcState {
 }
 
 /// Converts a RequestMode plan into a concrete AcState
-/// Takes the mode, intensity, and device name to determine appropriate settings
+/// The device_name parameter is reserved for future device-specific settings
 pub fn plan_to_state(mode: &RequestMode, intensity: &Intensity, _device_name: &str) -> AcState {
     match mode {
         RequestMode::Off => {

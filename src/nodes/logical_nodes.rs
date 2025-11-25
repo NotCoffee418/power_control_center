@@ -230,6 +230,15 @@ impl Node for EqualsNode {
 /// Evaluate Number node - compares two numeric values
 /// Has a combobox for selecting comparison operator and two numeric inputs
 /// Uses Numeric type for flexible type matching between Float and Integer
+/// 
+/// Type Constraint Behavior (handled by frontend):
+/// - Initial state: Both inputs accept Float or Integer types
+/// - When one input is connected to a specific type (Float or Integer), 
+///   the other input's type constraint is updated to match that type
+/// - When all pins are disconnected, constraints reset to accept Float/Integer
+/// 
+/// This differs from the Equals node which can compare any types, while
+/// this node is specifically designed for numeric comparisons.
 pub struct EvaluateNumberNode;
 
 impl Node for EvaluateNumberNode {
