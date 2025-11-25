@@ -16,10 +16,8 @@ pub enum ValueType {
     Enum(Vec<String>),
     /// Structured object (for complex types like PlanResult)
     Object,
-    /// Any type - used for dynamic type matching (e.g., Equals node)
+    /// Any type - used for dynamic type matching (e.g., Equals node, Evaluate Number node)
     Any,
-    /// Numeric type - accepts Float or Integer for numeric comparisons
-    Numeric,
 }
 
 impl ValueType {
@@ -33,7 +31,6 @@ impl ValueType {
             ValueType::Enum(_) => "#C7A5E0",    // Purple for enums
             ValueType::Object => "#FFD93D",     // Yellow for complex objects
             ValueType::Any => "#AAAAAA",        // Gray for any type (dynamic matching)
-            ValueType::Numeric => "#FF8E4B",    // Orange-red for numeric (Float or Integer)
         }
     }
 }

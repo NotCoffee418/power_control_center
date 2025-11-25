@@ -228,8 +228,7 @@ impl Node for EqualsNode {
 }
 
 /// Evaluate Number node - compares two numeric values
-/// Has a combobox for selecting comparison operator and two numeric inputs
-/// Uses Numeric type for flexible type matching between Float and Integer
+/// Has a built-in combobox for selecting comparison operator and two numeric inputs
 /// 
 /// Type Constraint Behavior (handled by frontend):
 /// - Initial state: Both inputs accept Float or Integer types
@@ -237,8 +236,9 @@ impl Node for EqualsNode {
 ///   the other input's type constraint is updated to match that type
 /// - When all pins are disconnected, constraints reset to accept Float/Integer
 /// 
-/// This differs from the Equals node which can compare any types, while
-/// this node is specifically designed for numeric comparisons.
+/// The operator selection (>, >=, ==, <=, <) is a built-in combobox on the node,
+/// not an input pin. This differs from the Equals node which can compare any types,
+/// while this node is specifically designed for numeric comparisons.
 pub struct EvaluateNumberNode;
 
 impl Node for EvaluateNumberNode {
@@ -250,30 +250,17 @@ impl Node for EvaluateNumberNode {
             "Logic",
             vec![
                 NodeInput::new(
-                    "operator",
-                    "Operator",
-                    "Comparison operator to use",
-                    ValueType::Enum(vec![
-                        ">".to_string(),
-                        ">=".to_string(),
-                        "==".to_string(),
-                        "<=".to_string(),
-                        "<".to_string(),
-                    ]),
-                    true,
-                ),
-                NodeInput::new(
                     "input_a",
                     "Input A",
-                    "First numeric value to compare",
-                    ValueType::Numeric,
+                    "First numeric value to compare (accepts Float or Integer)",
+                    ValueType::Any, // Uses Any for flexible type matching, but frontend constrains to Float/Integer
                     true,
                 ),
                 NodeInput::new(
                     "input_b",
                     "Input B",
-                    "Second numeric value to compare",
-                    ValueType::Numeric,
+                    "Second numeric value to compare (accepts Float or Integer)",
+                    ValueType::Any, // Uses Any for flexible type matching, but frontend constrains to Float/Integer
                     true,
                 ),
             ],
@@ -432,31 +419,16 @@ mod tests {
         assert_eq!(def.node_type, "logic_evaluate_number");
         assert_eq!(def.name, "Evaluate Number");
         assert_eq!(def.category, "Logic");
-        assert_eq!(def.inputs.len(), 3); // operator, input_a, input_b
+        assert_eq!(def.inputs.len(), 2); // input_a, input_b (operator is a built-in combobox, not an input)
         assert_eq!(def.outputs.len(), 1); // Single boolean output
         
-        // Verify operator input is an enum with comparison operators
-        let operator_input = def.inputs.iter().find(|i| i.id == "operator").unwrap();
-        match &operator_input.value_type {
-            ValueType::Enum(values) => {
-                assert_eq!(values.len(), 5);
-                assert!(values.contains(&">".to_string()));
-                assert!(values.contains(&">=".to_string()));
-                assert!(values.contains(&"==".to_string()));
-                assert!(values.contains(&"<=".to_string()));
-                assert!(values.contains(&"<".to_string()));
-            }
-            _ => panic!("Expected Enum type for operator input"),
-        }
-        assert!(operator_input.required);
-        
-        // Verify inputs are Numeric type for flexible matching
+        // Verify inputs are Any type for flexible matching between Float/Integer
         let input_a = def.inputs.iter().find(|i| i.id == "input_a").unwrap();
-        assert_eq!(input_a.value_type, ValueType::Numeric);
+        assert_eq!(input_a.value_type, ValueType::Any);
         assert!(input_a.required);
         
         let input_b = def.inputs.iter().find(|i| i.id == "input_b").unwrap();
-        assert_eq!(input_b.value_type, ValueType::Numeric);
+        assert_eq!(input_b.value_type, ValueType::Any);
         assert!(input_b.required);
         
         // Verify output is boolean
