@@ -55,9 +55,9 @@ impl AcState {
 }
 
 /// Converts a RequestMode plan into a concrete AcState
-/// Takes the device name to determine appropriate settings (currently unused but reserved for future use)
-pub fn plan_to_state(plan: &RequestMode, _device_name: &str) -> AcState {
-    match plan {
+/// Takes the mode, intensity, and device name to determine appropriate settings
+pub fn plan_to_state(mode: &RequestMode, intensity: &Intensity, _device_name: &str) -> AcState {
+    match mode {
         RequestMode::Off => {
             // Explicitly turn off the device
             AcState::new_off()
@@ -68,7 +68,7 @@ pub fn plan_to_state(plan: &RequestMode, _device_name: &str) -> AcState {
             // In practice, this should not cause changes due to state comparison in executor
             AcState::new_off()
         }
-        RequestMode::Colder(intensity) => {
+        RequestMode::Colder => {
             // Cooling mode
             let (fan_speed, temperature, powerful) = get_settings_for_intensity(intensity, true);
             AcState::new_on(
@@ -79,7 +79,7 @@ pub fn plan_to_state(plan: &RequestMode, _device_name: &str) -> AcState {
                 powerful,
             )
         }
-        RequestMode::Warmer(intensity) => {
+        RequestMode::Warmer => {
             // Heating mode
             let (fan_speed, temperature, powerful) = get_settings_for_intensity(intensity, false);
             AcState::new_on(
@@ -159,24 +159,21 @@ mod tests {
 
     #[test]
     fn test_plan_to_state_off() {
-        let plan = RequestMode::Off;
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::Off, &Intensity::Low, "LivingRoom");
 
         assert_eq!(state, AcState::new_off());
     }
 
     #[test]
     fn test_plan_to_state_no_change() {
-        let plan = RequestMode::NoChange;
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::NoChange, &Intensity::Low, "LivingRoom");
 
         assert_eq!(state, AcState::new_off());
     }
 
     #[test]
     fn test_plan_to_state_colder_low() {
-        let plan = RequestMode::Colder(Intensity::Low);
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::Colder, &Intensity::Low, "LivingRoom");
 
         assert!(state.is_on);
         assert_eq!(state.mode, Some(4)); // Cool mode
@@ -188,8 +185,7 @@ mod tests {
 
     #[test]
     fn test_plan_to_state_colder_medium() {
-        let plan = RequestMode::Colder(Intensity::Medium);
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::Colder, &Intensity::Medium, "LivingRoom");
 
         assert!(state.is_on);
         assert_eq!(state.mode, Some(4)); // Cool mode
@@ -201,8 +197,7 @@ mod tests {
 
     #[test]
     fn test_plan_to_state_colder_high() {
-        let plan = RequestMode::Colder(Intensity::High);
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::Colder, &Intensity::High, "LivingRoom");
 
         assert!(state.is_on);
         assert_eq!(state.mode, Some(4)); // Cool mode
@@ -214,8 +209,7 @@ mod tests {
 
     #[test]
     fn test_plan_to_state_warmer_low() {
-        let plan = RequestMode::Warmer(Intensity::Low);
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::Warmer, &Intensity::Low, "LivingRoom");
 
         assert!(state.is_on);
         assert_eq!(state.mode, Some(1)); // Heat mode
@@ -227,8 +221,7 @@ mod tests {
 
     #[test]
     fn test_plan_to_state_warmer_medium() {
-        let plan = RequestMode::Warmer(Intensity::Medium);
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::Warmer, &Intensity::Medium, "LivingRoom");
 
         assert!(state.is_on);
         assert_eq!(state.mode, Some(1)); // Heat mode
@@ -240,8 +233,7 @@ mod tests {
 
     #[test]
     fn test_plan_to_state_warmer_high() {
-        let plan = RequestMode::Warmer(Intensity::High);
-        let state = plan_to_state(&plan, "LivingRoom");
+        let state = plan_to_state(&RequestMode::Warmer, &Intensity::High, "LivingRoom");
 
         assert!(state.is_on);
         assert_eq!(state.mode, Some(1)); // Heat mode

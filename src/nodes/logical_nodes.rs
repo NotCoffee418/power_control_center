@@ -227,6 +227,59 @@ impl Node for EqualsNode {
     }
 }
 
+/// Evaluate Number node - compares two numeric values
+/// Has a combobox for selecting comparison operator and two numeric inputs
+/// Uses Numeric type for flexible type matching between Float and Integer
+pub struct EvaluateNumberNode;
+
+impl Node for EvaluateNumberNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "logic_evaluate_number",
+            "Evaluate Number",
+            "Compares two numeric values using the selected comparison operator. When one input is connected, the other input's type constraint matches that input's type (Float or Integer). Resets to Float/Integer constraint when all pins are disconnected.",
+            "Logic",
+            vec![
+                NodeInput::new(
+                    "operator",
+                    "Operator",
+                    "Comparison operator to use",
+                    ValueType::Enum(vec![
+                        ">".to_string(),
+                        ">=".to_string(),
+                        "==".to_string(),
+                        "<=".to_string(),
+                        "<".to_string(),
+                    ]),
+                    true,
+                ),
+                NodeInput::new(
+                    "input_a",
+                    "Input A",
+                    "First numeric value to compare",
+                    ValueType::Numeric,
+                    true,
+                ),
+                NodeInput::new(
+                    "input_b",
+                    "Input B",
+                    "Second numeric value to compare",
+                    ValueType::Numeric,
+                    true,
+                ),
+            ],
+            vec![
+                NodeOutput::new(
+                    "result",
+                    "Result",
+                    "True if the comparison is satisfied",
+                    ValueType::Boolean,
+                ),
+            ],
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,6 +417,45 @@ mod tests {
     }
 
     #[test]
+    fn test_evaluate_number_node_definition() {
+        let def = EvaluateNumberNode::definition();
+        
+        assert_eq!(def.node_type, "logic_evaluate_number");
+        assert_eq!(def.name, "Evaluate Number");
+        assert_eq!(def.category, "Logic");
+        assert_eq!(def.inputs.len(), 3); // operator, input_a, input_b
+        assert_eq!(def.outputs.len(), 1); // Single boolean output
+        
+        // Verify operator input is an enum with comparison operators
+        let operator_input = def.inputs.iter().find(|i| i.id == "operator").unwrap();
+        match &operator_input.value_type {
+            ValueType::Enum(values) => {
+                assert_eq!(values.len(), 5);
+                assert!(values.contains(&">".to_string()));
+                assert!(values.contains(&">=".to_string()));
+                assert!(values.contains(&"==".to_string()));
+                assert!(values.contains(&"<=".to_string()));
+                assert!(values.contains(&"<".to_string()));
+            }
+            _ => panic!("Expected Enum type for operator input"),
+        }
+        assert!(operator_input.required);
+        
+        // Verify inputs are Numeric type for flexible matching
+        let input_a = def.inputs.iter().find(|i| i.id == "input_a").unwrap();
+        assert_eq!(input_a.value_type, ValueType::Numeric);
+        assert!(input_a.required);
+        
+        let input_b = def.inputs.iter().find(|i| i.id == "input_b").unwrap();
+        assert_eq!(input_b.value_type, ValueType::Numeric);
+        assert!(input_b.required);
+        
+        // Verify output is boolean
+        assert_eq!(def.outputs[0].id, "result");
+        assert_eq!(def.outputs[0].value_type, ValueType::Boolean);
+    }
+
+    #[test]
     fn test_logical_nodes_serializable() {
         let definitions = vec![
             AndNode::definition(),
@@ -372,6 +464,7 @@ mod tests {
             IfNode::definition(),
             NotNode::definition(),
             EqualsNode::definition(),
+            EvaluateNumberNode::definition(),
         ];
         
         for def in definitions {

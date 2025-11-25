@@ -45,25 +45,26 @@ pub(super) struct PlanInput {
 }
 
 
-/// Result of AC planning including the mode and the cause/reason
+/// Result of AC planning including the mode, intensity, and the cause/reason
 #[derive(Debug, PartialEq)]
 pub struct PlanResult {
     pub mode: RequestMode,
+    pub intensity: Intensity,
     pub cause: CauseReason,
 }
 
 impl PlanResult {
-    pub fn new(mode: RequestMode, cause: CauseReason) -> Self {
-        Self { mode, cause }
+    pub fn new(mode: RequestMode, intensity: Intensity, cause: CauseReason) -> Self {
+        Self { mode, intensity, cause }
     }
 }
 
 /// Vague request for changing temperature
 /// To be specified by settings
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum RequestMode {
-    Colder(Intensity),
-    Warmer(Intensity),
+    Colder,
+    Warmer,
     /// Explicitly turn the AC off (e.g., due to IceException, PIR detection)
     Off,
     /// No change needed - keep current state (e.g., comfortable temperature)
@@ -71,7 +72,7 @@ pub enum RequestMode {
 }
 
 /// Intensity levels of desired temperature change
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Intensity {
     Low,    // Maintain not freezing/smelting temperature
     Medium, // Keep it comfortable
@@ -125,7 +126,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
         // Return Off to explicitly turn off or keep off the AC
         // The actual turn-off is handled by the PIR detect endpoint
         // This prevents the AC from being turned back on during normal evaluation
-        return PlanResult::new(RequestMode::Off, CauseReason::PirDetection);
+        return PlanResult::new(RequestMode::Off, Intensity::Low, CauseReason::PirDetection);
     }
 
     // Get current conditions
@@ -133,7 +134,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
         Some(temp) => temp,
         None => {
             // If we can't get temperature, default to no change
-            return PlanResult::new(RequestMode::NoChange, CauseReason::Undefined);
+            return PlanResult::new(RequestMode::NoChange, Intensity::Low, CauseReason::Undefined);
         }
     };
 
@@ -174,7 +175,7 @@ pub(super) fn get_plan(input: &PlanInput) -> PlanResult {
             input.solar_production,
             ICE_EXCEPTION_SOLAR_BYPASS_THRESHOLD
         );
-        return PlanResult::new(RequestMode::Off, CauseReason::IceException);
+        return PlanResult::new(RequestMode::Off, Intensity::Low, CauseReason::IceException);
     }
     
     calculate_request_mode_with_cause(input)
@@ -255,22 +256,22 @@ fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
     
     let mode = if input.current_indoor_temp < TOO_COLD_THRESHOLD {
         // Too cold - need heating
-        RequestMode::Warmer(final_intensity)
+        RequestMode::Warmer
     } else if input.current_indoor_temp > TOO_HOT_THRESHOLD {
         // Too hot - need cooling
-        RequestMode::Colder(final_intensity)
+        RequestMode::Colder
     } else if input.current_indoor_temp < COMFORTABLE_TEMP_MIN && input.user_is_home {
         // A bit cold and user is home - use calculated intensity
-        RequestMode::Warmer(final_intensity)
+        RequestMode::Warmer
     } else if input.current_indoor_temp > COMFORTABLE_TEMP_MAX && input.user_is_home {
         // A bit warm and user is home - use calculated intensity
-        RequestMode::Colder(final_intensity)
+        RequestMode::Colder
     } else {
         // Temperature is comfortable or user is not home
         RequestMode::NoChange
     };
 
-    PlanResult::new(mode, final_cause)
+    PlanResult::new(mode, final_intensity, final_cause)
 }
 
 /// Get current temperature for a specific AC device
@@ -423,7 +424,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Medium because user is home
+            RequestMode::Warmer if plan.intensity == Intensity::Medium => {}, // Expected: Medium because user is home
             _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan.mode),
         }
         // Medium intensity = user is home = Undefined cause
@@ -442,7 +443,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::High) => {}, // Expected: High because high solar
+            RequestMode::Warmer if plan.intensity == Intensity::High => {}, // Expected: High because high solar
             _ => panic!("Expected Warmer with High intensity, got {:?}", plan.mode),
         }
         // High intensity, no significant temp change = ExcessiveSolarPower
@@ -462,7 +463,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::Medium) => {}, // Expected: Medium because user is home
+            RequestMode::Colder if plan.intensity == Intensity::Medium => {}, // Expected: Medium because user is home
             _ => panic!("Expected Colder with Medium intensity, got {:?}", plan.mode),
         }
         // Medium intensity = user is home = Undefined cause
@@ -481,7 +482,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::High) => {}, // Expected: High because high solar
+            RequestMode::Colder if plan.intensity == Intensity::High => {}, // Expected: High because high solar
             _ => panic!("Expected Colder with High intensity, got {:?}", plan.mode),
         }
         // High intensity, no significant temp change = ExcessiveSolarPower
@@ -520,7 +521,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Medium) => {}, // Expected: Warm with Medium
+            RequestMode::Warmer if plan.intensity == Intensity::Medium => {}, // Expected: Warm with Medium
             _ => panic!("Expected Warmer with Medium intensity, got {:?}", plan.mode),
         }
         // Medium intensity = user is home = Undefined cause
@@ -539,7 +540,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::Medium) => {}, // Expected: Cool with Medium
+            RequestMode::Colder if plan.intensity == Intensity::Medium => {}, // Expected: Cool with Medium
             _ => panic!("Expected Colder with Medium intensity, got {:?}", plan.mode),
         }
         // Medium intensity = user is home = Undefined cause
@@ -579,7 +580,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to weather forecast
+            RequestMode::Warmer if plan.intensity == Intensity::High => {}, // Expected: High due to weather forecast
             _ => panic!("Expected Warmer with High intensity due to forecast, got {:?}", plan.mode),
         }
         // High intensity with significant temp change = MajorTemperatureChangePending
@@ -599,7 +600,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::High) => {}, // Expected: High due to weather forecast
+            RequestMode::Colder if plan.intensity == Intensity::High => {}, // Expected: High due to weather forecast
             _ => panic!("Expected Colder with High intensity due to forecast, got {:?}", plan.mode),
         }
         // High intensity with significant temp change = MajorTemperatureChangePending
@@ -618,7 +619,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Low) => {}, // Expected: Low because no solar
+            RequestMode::Warmer if plan.intensity == Intensity::Low => {}, // Expected: Low because no solar
             _ => panic!("Expected Warmer with Low intensity, got {:?}", plan.mode),
         }
         // Low intensity, outdoor temp (15) not near comfortable range = NobodyHome
@@ -637,7 +638,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::High) => {}, // Expected: High due to forecast + moderate solar
+            RequestMode::Warmer if plan.intensity == Intensity::High => {}, // Expected: High due to forecast + moderate solar
             _ => panic!("Expected Warmer with High intensity, got {:?}", plan.mode),
         }
         // High intensity with significant temp change = MajorTemperatureChangePending
@@ -677,7 +678,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Low) => {}, // Expected: Heating with low intensity
+            RequestMode::Warmer if plan.intensity == Intensity::Low => {}, // Expected: Heating with low intensity
             _ => panic!("Expected Warmer with Low intensity, got {:?}", plan.mode),
         }
         // With new cause system: user not home and outdoor temp far from comfortable = NobodyHome
@@ -721,7 +722,7 @@ mod tests {
         // Temperature is 12°C which is between TOO_COLD (18°C) and comfortable (20°C)
         // User not home, so no heating
         match plan.mode {
-            RequestMode::Warmer(Intensity::Low) => {}, // Expected: Heating because too cold
+            RequestMode::Warmer if plan.intensity == Intensity::Low => {}, // Expected: Heating because too cold
             _ => panic!("Expected Warmer(Low), got {:?}", plan.mode),
         }
         // With new cause system: user not home and outdoor temp far from comfortable = NobodyHome
@@ -762,7 +763,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Low) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Low => {},
             _ => panic!("Expected Warmer(Low), got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::NobodyHome);
@@ -780,7 +781,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Low) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Low => {},
             _ => panic!("Expected Warmer(Low), got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::MildTemperature);
@@ -798,7 +799,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::High) => {},
+            RequestMode::Colder if plan.intensity == Intensity::High => {},
             _ => panic!("Expected Colder(High), got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
@@ -816,7 +817,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::High) => {},
+            RequestMode::Colder if plan.intensity == Intensity::High => {},
             _ => panic!("Expected Colder(High), got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::MajorTemperatureChangePending);
@@ -834,7 +835,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Medium) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Medium => {},
             _ => panic!("Expected Warmer(Medium), got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::Undefined);
@@ -852,7 +853,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::Low) => {},
+            RequestMode::Colder if plan.intensity == Intensity::Low => {},
             _ => panic!("Expected Colder(Low), got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::MildTemperature);
@@ -876,7 +877,7 @@ mod tests {
         
         // Verify that this converts to an off state
         use super::super::ac_executor::plan_to_state;
-        let state = plan_to_state(&plan.mode, "LivingRoom");
+        let state = plan_to_state(&plan.mode, &plan.intensity, "LivingRoom");
         assert!(!state.is_on, "Device should be off when IceException triggers");
     }
 
@@ -951,7 +952,7 @@ mod tests {
         let plan = get_plan(&input);
         // Should allow heating because indoor is too cold
         match plan.mode {
-            RequestMode::Warmer(_) => {}, // Expected: Heating allowed
+            RequestMode::Warmer => {}, // Expected: Heating allowed
             _ => panic!("Expected Warmer mode when indoor < 12°C, got {:?}", plan.mode),
         }
         // Should not have IceException cause
@@ -971,7 +972,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::High) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::High => {},
             _ => panic!("Expected Warmer(High) with high solar and user not home, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
@@ -989,7 +990,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Medium) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Medium => {},
             _ => panic!("Expected Warmer(Medium) with medium solar and user not home, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
@@ -1007,7 +1008,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::Medium) => {},
+            RequestMode::Colder if plan.intensity == Intensity::Medium => {},
             _ => panic!("Expected Colder(Medium) with 1000W solar and user not home, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
@@ -1025,7 +1026,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Low) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Low => {},
             _ => panic!("Expected Warmer(Low) with low solar and user not home, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::NobodyHome);
@@ -1045,7 +1046,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Medium) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Medium => {},
             _ => panic!("Expected Warmer(Medium) due to counterproductive trend, got {:?}", plan.mode),
         }
         // Cause should still be solar-related since that's the underlying reason
@@ -1065,7 +1066,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::Medium) => {},
+            RequestMode::Colder if plan.intensity == Intensity::Medium => {},
             _ => panic!("Expected Colder(Medium) due to counterproductive trend, got {:?}", plan.mode),
         }
         // Cause should still be solar-related
@@ -1085,7 +1086,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::High) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::High => {},
             _ => panic!("Expected Warmer(High) when trend supports heating, got {:?}", plan.mode),
         }
         // This should be MajorTemperatureChangePending since we have both high solar and significant temp change
@@ -1105,7 +1106,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Colder(Intensity::High) => {},
+            RequestMode::Colder if plan.intensity == Intensity::High => {},
             _ => panic!("Expected Colder(High) when trend supports cooling, got {:?}", plan.mode),
         }
         // This should be MajorTemperatureChangePending since we have both high solar and significant temp change
@@ -1125,7 +1126,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Medium) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Medium => {},
             _ => panic!("Expected Warmer(Medium), trend validation only applies to high intensity, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
@@ -1143,7 +1144,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::High) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::High => {},
             _ => panic!("Expected Warmer(High) with user home and high solar, got {:?}", plan.mode),
         }
         assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
@@ -1161,7 +1162,7 @@ mod tests {
         };
         let plan = get_plan(&input);
         match plan.mode {
-            RequestMode::Warmer(Intensity::Medium) => {},
+            RequestMode::Warmer if plan.intensity == Intensity::Medium => {},
             _ => panic!("Expected Warmer(Medium) with user home and medium solar, got {:?}", plan.mode),
         }
         // With medium solar, the cause should be ExcessiveSolarPower
