@@ -1,4 +1,4 @@
-use super::node_system::{Node, NodeDefinition, NodeInput, NodeOutput, ValueType};
+use super::node_system::{Node, NodeDefinition, NodeOutput, ValueType};
 
 /// Device node - represents an AC device enum selection
 /// This node provides a dropdown/combobox for selecting an AC device
@@ -21,45 +21,6 @@ impl Node for DeviceNode {
                         "LivingRoom".to_string(),
                         "Veranda".to_string(),
                     ]),
-                ),
-            ],
-        )
-    }
-}
-
-/// Currently Evaluating Device node - outputs the device being evaluated
-/// This is a source node that provides the device currently being processed by the planner
-pub struct CurrentlyEvaluatingDeviceNode;
-
-impl Node for CurrentlyEvaluatingDeviceNode {
-    fn definition() -> NodeDefinition {
-        NodeDefinition::new(
-            "currently_evaluating_device",
-            "Currently Evaluating Device",
-            "Outputs the AC device currently being evaluated by the planner, along with its temperature and mode.",
-            "System",
-            vec![], // No inputs - this is a source node
-            vec![
-                NodeOutput::new(
-                    "device",
-                    "Device",
-                    "The device currently being evaluated",
-                    ValueType::Enum(vec![
-                        "LivingRoom".to_string(),
-                        "Veranda".to_string(),
-                    ]),
-                ),
-                NodeOutput::new(
-                    "temperature",
-                    "Temperature",
-                    "Current temperature reading from the device sensor in Celsius",
-                    ValueType::Float,
-                ),
-                NodeOutput::new(
-                    "is_auto_mode",
-                    "Is Auto Mode",
-                    "True if the device is in automatic mode, false if in manual mode",
-                    ValueType::Boolean,
                 ),
             ],
         )
@@ -180,35 +141,6 @@ mod tests {
     }
 
     #[test]
-    fn test_currently_evaluating_device_node_definition() {
-        let def = CurrentlyEvaluatingDeviceNode::definition();
-        
-        assert_eq!(def.node_type, "currently_evaluating_device");
-        assert_eq!(def.name, "Currently Evaluating Device");
-        assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 0); // Source node has no inputs
-        assert_eq!(def.outputs.len(), 3); // Three outputs: device, temperature, is_auto_mode
-        
-        // Verify device output is an enum with device values
-        let device_output = def.outputs.iter().find(|o| o.id == "device").unwrap();
-        match &device_output.value_type {
-            ValueType::Enum(values) => {
-                assert!(values.contains(&"LivingRoom".to_string()));
-                assert!(values.contains(&"Veranda".to_string()));
-            }
-            _ => panic!("Expected Enum type for device output"),
-        }
-        
-        // Verify temperature output is a float
-        let temp_output = def.outputs.iter().find(|o| o.id == "temperature").unwrap();
-        assert_eq!(temp_output.value_type, ValueType::Float);
-        
-        // Verify is_auto_mode output is a boolean
-        let auto_mode_output = def.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
-        assert_eq!(auto_mode_output.value_type, ValueType::Boolean);
-    }
-
-    #[test]
     fn test_intensity_node_definition() {
         let def = IntensityNode::definition();
         
@@ -234,7 +166,6 @@ mod tests {
     fn test_enum_nodes_serializable() {
         let definitions = vec![
             DeviceNode::definition(),
-            CurrentlyEvaluatingDeviceNode::definition(),
             IntensityNode::definition(),
             CauseReasonNode::definition(),
             RequestModeNode::definition(),

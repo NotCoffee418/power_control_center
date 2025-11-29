@@ -2,7 +2,7 @@ use super::node_system::{Node, NodeDefinition, NodeInput, NodeOutput, ValueType}
 
 /// Start Node - Entry point for the device evaluation flow
 /// This node provides all the required data to start evaluating an AC device
-/// Outputs device identifier, current temperature, and auto mode status
+/// Outputs device identifier, sensor temperature, environmental data, and mode status
 pub struct StartNode;
 
 impl Node for StartNode {
@@ -10,7 +10,7 @@ impl Node for StartNode {
         NodeDefinition::new(
             "flow_start",
             "Start",
-            "Entry point for device evaluation. Provides device data including identifier, temperature reading, and auto/manual mode status. One Start node should exist per evaluation flow.",
+            "Entry point for device evaluation. Provides device data including identifier, sensor temperature, outdoor conditions, power data, and auto/manual mode status. One Start node should exist per evaluation flow.",
             "System",
             vec![], // No inputs - this is the entry point
             vec![
@@ -24,8 +24,8 @@ impl Node for StartNode {
                     ]),
                 ),
                 NodeOutput::new(
-                    "temperature",
-                    "Temperature",
+                    "device_sensor_temperature",
+                    "Device Sensor Temperature",
                     "Current temperature reading from the device sensor in Celsius",
                     ValueType::Float,
                 ),
@@ -40,6 +40,36 @@ impl Node for StartNode {
                     "Last Change Minutes",
                     "Number of minutes since the AC last received a command (i32::MAX if never)",
                     ValueType::Integer,
+                ),
+                NodeOutput::new(
+                    "outdoor_temperature",
+                    "Outdoor Temperature",
+                    "Current outdoor temperature in Celsius from weather API",
+                    ValueType::Float,
+                ),
+                NodeOutput::new(
+                    "is_user_home",
+                    "Is User Home",
+                    "True if the user is home and awake based on schedule settings",
+                    ValueType::Boolean,
+                ),
+                NodeOutput::new(
+                    "net_power_watt",
+                    "Net Power Watt",
+                    "Current net power in watts (positive = consuming from grid, negative = exporting to grid)",
+                    ValueType::Integer,
+                ),
+                NodeOutput::new(
+                    "raw_solar_watt",
+                    "Raw Solar Watt",
+                    "Current raw solar production in watts",
+                    ValueType::Integer,
+                ),
+                NodeOutput::new(
+                    "outside_temperature_trend",
+                    "Outside Temperature Trend",
+                    "Temperature trend in Celsius (positive = getting warmer, negative = getting colder)",
+                    ValueType::Float,
                 ),
             ],
         )
@@ -154,7 +184,7 @@ mod tests {
         assert_eq!(def.name, "Start");
         assert_eq!(def.category, "System");
         assert_eq!(def.inputs.len(), 0); // Source node has no inputs
-        assert_eq!(def.outputs.len(), 4); // device, temperature, is_auto_mode, last_change_minutes
+        assert_eq!(def.outputs.len(), 9); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, outside_temperature_trend
         
         // Verify device output is an enum with device values
         let device_output = def.outputs.iter().find(|o| o.id == "device").unwrap();
@@ -166,9 +196,10 @@ mod tests {
             _ => panic!("Expected Enum type for device output"),
         }
         
-        // Verify temperature output is a float
-        let temp_output = def.outputs.iter().find(|o| o.id == "temperature").unwrap();
+        // Verify device_sensor_temperature output is a float
+        let temp_output = def.outputs.iter().find(|o| o.id == "device_sensor_temperature").unwrap();
         assert_eq!(temp_output.value_type, ValueType::Float);
+        assert_eq!(temp_output.label, "Device Sensor Temperature");
         
         // Verify is_auto_mode output is a boolean
         let auto_mode_output = def.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
@@ -177,6 +208,26 @@ mod tests {
         // Verify last_change_minutes output is an integer
         let last_change_output = def.outputs.iter().find(|o| o.id == "last_change_minutes").unwrap();
         assert_eq!(last_change_output.value_type, ValueType::Integer);
+        
+        // Verify outdoor_temperature output is a float
+        let outdoor_temp_output = def.outputs.iter().find(|o| o.id == "outdoor_temperature").unwrap();
+        assert_eq!(outdoor_temp_output.value_type, ValueType::Float);
+        
+        // Verify is_user_home output is a boolean
+        let user_home_output = def.outputs.iter().find(|o| o.id == "is_user_home").unwrap();
+        assert_eq!(user_home_output.value_type, ValueType::Boolean);
+        
+        // Verify net_power_watt output is an integer
+        let net_power_output = def.outputs.iter().find(|o| o.id == "net_power_watt").unwrap();
+        assert_eq!(net_power_output.value_type, ValueType::Integer);
+        
+        // Verify raw_solar_watt output is an integer
+        let solar_output = def.outputs.iter().find(|o| o.id == "raw_solar_watt").unwrap();
+        assert_eq!(solar_output.value_type, ValueType::Integer);
+        
+        // Verify outside_temperature_trend output is a float
+        let trend_output = def.outputs.iter().find(|o| o.id == "outside_temperature_trend").unwrap();
+        assert_eq!(trend_output.value_type, ValueType::Float);
     }
 
     #[test]

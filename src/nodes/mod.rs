@@ -10,7 +10,7 @@ mod integration_test;
 pub use node_system::{Node, NodeInput, NodeOutput, NodeDefinition, ValueType, EnumOption};
 pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, EvaluateNumberNode, BranchNode};
 pub use primitive_nodes::{FloatNode, IntegerNode, BooleanNode};
-pub use enum_nodes::{DeviceNode, CurrentlyEvaluatingDeviceNode, IntensityNode, CauseReasonNode, RequestModeNode};
+pub use enum_nodes::{DeviceNode, IntensityNode, CauseReasonNode, RequestModeNode};
 pub use sensor_nodes::PirDetectionNode;
 pub use flow_nodes::{StartNode, ExecuteActionNode, DoNothingNode};
 
@@ -19,7 +19,6 @@ pub fn get_all_node_definitions() -> Vec<NodeDefinition> {
     vec![
         // System/Flow nodes
         StartNode::definition(),
-        CurrentlyEvaluatingDeviceNode::definition(),
         ExecuteActionNode::definition(),
         DoNothingNode::definition(),
         // Sensor nodes

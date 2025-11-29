@@ -128,7 +128,7 @@ impl SimulatorInputsUsed {
 pub struct LiveInputs {
     /// All configured devices
     pub devices: Vec<LiveDeviceInput>,
-    /// Current solar production in watts
+    /// Current solar production in watts (raw solar)
     pub solar_production: Option<u32>,
     /// Current outdoor temperature
     pub outdoor_temp: Option<f64>,
@@ -136,6 +136,10 @@ pub struct LiveInputs {
     pub avg_next_12h_outdoor_temp: Option<f64>,
     /// Whether user is home
     pub user_is_home: bool,
+    /// Current net power in watts (positive = consuming, negative = exporting)
+    pub net_power_watt: Option<i32>,
+    /// Outside temperature trend (positive = warming, negative = cooling)
+    pub outside_temperature_trend: Option<f64>,
 }
 
 /// Live inputs for a specific device
@@ -340,9 +344,22 @@ async fn get_live_inputs() -> Response {
     
     let outdoor_temp = get_outdoor_temp().await.ok();
     
-    let avg_next_12h_outdoor_temp = match (outdoor_temp, get_temperature_trend().await.ok()) {
+    // Get temperature trend
+    let outside_temperature_trend = get_temperature_trend().await.ok();
+    
+    let avg_next_12h_outdoor_temp = match (outdoor_temp, outside_temperature_trend) {
         (Some(temp), Some(trend)) => Some(temp + trend),
         _ => None,
+    };
+    
+    // Get net power from meter reading
+    let net_power_watt = match device_requests::meter::get_latest_reading_cached().await {
+        Ok(reading) => {
+            // Calculate net power: positive means consuming from grid, negative means exporting
+            let net = ((reading.current_consumption_kw - reading.current_production_kw) * 1000.0) as i32;
+            Some(net)
+        },
+        Err(_) => None,
     };
     
     let user_is_home = crate::ac_controller::plan_helpers::is_user_home_and_awake();
@@ -353,6 +370,8 @@ async fn get_live_inputs() -> Response {
         outdoor_temp,
         avg_next_12h_outdoor_temp,
         user_is_home,
+        net_power_watt,
+        outside_temperature_trend,
     };
     
     let response = ApiResponse::success(live_inputs);
