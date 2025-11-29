@@ -1,7 +1,7 @@
 mod ac;
 mod pir;
 mod dashboard;
-mod nodes;
+pub mod nodes;
 mod simulator;
 mod cause_reasons;
 

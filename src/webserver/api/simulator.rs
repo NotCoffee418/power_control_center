@@ -12,9 +12,12 @@ use crate::{
         ac_executor::{plan_to_state, AcState, AC_MODE_HEAT, AC_MODE_COOL},
     },
     config,
+    db,
     device_requests,
     types::{ApiResponse, CauseReason},
 };
+
+use super::nodes::{validate_nodeset, NodeConfiguration, get_active_nodeset_id, DEFAULT_NODESET_ID};
 
 const KW_TO_W_MULTIPLIER: f64 = 1000.0;
 
@@ -159,6 +162,21 @@ pub struct LiveDeviceInput {
 /// Evaluates the workflow with the provided inputs without executing any actions
 async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     let cfg = config::get_config();
+    
+    // Validate the active nodeset before simulation
+    let pool = db::get_pool().await;
+    let active_nodeset_validation = validate_active_nodeset(pool).await;
+    if let Err(validation_error) = active_nodeset_validation {
+        let error_result = SimulatorResult {
+            success: false,
+            plan: None,
+            ac_state: None,
+            error: Some(validation_error),
+            inputs_used: SimulatorInputsUsed::from_inputs_with_defaults(&inputs),
+        };
+        let response = ApiResponse::success(error_result);
+        return (StatusCode::OK, Json(response)).into_response();
+    }
     
     // Validate device
     let _device = match AcDevices::from_str(&inputs.device) {
@@ -446,8 +464,6 @@ fn ac_state_to_simulator_state(state: &AcState) -> SimulatorAcState {
 /// Get minutes since the last AC command for a specific device
 /// Returns i32::MAX if no actions have been recorded
 async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
-    use crate::db;
-    
     match db::ac_actions::get_last_action_timestamp(device_name).await {
         Ok(Some(timestamp)) => {
             let now = chrono::Utc::now().timestamp() as i32;
@@ -462,6 +478,60 @@ async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
         Err(_) => {
             // Database error - return None to indicate unavailable
             None
+        }
+    }
+}
+
+/// Validate the active nodeset configuration
+/// Returns Ok(()) if valid, Err(error_message) if invalid
+async fn validate_active_nodeset(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    // Get the active nodeset id using shared helper
+    let active_id = match get_active_nodeset_id(pool).await {
+        Ok(id) => id,
+        Err(e) => {
+            log::error!("Failed to get active nodeset id: {}", e);
+            return Err("Failed to get active nodeset".to_string());
+        }
+    };
+
+    // Fetch the nodeset
+    let result = sqlx::query_as::<_, (String,)>(
+        "SELECT node_json FROM nodesets WHERE id = ?"
+    )
+    .bind(active_id)
+    .fetch_optional(pool)
+    .await;
+
+    match result {
+        Ok(Some((node_json,))) => {
+            match serde_json::from_str::<NodeConfiguration>(&node_json) {
+                Ok(config) => {
+                    let validation = validate_nodeset(&config.nodes);
+                    if validation.is_valid {
+                        Ok(())
+                    } else {
+                        let error_message = validation.errors.join("; ");
+                        Err(format!("Invalid active profile: {}", error_message))
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to parse nodeset configuration: {}", e);
+                    Err("Failed to parse active profile configuration".to_string())
+                }
+            }
+        }
+        Ok(None) => {
+            // No nodeset found - could be default or missing
+            // For default nodeset (id 0), we skip validation as it may be empty
+            if active_id == DEFAULT_NODESET_ID {
+                Ok(()) // Default nodeset is allowed to be empty
+            } else {
+                Err("Active profile not found".to_string())
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to fetch active nodeset: {}", e);
+            Err("Failed to fetch active profile".to_string())
         }
     }
 }
