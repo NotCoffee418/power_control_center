@@ -16,6 +16,8 @@ use crate::{
     types::{ApiResponse, CauseReason},
 };
 
+const KW_TO_W_MULTIPLIER: f64 = 1000.0;
+
 pub fn simulator_routes() -> Router {
     Router::new()
         .route("/evaluate", post(evaluate_workflow))
@@ -355,8 +357,8 @@ async fn get_live_inputs() -> Response {
     // Get net power from meter reading
     let net_power_watt = match device_requests::meter::get_latest_reading_cached().await {
         Ok(reading) => {
-            // Calculate net power: positive means consuming from grid, negative means exporting
-            let net = ((reading.current_consumption_kw - reading.current_production_kw) * 1000.0) as i32;
+            // Calculate net power: negative means producing more than consuming
+            let net = ((reading.current_consumption_kw - reading.current_production_kw) * KW_TO_W_MULTIPLIER) as i32;
             Some(net)
         },
         Err(_) => None,
