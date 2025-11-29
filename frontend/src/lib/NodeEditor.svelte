@@ -31,8 +31,6 @@
   let currentNodesetName = $state('New');
   let selectedNodesetId = $state(NEW_NODESET_ID);
   let hasUnsavedChanges = $state(false);
-  let originalNodes = $state.raw([]);
-  let originalEdges = $state.raw([]);
   
   // Active profile state (the one used for AC logic)
   let activeNodesetId = $state(DEFAULT_NODESET_ID);
@@ -190,9 +188,7 @@
         activeNodesetId = result.data.id;
         activeNodesetName = result.data.name;
         
-        // Store original state for change detection
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
+        // Reset unsaved changes after loading
         hasUnsavedChanges = false;
       }
     } catch (e) {
@@ -216,9 +212,7 @@
         nodes = result.data.nodes || [];
         edges = result.data.edges || [];
         
-        // Store original state for change detection
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
+        // Reset unsaved changes after loading
         hasUnsavedChanges = false;
         return true;
       } else {
@@ -229,15 +223,6 @@
       console.error('Error loading nodeset:', e);
       return false;
     }
-  }
-
-  // Check if there are unsaved changes
-  function checkForChanges() {
-    const currentNodesStr = JSON.stringify(nodes);
-    const currentEdgesStr = JSON.stringify(edges);
-    const originalNodesStr = JSON.stringify(originalNodes);
-    const originalEdgesStr = JSON.stringify(originalEdges);
-    hasUnsavedChanges = currentNodesStr !== originalNodesStr || currentEdgesStr !== originalEdgesStr;
   }
 
   // Create initial nodes (empty canvas by default)
@@ -296,8 +281,6 @@
       
       if (result.success) {
         saveStatus = '✓ Saved';
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
         hasUnsavedChanges = false;
         setTimeout(() => saveStatus = '', 2000);
       } else {
@@ -340,8 +323,6 @@
         currentNodesetId = result.data.id;
         currentNodesetName = result.data.name;
         selectedNodesetId = result.data.id;
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
         hasUnsavedChanges = false;
         await loadNodesets(); // Refresh the list
         setTimeout(() => saveStatus = '', 2000);
@@ -442,8 +423,6 @@
     selectedNodesetId = NEW_NODESET_ID;
     nodes = [];
     edges = [];
-    originalNodes = [];
-    originalEdges = [];
     hasUnsavedChanges = false;
   }
 
@@ -484,7 +463,7 @@
     );
     
     nodes = [...nodes, newNode];
-    checkForChanges();
+    hasUnsavedChanges = true;
   }
 
   // Computed: Filter nodes based on search query
@@ -561,7 +540,7 @@
       edges = edges.filter(e => 
         e.source !== contextMenu.nodeId && e.target !== contextMenu.nodeId
       );
-      checkForChanges();
+      hasUnsavedChanges = true;
     }
     
     resetContextMenu();
@@ -579,7 +558,7 @@
     // Confirm deletion
     if (confirm('Delete this connection?')) {
       edges = edges.filter(e => e.id !== edgeId);
-      checkForChanges();
+      hasUnsavedChanges = true;
     }
     
     resetContextMenu();
@@ -636,6 +615,19 @@
   // Handle node changes - with bind:nodes, position and selection are handled automatically
   // We only need to handle removal to protect default nodes
   function onNodesChange(changes) {
+    // Mark as having unsaved changes for any meaningful change (position, dimensions, remove, add)
+    // Selection changes don't count as unsaved changes
+    const meaningfulChanges = changes.filter(change => 
+      change.type === 'position' || 
+      change.type === 'dimensions' || 
+      change.type === 'remove' || 
+      change.type === 'add'
+    );
+    
+    if (meaningfulChanges.length > 0) {
+      hasUnsavedChanges = true;
+    }
+    
     changes.forEach(change => {
       if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
@@ -648,15 +640,15 @@
         }
       }
     });
-    // Check for changes after any node modification
-    checkForChanges();
   }
 
   // Handle edge changes - with bind:edges, changes are handled automatically
   // This function is kept for API consistency but no custom logic is needed
   function onEdgesChange(changes) {
-    // Check for changes after any edge modification
-    checkForChanges();
+    // Mark as having unsaved changes for any edge modification
+    if (changes.length > 0) {
+      hasUnsavedChanges = true;
+    }
   }
 
   // Helper function to get connection details
@@ -1034,7 +1026,7 @@
       type: 'default',
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
-    checkForChanges();
+    hasUnsavedChanges = true;
   }
 
   // Handle edge reconnection
@@ -1065,7 +1057,7 @@
       type: 'default',
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
-    checkForChanges();
+    hasUnsavedChanges = true;
   }
 
   // Handle reconnection end - if dropped without a valid target, remove the edge
