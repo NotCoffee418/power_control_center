@@ -20,6 +20,15 @@
   let saveStatus = $state('');
   let searchQuery = $state('');
   
+  // Nodeset state
+  let nodesets = $state([]);
+  let currentNodesetId = $state(-1);
+  let currentNodesetName = $state('New');
+  let selectedNodesetId = $state(-1);
+  let hasUnsavedChanges = $state(false);
+  let originalNodes = $state.raw([]);
+  let originalEdges = $state.raw([]);
+  
   // Simulator drawer state
   let simulatorOpen = $state(false);
   let nodeIdCounter = 100;
@@ -74,27 +83,84 @@
     }
   }
 
-  // Load configuration from backend
-  async function loadConfiguration() {
+  // Load list of nodesets
+  async function loadNodesets() {
     try {
-      const response = await fetch('/api/nodes/configuration');
+      const response = await fetch('/api/nodes/nodesets');
       const result = await response.json();
       
       if (result.success && result.data) {
+        nodesets = result.data;
+        console.log('Loaded nodesets:', nodesets);
+      } else {
+        console.error('Failed to load nodesets:', result.error);
+      }
+    } catch (e) {
+      console.error('Error loading nodesets:', e);
+    }
+  }
+
+  // Load active nodeset from backend
+  async function loadActiveNodeset() {
+    try {
+      const response = await fetch('/api/nodes/nodesets/active');
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        currentNodesetId = result.data.id;
+        currentNodesetName = result.data.name;
+        selectedNodesetId = result.data.id;
         nodes = result.data.nodes || [];
         edges = result.data.edges || [];
         
-        // If empty, create initial nodes with OnEvaluate
-        if (nodes.length === 0) {
-          createInitialNodes();
-        }
+        // Store original state for change detection
+        originalNodes = JSON.parse(JSON.stringify(nodes));
+        originalEdges = JSON.parse(JSON.stringify(edges));
+        hasUnsavedChanges = false;
       }
     } catch (e) {
-      console.error('Error loading node configuration:', e);
+      console.error('Error loading active nodeset:', e);
       createInitialNodes();
     } finally {
       loading = false;
     }
+  }
+
+  // Load a specific nodeset
+  async function loadNodeset(id) {
+    try {
+      const response = await fetch(`/api/nodes/nodesets/${id}`);
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        currentNodesetId = result.data.id;
+        currentNodesetName = result.data.name;
+        selectedNodesetId = result.data.id;
+        nodes = result.data.nodes || [];
+        edges = result.data.edges || [];
+        
+        // Store original state for change detection
+        originalNodes = JSON.parse(JSON.stringify(nodes));
+        originalEdges = JSON.parse(JSON.stringify(edges));
+        hasUnsavedChanges = false;
+        return true;
+      } else {
+        console.error('Failed to load nodeset:', result.error);
+        return false;
+      }
+    } catch (e) {
+      console.error('Error loading nodeset:', e);
+      return false;
+    }
+  }
+
+  // Check if there are unsaved changes
+  function checkForChanges() {
+    const currentNodesStr = JSON.stringify(nodes);
+    const currentEdgesStr = JSON.stringify(edges);
+    const originalNodesStr = JSON.stringify(originalNodes);
+    const originalEdgesStr = JSON.stringify(originalEdges);
+    hasUnsavedChanges = currentNodesStr !== originalNodesStr || currentEdgesStr !== originalEdgesStr;
   }
 
   // Create initial nodes (empty canvas by default)
@@ -117,12 +183,29 @@
     };
   }
 
-  // Save configuration to backend
+  // Save configuration to the current nodeset
   async function saveConfiguration() {
+    // If we're on a new nodeset (id -1), treat as Save As
+    if (currentNodesetId === -1) {
+      await saveAsNodeset();
+      return;
+    }
+    
+    // Prevent saving to id 0
+    if (currentNodesetId === 0) {
+      saveStatus = '⚠ Cannot modify default profile. Use Save As.';
+      setTimeout(() => saveStatus = '', 3000);
+      return;
+    }
+    
+    if (!confirm('Save changes to the current profile?')) {
+      return;
+    }
+    
     saveStatus = 'Saving...';
     try {
-      const response = await fetch('/api/nodes/configuration', {
-        method: 'POST',
+      const response = await fetch(`/api/nodes/nodesets/${currentNodesetId}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -136,14 +219,180 @@
       
       if (result.success) {
         saveStatus = '✓ Saved';
+        originalNodes = JSON.parse(JSON.stringify(nodes));
+        originalEdges = JSON.parse(JSON.stringify(edges));
+        hasUnsavedChanges = false;
         setTimeout(() => saveStatus = '', 2000);
       } else {
-        saveStatus = '✗ Save failed';
+        saveStatus = '✗ ' + (result.error || 'Save failed');
         console.error('Save failed:', result.error);
+        setTimeout(() => saveStatus = '', 3000);
       }
     } catch (e) {
       saveStatus = '✗ Save failed';
       console.error('Error saving configuration:', e);
+      setTimeout(() => saveStatus = '', 3000);
+    }
+  }
+
+  // Save As - create a new nodeset with a name
+  async function saveAsNodeset() {
+    const name = prompt('Enter a name for the new profile:');
+    if (!name || name.trim() === '') {
+      return;
+    }
+    
+    saveStatus = 'Saving...';
+    try {
+      const response = await fetch('/api/nodes/nodesets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          nodes: nodes,
+          edges: edges
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        saveStatus = '✓ Saved as "' + result.data.name + '"';
+        currentNodesetId = result.data.id;
+        currentNodesetName = result.data.name;
+        selectedNodesetId = result.data.id;
+        originalNodes = JSON.parse(JSON.stringify(nodes));
+        originalEdges = JSON.parse(JSON.stringify(edges));
+        hasUnsavedChanges = false;
+        await loadNodesets(); // Refresh the list
+        setTimeout(() => saveStatus = '', 2000);
+      } else {
+        saveStatus = '✗ ' + (result.error || 'Save failed');
+        console.error('Save failed:', result.error);
+        setTimeout(() => saveStatus = '', 3000);
+      }
+    } catch (e) {
+      saveStatus = '✗ Save failed';
+      console.error('Error saving configuration:', e);
+      setTimeout(() => saveStatus = '', 3000);
+    }
+  }
+
+  // Activate the selected profile
+  async function activateProfile() {
+    if (selectedNodesetId === -1) {
+      saveStatus = '⚠ Please save the profile first';
+      setTimeout(() => saveStatus = '', 3000);
+      return;
+    }
+    
+    if (!confirm('Activate this profile? It will be used for the AC logic.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/nodes/nodesets/active/${selectedNodesetId}`, {
+        method: 'PUT'
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        saveStatus = '✓ Profile activated';
+        setTimeout(() => saveStatus = '', 2000);
+      } else {
+        saveStatus = '✗ ' + (result.error || 'Activation failed');
+        setTimeout(() => saveStatus = '', 3000);
+      }
+    } catch (e) {
+      saveStatus = '✗ Activation failed';
+      console.error('Error activating profile:', e);
+      setTimeout(() => saveStatus = '', 3000);
+    }
+  }
+
+  // Delete the current nodeset
+  async function deleteNodeset() {
+    if (currentNodesetId === -1) {
+      // Just reset to new state
+      createNewNodeset();
+      return;
+    }
+    
+    if (currentNodesetId === 0) {
+      saveStatus = '⚠ Cannot delete the default profile';
+      setTimeout(() => saveStatus = '', 3000);
+      return;
+    }
+    
+    if (!confirm(`Delete profile "${currentNodesetName}"? This cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/nodes/nodesets/${currentNodesetId}`, {
+        method: 'DELETE'
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        saveStatus = '✓ Profile deleted';
+        await loadNodesets();
+        // Switch to default profile
+        await loadNodeset(0);
+        setTimeout(() => saveStatus = '', 2000);
+      } else {
+        saveStatus = '✗ ' + (result.error || 'Delete failed');
+        setTimeout(() => saveStatus = '', 3000);
+      }
+    } catch (e) {
+      saveStatus = '✗ Delete failed';
+      console.error('Error deleting profile:', e);
+      setTimeout(() => saveStatus = '', 3000);
+    }
+  }
+
+  // Create a new nodeset
+  function createNewNodeset() {
+    if (hasUnsavedChanges) {
+      if (!confirm('You have unsaved changes. Discard them?')) {
+        return;
+      }
+    }
+    
+    currentNodesetId = -1;
+    currentNodesetName = 'New';
+    selectedNodesetId = -1;
+    nodes = [];
+    edges = [];
+    originalNodes = [];
+    originalEdges = [];
+    hasUnsavedChanges = false;
+  }
+
+  // Handle nodeset selection change
+  async function handleNodesetChange(event) {
+    const newId = parseInt(event.target.value, 10);
+    
+    if (newId === currentNodesetId) {
+      return;
+    }
+    
+    if (hasUnsavedChanges) {
+      if (!confirm('You have unsaved changes. Discard them and switch profiles?')) {
+        // Reset the dropdown to current value
+        selectedNodesetId = currentNodesetId;
+        return;
+      }
+    }
+    
+    if (newId === -1) {
+      createNewNodeset();
+    } else {
+      await loadNodeset(newId);
     }
   }
 
@@ -161,15 +410,6 @@
     );
     
     nodes = [...nodes, newNode];
-  }
-
-  // Reset to initial state
-  function resetNodes() {
-    if (confirm('Reset to default nodes? This will discard your current configuration.')) {
-      createInitialNodes();
-      edges = [];
-      saveConfiguration();
-    }
   }
 
   // Computed: Filter nodes based on search query
@@ -284,7 +524,8 @@
 
   onMount(async () => {
     await loadNodeDefinitions();
-    await loadConfiguration();
+    await loadNodesets();
+    await loadActiveNodeset();
   });
 
   // Handle node changes - with bind:nodes, position and selection are handled automatically
@@ -302,12 +543,15 @@
         }
       }
     });
+    // Check for changes after any node modification
+    checkForChanges();
   }
 
   // Handle edge changes - with bind:edges, changes are handled automatically
   // This function is kept for API consistency but no custom logic is needed
   function onEdgesChange(changes) {
-    // No custom logic needed - bind:edges handles all updates
+    // Check for changes after any edge modification
+    checkForChanges();
   }
 
   // Helper function to get connection details
@@ -762,15 +1006,49 @@
 
 <div class="node-editor-container">
   <div class="toolbar">
-    <h1>🔧 Node-Based AC Logic Editor</h1>
-    <div class="toolbar-buttons">
-      <button onclick={saveConfiguration} class="btn btn-save">
-        💾 Save
-      </button>
-      <button onclick={resetNodes} class="btn btn-reset">
-        🔄 Reset
-      </button>
-      <a href="/" class="btn btn-back">← Back to Dashboard</a>
+    <div class="toolbar-header">
+      <h1>🔧 Node-Based AC Logic Editor</h1>
+      <div class="profile-info">
+        <span class="profile-label">Profile:</span>
+        <span class="profile-name">{currentNodesetId === -1 ? 'New (unsaved)' : `${currentNodesetId} - ${currentNodesetName}`}</span>
+        {#if hasUnsavedChanges}
+          <span class="unsaved-indicator">●</span>
+        {/if}
+      </div>
+    </div>
+    <div class="toolbar-controls">
+      <div class="profile-selector">
+        <label for="nodeset-select">Select Profile:</label>
+        <select 
+          id="nodeset-select" 
+          value={selectedNodesetId} 
+          onchange={handleNodesetChange}
+          class="nodeset-dropdown"
+        >
+          <option value={-1}>New Profile</option>
+          {#each nodesets as nodeset}
+            <option value={nodeset.id}>{nodeset.id} - {nodeset.name}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="toolbar-buttons">
+        <button onclick={activateProfile} class="btn btn-activate" disabled={selectedNodesetId === -1}>
+          ⚡ Activate
+        </button>
+        <button onclick={saveConfiguration} class="btn btn-save">
+          💾 Save
+        </button>
+        <button onclick={saveAsNodeset} class="btn btn-saveas">
+          📝 Save As
+        </button>
+        <button onclick={createNewNodeset} class="btn btn-new">
+          ➕ New
+        </button>
+        <button onclick={deleteNodeset} class="btn btn-delete" disabled={currentNodesetId === -1 || currentNodesetId === 0}>
+          🗑️ Delete
+        </button>
+        <a href="/" class="btn btn-back">← Back</a>
+      </div>
     </div>
     {#if saveStatus}
       <span class="save-status">{saveStatus}</span>
@@ -904,38 +1182,123 @@
 
   .toolbar {
     background: #2d2d2d;
-    padding: 1rem;
+    padding: 0.75rem 1rem;
     border-bottom: 2px solid #404040;
     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
   }
 
+  .toolbar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
   .toolbar h1 {
-    margin: 0 0 1rem 0;
-    font-size: 1.5rem;
+    margin: 0;
+    font-size: 1.3rem;
     color: #e0e0e0;
+  }
+
+  .profile-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #1a1a1a;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid #404040;
+  }
+
+  .profile-label {
+    font-size: 0.85rem;
+    color: #888;
+  }
+
+  .profile-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #00BCD4;
+  }
+
+  .unsaved-indicator {
+    color: #FF9800;
+    font-size: 1.2rem;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .toolbar-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .profile-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .profile-selector label {
+    font-size: 0.85rem;
+    color: #aaa;
+  }
+
+  .nodeset-dropdown {
+    padding: 0.4rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid #404040;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    cursor: pointer;
+    min-width: 150px;
+  }
+
+  .nodeset-dropdown:focus {
+    outline: none;
+    border-color: #00BCD4;
   }
 
   .toolbar-buttons {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.4rem;
     flex-wrap: wrap;
   }
 
   .btn {
-    padding: 0.5rem 1rem;
+    padding: 0.4rem 0.75rem;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 500;
     transition: all 0.2s;
     text-decoration: none;
     display: inline-block;
   }
 
-  .btn:hover {
+  .btn:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-activate {
+    background: #4CAF50;
+    color: white;
   }
 
   .btn-save {
@@ -943,7 +1306,17 @@
     color: white;
   }
 
-  .btn-reset {
+  .btn-saveas {
+    background: #9C27B0;
+    color: white;
+  }
+
+  .btn-new {
+    background: #FF9800;
+    color: white;
+  }
+
+  .btn-delete {
     background: #F44336;
     color: white;
   }
@@ -954,9 +1327,11 @@
   }
 
   .save-status {
-    margin-left: 1rem;
+    display: block;
+    margin-top: 0.5rem;
     font-weight: 500;
     color: #e0e0e0;
+    font-size: 0.9rem;
   }
 
   .main-content {
