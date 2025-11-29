@@ -34,6 +34,16 @@ const ICE_EXCEPTION_SOLAR_BYPASS_THRESHOLD: u32 = 1000; // Watts
 /// Outdoor temperatures within this buffer of the comfortable range are considered mild
 const MILD_TEMPERATURE_BUFFER: f64 = 2.0; // °C
 
+/// Temperature overshoot for heating hysteresis
+/// When heating, only turn off when temperature exceeds target by this amount
+/// Example: if target is 21°C, turn off at 22°C
+const HEATING_TURN_OFF_OVERSHOOT: f64 = 1.0; // °C
+
+/// Temperature overshoot for cooling hysteresis
+/// When cooling, only turn off when temperature goes below target by this amount
+/// Example: if target is 24°C, turn off at 23°C
+const COOLING_TURN_OFF_OVERSHOOT: f64 = 1.0; // °C
+
 /// Input parameters for AC planning
 #[derive(Debug, Clone)]
 pub(super) struct PlanInput {
@@ -42,6 +52,9 @@ pub(super) struct PlanInput {
     pub user_is_home: bool,
     pub current_outdoor_temp: f64,
     pub avg_next_12h_outdoor_temp: f64,
+    /// Current AC operating mode: Some(true) = heating, Some(false) = cooling, None = off
+    /// Used for temperature hysteresis to prevent rapid on/off cycling
+    pub current_ac_mode: Option<bool>,
 }
 
 
@@ -142,6 +155,10 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
     let current_outdoor_temp = get_current_outdoor_temp().await;
     let avg_next_12h_outdoor_temp = get_avg_next_12h_outdoor_temp().await;
 
+    // Get current AC state to implement temperature hysteresis
+    // Some(true) = heating, Some(false) = cooling, None = off
+    let current_ac_mode = get_current_ac_mode(device);
+
     // Build input struct
     let input = PlanInput {
         current_indoor_temp,
@@ -149,6 +166,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
         user_is_home,
         current_outdoor_temp,
         avg_next_12h_outdoor_temp,
+        current_ac_mode,
     };
 
     // Call the pure function with fetched data
@@ -253,17 +271,59 @@ fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
         (intensity, intensity_cause)
     };
     
+    // Apply temperature hysteresis to prevent rapid on/off cycling
+    // If currently heating, only stop when temperature reaches target + overshoot
+    // If currently cooling, only stop when temperature reaches target - overshoot
+    let (heating_turn_off_temp, cooling_turn_off_temp) = match input.current_ac_mode {
+        Some(true) => {
+            // Currently heating: require higher temperature to turn off
+            // When user is home, turn off at COMFORTABLE_TEMP_MIN + overshoot
+            // When too cold, turn off at TOO_COLD_THRESHOLD + overshoot
+            (
+                COMFORTABLE_TEMP_MIN + HEATING_TURN_OFF_OVERSHOOT,
+                COMFORTABLE_TEMP_MAX - COOLING_TURN_OFF_OVERSHOOT,
+            )
+        }
+        Some(false) => {
+            // Currently cooling: require lower temperature to turn off
+            (
+                COMFORTABLE_TEMP_MIN + HEATING_TURN_OFF_OVERSHOOT,
+                COMFORTABLE_TEMP_MAX - COOLING_TURN_OFF_OVERSHOOT,
+            )
+        }
+        None => {
+            // Not currently running, use normal thresholds to turn on
+            (COMFORTABLE_TEMP_MIN, COMFORTABLE_TEMP_MAX)
+        }
+    };
+
     let mode = if input.current_indoor_temp < TOO_COLD_THRESHOLD {
         // Too cold - need heating
         RequestMode::Warmer(final_intensity)
     } else if input.current_indoor_temp > TOO_HOT_THRESHOLD {
         // Too hot - need cooling
         RequestMode::Colder(final_intensity)
+    } else if input.current_ac_mode == Some(true) {
+        // Currently heating - continue until we reach the hysteresis turn-off point
+        if input.current_indoor_temp < heating_turn_off_temp {
+            RequestMode::Warmer(final_intensity)
+        } else {
+            // Reached the turn-off temperature, stop heating
+            RequestMode::NoChange
+        }
+    } else if input.current_ac_mode == Some(false) {
+        // Currently cooling - continue until we reach the hysteresis turn-off point
+        if input.current_indoor_temp > cooling_turn_off_temp {
+            RequestMode::Colder(final_intensity)
+        } else {
+            // Reached the turn-off temperature, stop cooling
+            RequestMode::NoChange
+        }
     } else if input.current_indoor_temp < COMFORTABLE_TEMP_MIN && input.user_is_home {
-        // A bit cold and user is home - use calculated intensity
+        // A bit cold and user is home - start heating
         RequestMode::Warmer(final_intensity)
     } else if input.current_indoor_temp > COMFORTABLE_TEMP_MAX && input.user_is_home {
-        // A bit warm and user is home - use calculated intensity
+        // A bit warm and user is home - start cooling
         RequestMode::Colder(final_intensity)
     } else {
         // Temperature is comfortable or user is not home
@@ -363,6 +423,24 @@ async fn get_avg_next_12h_outdoor_temp() -> f64 {
     }
 }
 
+/// Get the current AC operating mode from the state manager
+/// Returns Some(true) if heating, Some(false) if cooling, None if off
+fn get_current_ac_mode(device: &AcDevices) -> Option<bool> {
+    let state_manager = super::ac_executor::get_state_manager();
+    let current_state = state_manager.get_state(device.as_str());
+    
+    if !current_state.is_on {
+        return None;
+    }
+    
+    // Check the mode: 1 = Heat, 4 = Cool
+    match current_state.mode {
+        Some(super::ac_executor::AC_MODE_HEAT) => Some(true),  // Heating
+        Some(super::ac_executor::AC_MODE_COOL) => Some(false), // Cooling
+        _ => None, // Unknown mode, treat as off
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,6 +498,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -439,6 +518,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -459,6 +539,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 30.0,
             avg_next_12h_outdoor_temp: 30.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -478,6 +559,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 30.0,
             avg_next_12h_outdoor_temp: 30.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -498,6 +580,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 20.0,
             avg_next_12h_outdoor_temp: 20.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -517,6 +600,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 18.0,
             avg_next_12h_outdoor_temp: 18.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -536,6 +620,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 26.0,
             avg_next_12h_outdoor_temp: 26.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -555,6 +640,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 18.0,
             avg_next_12h_outdoor_temp: 18.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -576,6 +662,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 20.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -596,6 +683,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 20.0,
             avg_next_12h_outdoor_temp: 25.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -615,6 +703,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -634,6 +723,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 20.0,
             avg_next_12h_outdoor_temp: 16.0, // Dropping 4°C
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -655,6 +745,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
             avg_next_12h_outdoor_temp: 1.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -674,6 +765,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 1.0, // Below 2°C
             avg_next_12h_outdoor_temp: 1.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -693,6 +785,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 4.0, // Above 2°C
             avg_next_12h_outdoor_temp: 4.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -715,6 +808,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 2.0,
             avg_next_12h_outdoor_temp: 2.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         // At exactly 2°C outdoor, ice exception should NOT trigger (< 2°C, not <= 2°C)
@@ -738,6 +832,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
             avg_next_12h_outdoor_temp: 1.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         // Should NOT be off, ice exception bypassed due to high solar
@@ -759,6 +854,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 10.0, // Not near comfortable (18-26)
             avg_next_12h_outdoor_temp: 10.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -777,6 +873,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 21.0, // Near comfortable range, within 2°C buffer
             avg_next_12h_outdoor_temp: 21.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -795,6 +892,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 30.0,
             avg_next_12h_outdoor_temp: 30.5, // Small change, not significant
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -813,6 +911,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 30.0,
             avg_next_12h_outdoor_temp: 35.0, // +5°C = significant change
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -831,6 +930,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -849,6 +949,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 23.0, // Near comfortable range, within buffer
             avg_next_12h_outdoor_temp: 23.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -867,6 +968,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
             avg_next_12h_outdoor_temp: 1.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         
@@ -889,6 +991,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 1.9, // Just below 2°C
             avg_next_12h_outdoor_temp: 1.5,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -907,6 +1010,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
             avg_next_12h_outdoor_temp: 1.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         // At exactly 1000W, the condition is `solar_production < 1000`, which is false
@@ -927,6 +1031,7 @@ mod tests {
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
             avg_next_12h_outdoor_temp: 1.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         // Should be off, ice exception not bypassed
@@ -947,6 +1052,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 1.0, // Below 2°C
             avg_next_12h_outdoor_temp: 1.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         // Should allow heating because indoor is too cold
@@ -968,6 +1074,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -986,6 +1093,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1004,6 +1112,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 30.0,
             avg_next_12h_outdoor_temp: 30.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1022,6 +1131,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1042,6 +1152,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 22.0, // Getting 7°C warmer (> 3°C threshold)
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1062,6 +1173,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 30.0,
             avg_next_12h_outdoor_temp: 22.0, // Getting 8°C colder (> 3°C threshold)
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1082,6 +1194,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 20.0,
             avg_next_12h_outdoor_temp: 15.0, // Getting 5°C colder
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1102,6 +1215,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 25.0,
             avg_next_12h_outdoor_temp: 32.0, // Getting 7°C warmer
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1122,6 +1236,7 @@ mod tests {
             user_is_home: false,
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 22.0, // Getting warmer
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1140,6 +1255,7 @@ mod tests {
             user_is_home: true, // User is home
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1158,6 +1274,7 @@ mod tests {
             user_is_home: true, // User is home
             current_outdoor_temp: 15.0,
             avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None,
         };
         let plan = get_plan(&input);
         match plan.mode {
@@ -1166,5 +1283,100 @@ mod tests {
         }
         // With medium solar, the cause should be ExcessiveSolarPower
         assert_eq!(plan.cause, CauseReason::ExcessiveSolarPower);
+    }
+
+    // Tests for temperature hysteresis
+    #[test]
+    fn test_hysteresis_heating_continues_until_overshoot() {
+        // When currently heating, should continue heating until target + overshoot
+        // COMFORTABLE_TEMP_MIN (20) + HEATING_TURN_OFF_OVERSHOOT (1) = 21
+        let input = PlanInput {
+            current_indoor_temp: 20.5, // Above COMFORTABLE_TEMP_MIN but below overshoot
+            solar_production: 500,
+            user_is_home: true,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: Some(true), // Currently heating
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(_) => {}, // Should continue heating
+            _ => panic!("Expected Warmer to continue heating below overshoot point, got {:?}", plan.mode),
+        }
+    }
+
+    #[test]
+    fn test_hysteresis_heating_stops_at_overshoot() {
+        // When currently heating and temperature reaches target + overshoot, should stop
+        // COMFORTABLE_TEMP_MIN (20) + HEATING_TURN_OFF_OVERSHOOT (1) = 21
+        let input = PlanInput {
+            current_indoor_temp: 21.5, // Above COMFORTABLE_TEMP_MIN + overshoot
+            solar_production: 500,
+            user_is_home: true,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: Some(true), // Currently heating
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::NoChange => {}, // Should stop heating
+            _ => panic!("Expected NoChange when temperature exceeds overshoot point, got {:?}", plan.mode),
+        }
+    }
+
+    #[test]
+    fn test_hysteresis_cooling_continues_until_overshoot() {
+        // When currently cooling, should continue cooling until target - overshoot
+        // COMFORTABLE_TEMP_MAX (24) - COOLING_TURN_OFF_OVERSHOOT (1) = 23
+        let input = PlanInput {
+            current_indoor_temp: 23.5, // Below COMFORTABLE_TEMP_MAX but above overshoot point
+            solar_production: 500,
+            user_is_home: true,
+            current_outdoor_temp: 30.0,
+            avg_next_12h_outdoor_temp: 30.0,
+            current_ac_mode: Some(false), // Currently cooling
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Colder(_) => {}, // Should continue cooling
+            _ => panic!("Expected Colder to continue cooling above overshoot point, got {:?}", plan.mode),
+        }
+    }
+
+    #[test]
+    fn test_hysteresis_cooling_stops_at_overshoot() {
+        // When currently cooling and temperature drops below target - overshoot, should stop
+        // COMFORTABLE_TEMP_MAX (24) - COOLING_TURN_OFF_OVERSHOOT (1) = 23
+        let input = PlanInput {
+            current_indoor_temp: 22.5, // Below COMFORTABLE_TEMP_MAX - overshoot
+            solar_production: 500,
+            user_is_home: true,
+            current_outdoor_temp: 30.0,
+            avg_next_12h_outdoor_temp: 30.0,
+            current_ac_mode: Some(false), // Currently cooling
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::NoChange => {}, // Should stop cooling
+            _ => panic!("Expected NoChange when temperature below overshoot point, got {:?}", plan.mode),
+        }
+    }
+
+    #[test]
+    fn test_no_hysteresis_when_not_running() {
+        // When AC is off, should use normal thresholds (no hysteresis)
+        let input = PlanInput {
+            current_indoor_temp: 19.5, // Below COMFORTABLE_TEMP_MIN
+            solar_production: 500,
+            user_is_home: true,
+            current_outdoor_temp: 15.0,
+            avg_next_12h_outdoor_temp: 15.0,
+            current_ac_mode: None, // AC is off
+        };
+        let plan = get_plan(&input);
+        match plan.mode {
+            RequestMode::Warmer(_) => {}, // Should start heating
+            _ => panic!("Expected Warmer to start heating when AC off and temp below min, got {:?}", plan.mode),
+        }
     }
 }
