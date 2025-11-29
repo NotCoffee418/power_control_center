@@ -352,6 +352,142 @@
     return sortedSource.every((val, idx) => val === sortedTarget[idx]);
   }
 
+  /**
+   * Get the constrained type for a node's "Any" type inputs based on existing connections.
+   * When one input with "Any" type is already connected, other "Any" type inputs on the same
+   * node should be constrained to match that type.
+   * 
+   * @param nodeId - The node ID to check
+   * @param excludeHandle - The handle ID to exclude (the one we're connecting to)
+   * @param allowedTypes - Optional array of types that are valid for this constraint (e.g., ['Float', 'Integer'] for numeric nodes)
+   * @returns The constrained type from other connected inputs, or null if no constraint exists
+   */
+  function getConstrainedTypeFromConnectedInputs(nodeId, excludeHandle, allowedTypes = null) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return null;
+
+    // Get all inputs for this node that have "Any" type
+    const anyTypeInputs = (node.data.definition?.inputs || [])
+      .filter(input => input.value_type?.type === 'Any');
+
+    // Find existing connections to other "Any" type inputs on this node
+    for (const input of anyTypeInputs) {
+      if (input.id === excludeHandle) continue;
+
+      const existingEdge = edges.find(
+        e => e.target === nodeId && e.targetHandle === input.id
+      );
+
+      if (existingEdge) {
+        // Found a connection to another Any-type input, get the source type
+        const sourceNode = nodes.find(n => n.id === existingEdge.source);
+        if (sourceNode) {
+          const sourceOutput = sourceNode.data.definition?.outputs?.find(
+            o => o.id === existingEdge.sourceHandle
+          );
+          if (sourceOutput?.value_type) {
+            const constrainedType = sourceOutput.value_type;
+            
+            // If allowedTypes is specified, verify the constraint is valid
+            if (allowedTypes && !allowedTypes.includes(constrainedType.type)) {
+              // The connected type is not in the allowed list - this shouldn't happen
+              // but return the constraint anyway for consistency
+              return constrainedType;
+            }
+            
+            return constrainedType;
+          }
+        }
+      }
+    }
+
+    return null; // No constraint from other inputs
+  }
+
+  /**
+   * Check if a source type is compatible with a target type, considering dynamic constraints.
+   * This is a reusable function for type matching that handles:
+   * - Any type with optional constraints from other connected inputs
+   * - Enum compatibility checking
+   * - Standard type matching
+   * 
+   * @param sourceValueType - The value_type object from the source output
+   * @param targetValueType - The value_type object from the target input
+   * @param constrainedType - Optional type constraint from other connected inputs
+   * @param allowedTypes - Optional array of allowed types (for nodes like Evaluate Number that only accept Float/Integer)
+   * @returns true if the types are compatible
+   */
+  function areTypesCompatible(sourceValueType, targetValueType, constrainedType = null, allowedTypes = null) {
+    const sourceType = sourceValueType?.type;
+    const targetType = targetValueType?.type;
+
+    if (!sourceType || !targetType) {
+      return false;
+    }
+
+    // Handle "Any" target type with potential constraints
+    if (targetType === 'Any') {
+      // If there's a constraint from other connected inputs, source must match it
+      if (constrainedType) {
+        if (constrainedType.type === 'Enum') {
+          return sourceType === 'Enum' && areEnumsCompatible(sourceValueType, constrainedType);
+        }
+        return sourceType === constrainedType.type;
+      }
+      
+      // If there are allowedTypes specified, source must be one of them
+      if (allowedTypes) {
+        return allowedTypes.includes(sourceType);
+      }
+      
+      // No constraint - accept anything
+      return true;
+    }
+
+    // Handle "Any" source type - it can connect to anything
+    if (sourceType === 'Any') {
+      return true;
+    }
+
+    // Handle Object type - can connect to anything
+    if (sourceType === 'Object' || targetType === 'Object') {
+      return true;
+    }
+
+    // Types must match exactly
+    if (sourceType !== targetType) {
+      return false;
+    }
+
+    // For Enum types, additionally check that enum values are compatible
+    if (sourceType === 'Enum') {
+      return areEnumsCompatible(sourceValueType, targetValueType);
+    }
+
+    return true;
+  }
+
+  /**
+   * Get allowed types for a node's "Any" type inputs based on node type.
+   * Some nodes (like Evaluate Number) only accept specific types even though
+   * they use "Any" type for dynamic matching.
+   * 
+   * @param nodeType - The node type identifier
+   * @returns Array of allowed type strings, or null if all types are allowed
+   */
+  function getAllowedTypesForNode(nodeType) {
+    switch (nodeType) {
+      case 'logic_evaluate_number':
+        // Evaluate Number only accepts Float or Integer
+        return ['Float', 'Integer'];
+      case 'logic_equals':
+        // Equals accepts all types
+        return null;
+      default:
+        return null;
+    }
+  }
+
   // Check if a connection is valid based on type compatibility
   function isValidConnection(connection) {
     const details = getConnectionDetails(connection);
@@ -367,34 +503,29 @@
       return false;
     }
 
-    // Check if types are compatible
-    const sourceType = sourceOutput.value_type?.type;
+    // Check if types are compatible using the unified type matching function
     const targetType = targetInput.value_type?.type;
     
-    if (!sourceType || !targetType) {
-      return false;
-    }
+    // For nodes with "Any" type inputs, get the constrained type from other connected inputs
+    let constrainedType = null;
+    let allowedTypes = null;
     
-    // Allow Any type to connect to anything (for dynamic type matching like Equals node)
-    // Also allow Object type to connect to anything (it's a complex/generic type)
-    if (sourceType === 'Any' || targetType === 'Any' ||
-        sourceType === 'Object' || targetType === 'Object') {
-      return true;
-    }
-    
-    // Types must match
-    if (sourceType !== targetType) {
-      return false;
-    }
-    
-    // For Enum types, additionally check that enum values are compatible
-    if (sourceType === 'Enum') {
-      if (!areEnumsCompatible(sourceOutput.value_type, targetInput.value_type)) {
-        return false;
-      }
+    if (targetType === 'Any') {
+      const nodeType = targetNode.data.definition?.node_type;
+      allowedTypes = getAllowedTypesForNode(nodeType);
+      constrainedType = getConstrainedTypeFromConnectedInputs(
+        connection.target, 
+        connection.targetHandle,
+        allowedTypes
+      );
     }
 
-    return true;
+    return areTypesCompatible(
+      sourceOutput.value_type, 
+      targetInput.value_type, 
+      constrainedType,
+      allowedTypes
+    );
   }
 
   function onConnect(connection) {
@@ -403,12 +534,30 @@
       // Get details for error message
       const details = getConnectionDetails(connection);
       if (details) {
-        const { sourceOutput, targetInput } = details;
+        const { sourceOutput, targetInput, targetNode } = details;
         const sourceType = sourceOutput.value_type?.type;
         const targetType = targetInput.value_type?.type;
         
-        // Provide a more detailed error message for enum type mismatches
-        if (sourceType === 'Enum' && targetType === 'Enum') {
+        // Check if this is a type constraint violation
+        if (targetType === 'Any') {
+          const nodeType = targetNode.data.definition?.node_type;
+          const allowedTypes = getAllowedTypesForNode(nodeType);
+          const constrainedType = getConstrainedTypeFromConnectedInputs(
+            connection.target, 
+            connection.targetHandle,
+            allowedTypes
+          );
+          
+          if (constrainedType) {
+            // Type was constrained by another input
+            saveStatus = `⚠ Input constrained to ${constrainedType.type} by other connection`;
+          } else if (allowedTypes && !allowedTypes.includes(sourceType)) {
+            // Type not in allowed list
+            saveStatus = `⚠ Only ${allowedTypes.join(' or ')} types allowed`;
+          } else {
+            saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+          }
+        } else if (sourceType === 'Enum' && targetType === 'Enum') {
           saveStatus = `⚠ Incompatible enum types`;
         } else {
           saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
@@ -441,12 +590,28 @@
     if (!isValidConnection(newConnection)) {
       const details = getConnectionDetails(newConnection);
       if (details) {
-        const { sourceOutput, targetInput } = details;
+        const { sourceOutput, targetInput, targetNode } = details;
         const sourceType = sourceOutput.value_type?.type;
         const targetType = targetInput.value_type?.type;
         
-        // Provide a more detailed error message for enum type mismatches
-        if (sourceType === 'Enum' && targetType === 'Enum') {
+        // Check if this is a type constraint violation
+        if (targetType === 'Any') {
+          const nodeType = targetNode.data.definition?.node_type;
+          const allowedTypes = getAllowedTypesForNode(nodeType);
+          const constrainedType = getConstrainedTypeFromConnectedInputs(
+            newConnection.target, 
+            newConnection.targetHandle,
+            allowedTypes
+          );
+          
+          if (constrainedType) {
+            saveStatus = `⚠ Input constrained to ${constrainedType.type} by other connection`;
+          } else if (allowedTypes && !allowedTypes.includes(sourceType)) {
+            saveStatus = `⚠ Only ${allowedTypes.join(' or ')} types allowed`;
+          } else {
+            saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+          }
+        } else if (sourceType === 'Enum' && targetType === 'Enum') {
           saveStatus = `⚠ Incompatible enum types`;
         } else {
           saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
