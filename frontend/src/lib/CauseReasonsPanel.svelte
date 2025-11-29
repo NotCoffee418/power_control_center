@@ -1,8 +1,9 @@
 <script>
-  import { onMount } from 'svelte';
-
   // Props
   let { onCauseReasonsChanged = () => {} } = $props();
+
+  // Constants
+  const DESCRIPTION_TRUNCATE_LENGTH = 100;
 
   // State
   let causeReasons = $state([]);
@@ -187,12 +188,10 @@
     }
   }
 
-  // React to showHidden changes
+  // React to showHidden changes - loads cause reasons on mount and when showHidden changes
   $effect(() => {
-    loadCauseReasons();
-  });
-
-  onMount(() => {
+    // Access showHidden to create a dependency
+    const _ = showHidden;
     loadCauseReasons();
   });
 </script>
@@ -278,7 +277,7 @@
               <span class="reason-label">{reason.label}</span>
             </div>
             <div class="reason-description" title={reason.description}>
-              {reason.description.length > 100 ? reason.description.substring(0, 100) + '...' : reason.description}
+              {reason.description.length > DESCRIPTION_TRUNCATE_LENGTH ? reason.description.substring(0, DESCRIPTION_TRUNCATE_LENGTH) + '...' : reason.description}
             </div>
             <div class="reason-actions">
               <button

@@ -88,20 +88,6 @@ pub async fn update(id: i32, label: &str, description: &str) -> Result<bool, sql
     Ok(result.rows_affected() > 0)
 }
 
-/// Toggle the hidden status of a cause reason
-pub async fn toggle_hidden(id: i32) -> Result<bool, sqlx::Error> {
-    let pool = get_pool().await;
-    
-    let result = sqlx::query(
-        "UPDATE cause_reasons SET is_hidden = NOT is_hidden WHERE id = ?"
-    )
-    .bind(id)
-    .execute(pool)
-    .await?;
-    
-    Ok(result.rows_affected() > 0)
-}
-
 /// Set the hidden status of a cause reason
 pub async fn set_hidden(id: i32, is_hidden: bool) -> Result<bool, sqlx::Error> {
     let pool = get_pool().await;
