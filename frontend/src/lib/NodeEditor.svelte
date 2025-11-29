@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { 
     SvelteFlow, 
     Controls, 
@@ -31,8 +31,6 @@
   let currentNodesetName = $state('New');
   let selectedNodesetId = $state(NEW_NODESET_ID);
   let hasUnsavedChanges = $state(false);
-  let originalNodes = $state.raw([]);
-  let originalEdges = $state.raw([]);
   
   // Active profile state (the one used for AC logic)
   let activeNodesetId = $state(DEFAULT_NODESET_ID);
@@ -190,9 +188,7 @@
         activeNodesetId = result.data.id;
         activeNodesetName = result.data.name;
         
-        // Store original state for change detection
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
+        // Reset unsaved changes after loading
         hasUnsavedChanges = false;
       }
     } catch (e) {
@@ -216,9 +212,7 @@
         nodes = result.data.nodes || [];
         edges = result.data.edges || [];
         
-        // Store original state for change detection
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
+        // Reset unsaved changes after loading
         hasUnsavedChanges = false;
         return true;
       } else {
@@ -229,15 +223,6 @@
       console.error('Error loading nodeset:', e);
       return false;
     }
-  }
-
-  // Check if there are unsaved changes
-  function checkForChanges() {
-    const currentNodesStr = JSON.stringify(nodes);
-    const currentEdgesStr = JSON.stringify(edges);
-    const originalNodesStr = JSON.stringify(originalNodes);
-    const originalEdgesStr = JSON.stringify(originalEdges);
-    hasUnsavedChanges = currentNodesStr !== originalNodesStr || currentEdgesStr !== originalEdgesStr;
   }
 
   // Create initial nodes (empty canvas by default)
@@ -296,8 +281,6 @@
       
       if (result.success) {
         saveStatus = '✓ Saved';
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
         hasUnsavedChanges = false;
         setTimeout(() => saveStatus = '', 2000);
       } else {
@@ -340,8 +323,6 @@
         currentNodesetId = result.data.id;
         currentNodesetName = result.data.name;
         selectedNodesetId = result.data.id;
-        originalNodes = JSON.parse(JSON.stringify(nodes));
-        originalEdges = JSON.parse(JSON.stringify(edges));
         hasUnsavedChanges = false;
         await loadNodesets(); // Refresh the list
         setTimeout(() => saveStatus = '', 2000);
@@ -442,8 +423,6 @@
     selectedNodesetId = NEW_NODESET_ID;
     nodes = [];
     edges = [];
-    originalNodes = [];
-    originalEdges = [];
     hasUnsavedChanges = false;
   }
 
@@ -484,6 +463,7 @@
     );
     
     nodes = [...nodes, newNode];
+    hasUnsavedChanges = true;
   }
 
   // Computed: Filter nodes based on search query
@@ -560,6 +540,7 @@
       edges = edges.filter(e => 
         e.source !== contextMenu.nodeId && e.target !== contextMenu.nodeId
       );
+      hasUnsavedChanges = true;
     }
     
     resetContextMenu();
@@ -577,6 +558,7 @@
     // Confirm deletion
     if (confirm('Delete this connection?')) {
       edges = edges.filter(e => e.id !== edgeId);
+      hasUnsavedChanges = true;
     }
     
     resetContextMenu();
@@ -596,16 +578,53 @@
     }
   }
 
+  // Warn user before leaving page with unsaved changes
+  function handleBeforeUnload(event) {
+    if (hasUnsavedChanges) {
+      event.preventDefault();
+      // Modern browsers ignore custom messages, but we still need to set returnValue
+      event.returnValue = '';
+      return '';
+    }
+  }
+
+  // Handle back button click with unsaved changes check
+  // Stops propagation to prevent App.svelte's global click handler from navigating
+  function handleBackClick(event) {
+    if (hasUnsavedChanges) {
+      if (!confirm('You have unsaved changes. Discard them and go back?')) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+    // Allow navigation to proceed (App.svelte's global handler will navigate)
+  }
+
   onMount(async () => {
+    window.addEventListener('beforeunload', handleBeforeUnload);
     await loadNodeDefinitions();
     await loadNodesets();
     await loadActiveNodeset();
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
   });
 
   // Handle node changes - with bind:nodes, position and selection are handled automatically
   // We only need to handle removal to protect default nodes
   function onNodesChange(changes) {
     changes.forEach(change => {
+      // Mark as having unsaved changes for any meaningful change (position, dimensions, remove, add)
+      // Selection changes don't count as unsaved changes
+      if (change.type === 'position' || 
+          change.type === 'dimensions' || 
+          change.type === 'remove' || 
+          change.type === 'add') {
+        hasUnsavedChanges = true;
+      }
+      
       if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
         const node = nodes.find(n => n.id === change.id);
@@ -617,15 +636,19 @@
         }
       }
     });
-    // Check for changes after any node modification
-    checkForChanges();
   }
 
   // Handle edge changes - with bind:edges, changes are handled automatically
-  // This function is kept for API consistency but no custom logic is needed
   function onEdgesChange(changes) {
-    // Check for changes after any edge modification
-    checkForChanges();
+    // Mark as having unsaved changes for meaningful edge modifications
+    // Filter out selection-only changes
+    changes.forEach(change => {
+      if (change.type === 'add' || 
+          change.type === 'remove' || 
+          change.type === 'reset') {
+        hasUnsavedChanges = true;
+      }
+    });
   }
 
   // Helper function to get connection details
@@ -1003,6 +1026,7 @@
       type: 'default',
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
+    hasUnsavedChanges = true;
   }
 
   // Handle edge reconnection
@@ -1033,6 +1057,7 @@
       type: 'default',
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
+    hasUnsavedChanges = true;
   }
 
   // Handle reconnection end - if dropped without a valid target, remove the edge
@@ -1118,7 +1143,7 @@
         <button onclick={deleteNodeset} class="btn btn-delete" disabled={currentNodesetId < 1}>
           🗑️ Delete
         </button>
-        <a href="/" class="btn btn-back">← Back</a>
+        <a href="/" class="btn btn-back" onclick={handleBackClick}>← Back</a>
       </div>
     </div>
     {#if saveStatus}
