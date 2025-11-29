@@ -40,6 +40,30 @@ pub struct SetHiddenRequest {
     pub is_hidden: bool,
 }
 
+/// Helper to check if a cause reason exists and is editable
+/// Returns Ok(record) if editable, or an error Response if not
+async fn check_editable(id: i32, action: &str) -> Result<db::cause_reasons::CauseReasonRecord, Response> {
+    match db::cause_reasons::get_by_id(id).await {
+        Ok(Some(reason)) => {
+            if !reason.is_editable {
+                let response = ApiResponse::<()>::error(&format!("This cause reason cannot be {}", action));
+                Err((StatusCode::FORBIDDEN, Json(response)).into_response())
+            } else {
+                Ok(reason)
+            }
+        }
+        Ok(None) => {
+            let response = ApiResponse::<()>::error("Cause reason not found");
+            Err((StatusCode::NOT_FOUND, Json(response)).into_response())
+        }
+        Err(e) => {
+            log::error!("Failed to check cause reason: {}", e);
+            let response = ApiResponse::<()>::error("Failed to check cause reason");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response())
+        }
+    }
+}
+
 /// GET /api/cause-reasons
 /// Returns all visible cause reasons
 async fn list_cause_reasons() -> Response {
@@ -138,22 +162,8 @@ async fn update_cause_reason(
     }
     
     // Check if the cause reason is editable
-    match db::cause_reasons::get_by_id(id).await {
-        Ok(Some(reason)) => {
-            if !reason.is_editable {
-                let response = ApiResponse::<()>::error("This cause reason cannot be modified");
-                return (StatusCode::FORBIDDEN, Json(response)).into_response();
-            }
-        }
-        Ok(None) => {
-            let response = ApiResponse::<()>::error("Cause reason not found");
-            return (StatusCode::NOT_FOUND, Json(response)).into_response();
-        }
-        Err(e) => {
-            log::error!("Failed to check cause reason: {}", e);
-            let response = ApiResponse::<()>::error("Failed to check cause reason");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
+    if let Err(response) = check_editable(id, "modified").await {
+        return response;
     }
     
     match db::cause_reasons::update(id, &request.label, &request.description).await {

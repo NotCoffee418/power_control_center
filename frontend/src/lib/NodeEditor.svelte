@@ -104,11 +104,16 @@
     const enumOutput = causeReasonDef.outputs?.[0];
     const availableOptions = enumOutput?.value_type?.type === 'Enum' ? enumOutput.value_type.value : [];
     
+    // Check if any cause_reason nodes need updating
+    const hasCauseReasonNodes = nodes.some(node => node.data?.definition?.node_type === 'cause_reason');
+    if (!hasCauseReasonNodes) return;
+    
     // Update all cause_reason nodes
     let hasChanges = false;
     const updatedNodes = nodes.map(node => {
       if (node.data?.definition?.node_type === 'cause_reason') {
         const currentEnumValue = node.data.enumValue;
+        hasChanges = true; // Definition needs updating
         
         // Update the node's definition with the new options
         const updatedNode = {
@@ -122,7 +127,6 @@
         // If the current value is no longer valid, reset to "Undefined"
         if (currentEnumValue && !availableOptions.includes(currentEnumValue)) {
           updatedNode.data.enumValue = 'Undefined';
-          hasChanges = true;
         }
         
         return updatedNode;
@@ -130,8 +134,8 @@
       return node;
     });
     
-    // Only update if there were actual changes
-    if (hasChanges || nodes.some((n, i) => n.data?.definition?.node_type === 'cause_reason' && n !== updatedNodes[i])) {
+    // Update nodes if there were cause_reason nodes to update
+    if (hasChanges) {
       nodes = updatedNodes;
     }
   }

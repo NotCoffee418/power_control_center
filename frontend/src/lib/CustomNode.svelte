@@ -4,20 +4,21 @@
   // Props passed by SvelteFlow
   let { data, id, selected } = $props();
 
-  // Initialize constants first (these don't depend on state)
-  const definition = data?.definition;
-  const outputs = definition?.outputs || [];
-  const color = definition?.color || '#757575';
-  const isDefault = data?.isDefault || false;
+  // Derive values from data - these need to be reactive to data.definition changes
+  // Use $derived for values that should update when data.definition changes
+  const definition = $derived(data?.definition);
+  const outputs = $derived(definition?.outputs || []);
+  const color = $derived(definition?.color || '#757575');
+  const isDefault = $derived(data?.isDefault || false);
   
-  // Get node type safely
-  const nodeType = definition?.node_type || '';
+  // Get node type safely - also derived
+  const nodeType = $derived(definition?.node_type || '');
 
-  // Determine node behavior flags
-  const isDynamicLogicNode = ['logic_and', 'logic_or', 'logic_nand'].includes(nodeType);
-  const isPrimitiveNode = ['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType);
-  const isEnumNode = ['device', 'intensity', 'cause_reason', 'request_mode'].includes(nodeType);
-  const isEvaluateNumberNode = nodeType === 'logic_evaluate_number';
+  // Determine node behavior flags - derived from nodeType
+  const isDynamicLogicNode = $derived(['logic_and', 'logic_or', 'logic_nand'].includes(nodeType));
+  const isPrimitiveNode = $derived(['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType));
+  const isEnumNode = $derived(['device', 'intensity', 'cause_reason', 'request_mode'].includes(nodeType));
+  const isEvaluateNumberNode = $derived(nodeType === 'logic_evaluate_number');
 
   // Get default value based on primitive type
   function getDefaultPrimitiveValue() {
