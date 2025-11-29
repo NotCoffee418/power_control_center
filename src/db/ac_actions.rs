@@ -58,3 +58,23 @@ pub async fn get_count() -> Result<i64, sqlx::Error> {
 
     Ok(count)
 }
+
+/// Get the last action timestamp for a specific device
+/// Returns the Unix timestamp of the last action, or None if no actions found
+pub async fn get_last_action_timestamp(device_identifier: &str) -> Result<Option<i32>, sqlx::Error> {
+    let pool = get_pool().await;
+
+    let result: Option<(i32,)> = sqlx::query_as(
+        r#"
+        SELECT action_timestamp FROM ac_actions
+        WHERE device_identifier = ?
+        ORDER BY action_timestamp DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(device_identifier)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.map(|(ts,)| ts))
+}

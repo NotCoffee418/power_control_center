@@ -20,6 +20,7 @@
   let userIsHome = $state(true);
   let pirDetected = $state(false);
   let pirMinutesAgo = $state(0);
+  let lastChangeMinutes = $state(60);
 
   // Available devices
   let devices = $state([]);
@@ -56,6 +57,7 @@
           isAutoMode = deviceData.is_auto_mode;
           pirDetected = deviceData.pir_recently_triggered;
           pirMinutesAgo = deviceData.pir_minutes_ago ?? 0;
+          lastChangeMinutes = deviceData.last_change_minutes ?? 60;
         }
         
         // Update environmental values
@@ -102,6 +104,7 @@
           user_is_home: userIsHome,
           pir_detected: pirDetected,
           pir_minutes_ago: pirMinutesAgo,
+          last_change_minutes: lastChangeMinutes,
         }),
       });
       
@@ -362,6 +365,19 @@
               />
             </div>
           {/if}
+          
+          <!-- Last Change Minutes -->
+          <div class="input-group">
+            <label for="lastChange">Last Change (min)</label>
+            <input 
+              type="number" 
+              id="lastChange" 
+              bind:value={lastChangeMinutes}
+              step="1"
+              min="0"
+              max="2147483647"
+            />
+          </div>
         </div>
       </div>
       

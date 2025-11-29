@@ -312,12 +312,16 @@ async fn get_live_inputs() -> Response {
             if minutes >= 0 { minutes as u32 } else { 0 }
         });
         
+        // Get last change minutes from database
+        let last_change_minutes = get_last_change_minutes_for_device(device_name).await;
+        
         devices.push(LiveDeviceInput {
             name: device_name.clone(),
             temperature: temp,
             is_auto_mode: is_auto,
             pir_recently_triggered,
             pir_minutes_ago,
+            last_change_minutes,
         });
     }
     
@@ -415,5 +419,28 @@ fn ac_state_to_simulator_state(state: &AcState) -> SimulatorAcState {
         temperature: state.temperature,
         swing: state.swing,
         powerful_mode: state.powerful_mode,
+    }
+}
+
+/// Get minutes since the last AC command for a specific device
+/// Returns i32::MAX if no actions have been recorded
+async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
+    use crate::db;
+    
+    match db::ac_actions::get_last_action_timestamp(device_name).await {
+        Ok(Some(timestamp)) => {
+            let now = chrono::Utc::now().timestamp() as i32;
+            let minutes_ago = (now - timestamp) / 60;
+            // Clamp to valid i32 range (should always be positive)
+            Some(minutes_ago.max(0))
+        }
+        Ok(None) => {
+            // No actions recorded - return max i32
+            Some(i32::MAX)
+        }
+        Err(_) => {
+            // Database error - return None to indicate unavailable
+            None
+        }
     }
 }
