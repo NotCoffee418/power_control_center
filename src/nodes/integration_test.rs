@@ -8,18 +8,17 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 20 node definitions:
-        // System: 4 (flow_start, currently_evaluating_device, flow_execute_action, flow_do_nothing)
+        // Verify we have 19 node definitions:
+        // System: 3 (flow_start, flow_execute_action, flow_do_nothing)
         // Sensors: 1 (pir_detection)
         // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 4 (device, intensity, cause_reason, request_mode)
-        assert_eq!(definitions.len(), 20);
+        assert_eq!(definitions.len(), 19);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
         assert!(node_types.contains(&"flow_start"));
-        assert!(node_types.contains(&"currently_evaluating_device"));
         assert!(node_types.contains(&"flow_execute_action"));
         assert!(node_types.contains(&"flow_do_nothing"));
         
@@ -71,7 +70,7 @@ mod integration_tests {
         // Verify categories are assigned appropriately
         for def in &definitions {
             match def.node_type.as_str() {
-                "flow_start" | "currently_evaluating_device" | "flow_execute_action" | "flow_do_nothing" => {
+                "flow_start" | "flow_execute_action" | "flow_do_nothing" => {
                     assert_eq!(def.category, "System", "System nodes should be in 'System' category");
                 }
                 "pir_detection" => {
@@ -213,40 +212,12 @@ mod integration_tests {
     }
     
     #[test]
-    fn test_currently_evaluating_device_node() {
-        let definitions = nodes::get_all_node_definitions();
-        let current_device_node = definitions.iter().find(|d| d.node_type == "currently_evaluating_device").unwrap();
-        
-        assert_eq!(current_device_node.inputs.len(), 0, "Currently Evaluating Device should have no inputs");
-        assert_eq!(current_device_node.outputs.len(), 3, "Currently Evaluating Device should have 3 outputs");
-        assert_eq!(current_device_node.category, "System");
-        
-        // Verify device output
-        let device_output = current_device_node.outputs.iter().find(|o| o.id == "device").unwrap();
-        match &device_output.value_type {
-            nodes::ValueType::Enum(values) => {
-                assert!(values.contains(&"LivingRoom".to_string()));
-                assert!(values.contains(&"Veranda".to_string()));
-            }
-            _ => panic!("Expected Enum type for device output"),
-        }
-        
-        // Verify temperature output
-        let temp_output = current_device_node.outputs.iter().find(|o| o.id == "temperature").unwrap();
-        assert_eq!(temp_output.value_type, nodes::ValueType::Float);
-        
-        // Verify is_auto_mode output
-        let auto_mode_output = current_device_node.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
-        assert_eq!(auto_mode_output.value_type, nodes::ValueType::Boolean);
-    }
-    
-    #[test]
     fn test_flow_start_node() {
         let definitions = nodes::get_all_node_definitions();
         let start_node = definitions.iter().find(|d| d.node_type == "flow_start").unwrap();
         
         assert_eq!(start_node.inputs.len(), 0, "Start node should have no inputs");
-        assert_eq!(start_node.outputs.len(), 4, "Start node should have 4 outputs");
+        assert_eq!(start_node.outputs.len(), 9, "Start node should have 9 outputs");
         assert_eq!(start_node.category, "System");
         
         // Verify device output
@@ -259,13 +230,33 @@ mod integration_tests {
             _ => panic!("Expected Enum type for device output"),
         }
         
-        // Verify temperature output
-        let temp_output = start_node.outputs.iter().find(|o| o.id == "temperature").unwrap();
+        // Verify device_sensor_temperature output
+        let temp_output = start_node.outputs.iter().find(|o| o.id == "device_sensor_temperature").unwrap();
         assert_eq!(temp_output.value_type, nodes::ValueType::Float);
         
         // Verify is_auto_mode output
         let auto_mode_output = start_node.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
         assert_eq!(auto_mode_output.value_type, nodes::ValueType::Boolean);
+        
+        // Verify outdoor_temperature output
+        let outdoor_temp_output = start_node.outputs.iter().find(|o| o.id == "outdoor_temperature").unwrap();
+        assert_eq!(outdoor_temp_output.value_type, nodes::ValueType::Float);
+        
+        // Verify is_user_home output
+        let user_home_output = start_node.outputs.iter().find(|o| o.id == "is_user_home").unwrap();
+        assert_eq!(user_home_output.value_type, nodes::ValueType::Boolean);
+        
+        // Verify net_power_watt output
+        let net_power_output = start_node.outputs.iter().find(|o| o.id == "net_power_watt").unwrap();
+        assert_eq!(net_power_output.value_type, nodes::ValueType::Integer);
+        
+        // Verify raw_solar_watt output
+        let solar_output = start_node.outputs.iter().find(|o| o.id == "raw_solar_watt").unwrap();
+        assert_eq!(solar_output.value_type, nodes::ValueType::Integer);
+        
+        // Verify outside_temperature_trend output
+        let trend_output = start_node.outputs.iter().find(|o| o.id == "outside_temperature_trend").unwrap();
+        assert_eq!(trend_output.value_type, nodes::ValueType::Float);
     }
     
     #[test]

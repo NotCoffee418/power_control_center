@@ -27,8 +27,8 @@ pub struct DashboardStatus {
     pub outdoor_temp: Option<f64>,
     pub outdoor_temp_trend: Option<f64>,
     pub solar_production_watts: Option<i32>,
-    pub current_consumption_kw: Option<f64>,
-    pub current_production_kw: Option<f64>,
+    pub current_consumption_watt: Option<i32>,
+    pub current_production_watt: Option<i32>,
     pub net_power_w: Option<i32>,
     pub pir_timeout_minutes: u32,
     pub user_is_home: bool,
@@ -137,9 +137,11 @@ async fn get_dashboard_status() -> Response {
         Ok(reading) => {
             // Calculate net power: negative means producing more than consuming
             let net = ((reading.current_consumption_kw - reading.current_production_kw) * KW_TO_W_MULTIPLIER) as i32;
+            let consumption_watt = (reading.current_consumption_kw * KW_TO_W_MULTIPLIER) as i32;
+            let production_watt = (reading.current_production_kw * KW_TO_W_MULTIPLIER) as i32;
             (
-                Some(reading.current_consumption_kw),
-                Some(reading.current_production_kw),
+                Some(consumption_watt),
+                Some(production_watt),
                 Some(net),
             )
         }
@@ -157,8 +159,8 @@ async fn get_dashboard_status() -> Response {
         outdoor_temp,
         outdoor_temp_trend,
         solar_production_watts: solar_production,
-        current_consumption_kw: current_consumption,
-        current_production_kw: current_production,
+        current_consumption_watt: current_consumption,
+        current_production_watt: current_production,
         net_power_w: net_power,
         pir_timeout_minutes: cfg.pir_timeout_minutes,
         user_is_home,

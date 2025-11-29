@@ -91,11 +91,6 @@
     return fanSpeed === 0 ? 'Auto' : fanSpeed.toString();
   }
 
-  function formatPower(kw) {
-    if (kw == null) return 'N/A';
-    return `${kw.toFixed(2)} kW`;
-  }
-
   function formatNetPower(watts) {
     if (watts == null) return 'N/A';
     // Invert the sign: negative for consuming (importing), positive for producing (exporting)
@@ -307,11 +302,11 @@
                       <div class="power-values">
                         <div class="power-row">
                           <span class="power-label">Net:</span>
-                          <span class="power-value">{command.measured_net_power_watt != null ? `${(command.measured_net_power_watt / 1000).toFixed(2)} kW` : '—'}</span>
+                          <span class="power-value">{command.measured_net_power_watt != null ? `${command.measured_net_power_watt} W` : '—'}</span>
                         </div>
                         <div class="power-row">
                           <span class="power-label">Solar:</span>
-                          <span class="power-value">{command.measured_solar_production_watt != null ? `${(command.measured_solar_production_watt / 1000).toFixed(2)} kW` : '—'}</span>
+                          <span class="power-value">{command.measured_solar_production_watt != null ? `${command.measured_solar_production_watt} W` : '—'}</span>
                         </div>
                       </div>
                     </td>
