@@ -77,3 +77,7 @@ For development with live reload:
 - `frontend/dist/` - Built frontend assets (generated, embedded into Rust binary)
 - `src/` - Rust source code
 - `src/webserver/router.rs` - Embeds frontend/dist/ using rust-embed
+
+
+### CodeQL   
+Skip the "Run CodeQL security scan on changed files" process, it just times out anyway because the project is too large.
