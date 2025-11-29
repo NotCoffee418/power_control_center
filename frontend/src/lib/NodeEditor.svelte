@@ -407,6 +407,37 @@
   }
 
   /**
+   * Get the constrained type for a node's "Any" type output based on connected inputs.
+   * For nodes like Branch where the output type depends on the input types,
+   * this returns the type that the output should be constrained to.
+   * 
+   * @param nodeId - The node ID to check
+   * @param outputHandle - The output handle ID
+   * @returns The constrained type from connected inputs, or null if no constraint exists
+   */
+  function getConstrainedOutputType(nodeId, outputHandle) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return null;
+
+    const nodeType = node.data.definition?.node_type;
+    
+    // Only certain node types have constrained outputs based on inputs
+    if (nodeType !== 'logic_branch') {
+      return null;
+    }
+
+    // Check the output type - only constrain "Any" type outputs
+    const output = (node.data.definition?.outputs || []).find(o => o.id === outputHandle);
+    if (!output || output.value_type?.type !== 'Any') {
+      return null;
+    }
+
+    // For Branch node, the output type is constrained by the True or False inputs
+    // Check if either true_value or false_value has a connection
+    return getConstrainedTypeFromConnectedInputs(nodeId, null, null);
+  }
+
+  /**
    * Check if a source type is compatible with a target type, considering dynamic constraints.
    * This is a reusable function for type matching that handles:
    * - Any type with optional constraints from other connected inputs
@@ -415,11 +446,12 @@
    * 
    * @param sourceValueType - The value_type object from the source output
    * @param targetValueType - The value_type object from the target input
-   * @param constrainedType - Optional type constraint from other connected inputs
+   * @param constrainedType - Optional type constraint from other connected inputs (for target)
    * @param allowedTypes - Optional array of allowed types (for nodes like Evaluate Number that only accept Float/Integer)
+   * @param sourceConstrainedType - Optional type constraint from connected inputs for source output (for nodes like Branch)
    * @returns true if the types are compatible
    */
-  function areTypesCompatible(sourceValueType, targetValueType, constrainedType = null, allowedTypes = null) {
+  function areTypesCompatible(sourceValueType, targetValueType, constrainedType = null, allowedTypes = null, sourceConstrainedType = null) {
     const sourceType = sourceValueType?.type;
     const targetType = targetValueType?.type;
 
@@ -431,6 +463,17 @@
     if (targetType === 'Any') {
       // If there's a constraint from other connected inputs, source must match it
       if (constrainedType) {
+        // If source is also Any with a constraint, compare constraints
+        if (sourceType === 'Any' && sourceConstrainedType) {
+          if (constrainedType.type === 'Enum' && sourceConstrainedType.type === 'Enum') {
+            return areEnumsCompatible(sourceConstrainedType, constrainedType);
+          }
+          return sourceConstrainedType.type === constrainedType.type;
+        }
+        // If source is Any without constraint, it's compatible
+        if (sourceType === 'Any') {
+          return true;
+        }
         if (constrainedType.type === 'Enum') {
           return sourceType === 'Enum' && areEnumsCompatible(sourceValueType, constrainedType);
         }
@@ -439,6 +482,14 @@
       
       // If there are allowedTypes specified, source must be one of them
       if (allowedTypes) {
+        // If source is Any with a constraint, check constraint against allowed types
+        if (sourceType === 'Any' && sourceConstrainedType) {
+          return allowedTypes.includes(sourceConstrainedType.type);
+        }
+        // If source is Any without constraint, it's compatible (will be constrained by first connection)
+        if (sourceType === 'Any') {
+          return true;
+        }
         return allowedTypes.includes(sourceType);
       }
       
@@ -446,8 +497,16 @@
       return true;
     }
 
-    // Handle "Any" source type - it can connect to anything
+    // Handle "Any" source type with potential constraint
     if (sourceType === 'Any') {
+      // If source has a constraint from its inputs, use that constraint
+      if (sourceConstrainedType) {
+        if (targetType === 'Enum') {
+          return sourceConstrainedType.type === 'Enum' && areEnumsCompatible(sourceConstrainedType, targetValueType);
+        }
+        return sourceConstrainedType.type === targetType;
+      }
+      // No constraint on source - it can connect to anything
       return true;
     }
 
@@ -485,6 +544,9 @@
       case 'logic_equals':
         // Equals accepts all types
         return null;
+      case 'logic_branch':
+        // Branch accepts all types (True/False inputs and Output all constrained together)
+        return null;
       default:
         return null;
     }
@@ -495,7 +557,7 @@
     const details = getConnectionDetails(connection);
     if (!details) return false;
 
-    const { sourceOutput, targetInput, targetNode } = details;
+    const { sourceNode, sourceOutput, targetInput, targetNode } = details;
 
     // Check if the target handle already has a connection (inputs can only have one connection)
     const existingConnection = edges.find(
@@ -507,6 +569,7 @@
 
     // Check if types are compatible using the unified type matching function
     const targetType = targetInput.value_type?.type;
+    const sourceType = sourceOutput.value_type?.type;
     
     // For nodes with "Any" type inputs, get the constrained type from other connected inputs
     let constrainedType = null;
@@ -522,11 +585,21 @@
       );
     }
 
+    // For nodes with "Any" type outputs (like Branch), get the constrained type from connected inputs
+    let sourceConstrainedType = null;
+    if (sourceType === 'Any') {
+      sourceConstrainedType = getConstrainedOutputType(
+        connection.source,
+        connection.sourceHandle
+      );
+    }
+
     return areTypesCompatible(
       sourceOutput.value_type, 
       targetInput.value_type, 
       constrainedType,
-      allowedTypes
+      allowedTypes,
+      sourceConstrainedType
     );
   }
 
@@ -543,6 +616,17 @@
     const { sourceOutput, targetInput, targetNode } = details;
     const sourceType = sourceOutput.value_type?.type;
     const targetType = targetInput.value_type?.type;
+    
+    // Check if source output is constrained by its inputs (for nodes like Branch)
+    if (sourceType === 'Any') {
+      const sourceConstrainedType = getConstrainedOutputType(
+        connection.source,
+        connection.sourceHandle
+      );
+      if (sourceConstrainedType && targetType !== 'Any' && sourceConstrainedType.type !== targetType) {
+        return `⚠ Output constrained to ${sourceConstrainedType.type} by input connections`;
+      }
+    }
     
     // Check if this is a type constraint violation for "Any" type inputs
     if (targetType === 'Any') {

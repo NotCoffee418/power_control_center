@@ -276,6 +276,59 @@ impl Node for EvaluateNumberNode {
     }
 }
 
+/// Branch node - selects between two values based on a boolean condition
+/// Takes a boolean condition and two "Any" type inputs (True and False)
+/// Outputs the value from the True input when condition is true, or False input otherwise
+/// 
+/// Type Constraint Behavior (handled by frontend):
+/// - Initial state: All Any-type inputs and output accept any type
+/// - When any input is connected to a specific type, all other Any-type
+///   inputs and the output are constrained to match that type
+/// - When all pins are disconnected, constraints reset to accept any type
+pub struct BranchNode;
+
+impl Node for BranchNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "logic_branch",
+            "Branch",
+            "Selects between two values based on a boolean condition. When condition is true, outputs the True input value; otherwise outputs the False input value. All value inputs and output are constrained to the same type.",
+            "Logic",
+            vec![
+                NodeInput::new(
+                    "condition",
+                    "Condition",
+                    "Boolean condition to evaluate",
+                    ValueType::Boolean,
+                    true,
+                ),
+                NodeInput::new(
+                    "true_value",
+                    "True",
+                    "Value to output when condition is true",
+                    ValueType::Any,
+                    true,
+                ),
+                NodeInput::new(
+                    "false_value",
+                    "False",
+                    "Value to output when condition is false",
+                    ValueType::Any,
+                    true,
+                ),
+            ],
+            vec![
+                NodeOutput::new(
+                    "result",
+                    "Output",
+                    "The selected value based on condition",
+                    ValueType::Any,
+                ),
+            ],
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,6 +490,35 @@ mod tests {
     }
 
     #[test]
+    fn test_branch_node_definition() {
+        let def = BranchNode::definition();
+        
+        assert_eq!(def.node_type, "logic_branch");
+        assert_eq!(def.name, "Branch");
+        assert_eq!(def.category, "Logic");
+        assert_eq!(def.inputs.len(), 3); // condition, true_value, false_value
+        assert_eq!(def.outputs.len(), 1); // Single output
+        
+        // Verify condition input is Boolean
+        let condition = def.inputs.iter().find(|i| i.id == "condition").unwrap();
+        assert_eq!(condition.value_type, ValueType::Boolean);
+        assert!(condition.required);
+        
+        // Verify true_value and false_value inputs are Any type for dynamic matching
+        let true_value = def.inputs.iter().find(|i| i.id == "true_value").unwrap();
+        assert_eq!(true_value.value_type, ValueType::Any);
+        assert!(true_value.required);
+        
+        let false_value = def.inputs.iter().find(|i| i.id == "false_value").unwrap();
+        assert_eq!(false_value.value_type, ValueType::Any);
+        assert!(false_value.required);
+        
+        // Verify output is Any type
+        assert_eq!(def.outputs[0].id, "result");
+        assert_eq!(def.outputs[0].value_type, ValueType::Any);
+    }
+
+    #[test]
     fn test_logical_nodes_serializable() {
         let definitions = vec![
             AndNode::definition(),
@@ -446,6 +528,7 @@ mod tests {
             NotNode::definition(),
             EqualsNode::definition(),
             EvaluateNumberNode::definition(),
+            BranchNode::definition(),
         ];
         
         for def in definitions {
