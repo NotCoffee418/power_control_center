@@ -41,7 +41,7 @@ impl Node for StartNode {
 }
 
 /// Execute Action Node - End point that executes the command and stores to database
-/// Takes RequestMode, Intensity, and CauseReason as inputs
+/// Takes raw AC control values: temperature, mode (Heat/Cool/Off), and isPowerful
 /// This node represents the final action in the evaluation flow
 pub struct ExecuteActionNode;
 
@@ -50,7 +50,7 @@ impl Node for ExecuteActionNode {
         NodeDefinition::new(
             "flow_execute_action",
             "Execute Action",
-            "Executes the AC command and stores the action to the database. This is the end point of an evaluation flow that results in an AC action.",
+            "Executes the AC command and stores the action to the database. This is the end point of an evaluation flow that results in an AC action. Accepts raw AC control values.",
             "System",
             vec![
                 NodeInput::new(
@@ -64,26 +64,28 @@ impl Node for ExecuteActionNode {
                     true,
                 ),
                 NodeInput::new(
-                    "request_mode",
-                    "Request Mode",
-                    "The desired AC mode (Colder, Warmer, Off, NoChange)",
+                    "temperature",
+                    "Temperature",
+                    "Target temperature in Celsius for the AC",
+                    ValueType::Float,
+                    true,
+                ),
+                NodeInput::new(
+                    "mode",
+                    "Mode",
+                    "AC operating mode: Heat, Cool, or Off",
                     ValueType::Enum(vec![
-                        "Colder".to_string(),
-                        "Warmer".to_string(),
+                        "Heat".to_string(),
+                        "Cool".to_string(),
                         "Off".to_string(),
-                        "NoChange".to_string(),
                     ]),
                     true,
                 ),
                 NodeInput::new(
-                    "intensity",
-                    "Intensity",
-                    "The intensity level of the AC operation (Low, Medium, High)",
-                    ValueType::Enum(vec![
-                        "Low".to_string(),
-                        "Medium".to_string(),
-                        "High".to_string(),
-                    ]),
+                    "is_powerful",
+                    "Is Powerful",
+                    "Whether to enable powerful/turbo mode for maximum heating or cooling",
+                    ValueType::Boolean,
                     true,
                 ),
                 NodeInput::new(
@@ -174,7 +176,7 @@ mod tests {
         assert_eq!(def.node_type, "flow_execute_action");
         assert_eq!(def.name, "Execute Action");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 4); // device, request_mode, intensity, cause_reason
+        assert_eq!(def.inputs.len(), 5); // device, temperature, mode, is_powerful, cause_reason
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
         
         // Verify device input
@@ -188,32 +190,28 @@ mod tests {
         }
         assert!(device_input.required);
         
-        // Verify request_mode input
-        let mode_input = def.inputs.iter().find(|i| i.id == "request_mode").unwrap();
+        // Verify temperature input
+        let temp_input = def.inputs.iter().find(|i| i.id == "temperature").unwrap();
+        assert_eq!(temp_input.value_type, ValueType::Float);
+        assert!(temp_input.required);
+        
+        // Verify mode input (Heat/Cool/Off)
+        let mode_input = def.inputs.iter().find(|i| i.id == "mode").unwrap();
         match &mode_input.value_type {
             ValueType::Enum(values) => {
-                assert_eq!(values.len(), 4);
-                assert!(values.contains(&"Colder".to_string()));
-                assert!(values.contains(&"Warmer".to_string()));
+                assert_eq!(values.len(), 3);
+                assert!(values.contains(&"Heat".to_string()));
+                assert!(values.contains(&"Cool".to_string()));
                 assert!(values.contains(&"Off".to_string()));
-                assert!(values.contains(&"NoChange".to_string()));
             }
-            _ => panic!("Expected Enum type for request_mode input"),
+            _ => panic!("Expected Enum type for mode input"),
         }
         assert!(mode_input.required);
         
-        // Verify intensity input
-        let intensity_input = def.inputs.iter().find(|i| i.id == "intensity").unwrap();
-        match &intensity_input.value_type {
-            ValueType::Enum(values) => {
-                assert_eq!(values.len(), 3);
-                assert!(values.contains(&"Low".to_string()));
-                assert!(values.contains(&"Medium".to_string()));
-                assert!(values.contains(&"High".to_string()));
-            }
-            _ => panic!("Expected Enum type for intensity input"),
-        }
-        assert!(intensity_input.required);
+        // Verify is_powerful input
+        let powerful_input = def.inputs.iter().find(|i| i.id == "is_powerful").unwrap();
+        assert_eq!(powerful_input.value_type, ValueType::Boolean);
+        assert!(powerful_input.required);
         
         // Verify cause_reason input
         let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();

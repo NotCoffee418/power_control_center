@@ -273,15 +273,16 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
         
-        assert_eq!(execute_node.inputs.len(), 4, "Execute Action node should have 4 inputs");
+        assert_eq!(execute_node.inputs.len(), 5, "Execute Action node should have 5 inputs");
         assert_eq!(execute_node.outputs.len(), 0, "Execute Action node should have no outputs (terminal)");
         assert_eq!(execute_node.category, "System");
         
         // Verify all inputs exist and are required
         let input_ids: Vec<&str> = execute_node.inputs.iter().map(|i| i.id.as_str()).collect();
         assert!(input_ids.contains(&"device"));
-        assert!(input_ids.contains(&"request_mode"));
-        assert!(input_ids.contains(&"intensity"));
+        assert!(input_ids.contains(&"temperature"));
+        assert!(input_ids.contains(&"mode"));
+        assert!(input_ids.contains(&"is_powerful"));
         assert!(input_ids.contains(&"cause_reason"));
         
         for input in &execute_node.inputs {
