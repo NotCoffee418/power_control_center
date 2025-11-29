@@ -4,20 +4,21 @@
   // Props passed by SvelteFlow
   let { data, id, selected } = $props();
 
-  // Initialize constants first (these don't depend on state)
-  const definition = data?.definition;
-  const outputs = definition?.outputs || [];
-  const color = definition?.color || '#757575';
-  const isDefault = data?.isDefault || false;
+  // Derive values from data - these need to be reactive to data.definition changes
+  // Use $derived for values that should update when data.definition changes
+  const definition = $derived(data?.definition);
+  const outputs = $derived(definition?.outputs || []);
+  const color = $derived(definition?.color || '#757575');
+  const isDefault = $derived(data?.isDefault || false);
   
-  // Get node type safely
-  const nodeType = definition?.node_type || '';
+  // Get node type safely - also derived
+  const nodeType = $derived(definition?.node_type || '');
 
-  // Determine node behavior flags
-  const isDynamicLogicNode = ['logic_and', 'logic_or', 'logic_nand'].includes(nodeType);
-  const isPrimitiveNode = ['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType);
-  const isEnumNode = ['device', 'intensity', 'cause_reason', 'request_mode'].includes(nodeType);
-  const isEvaluateNumberNode = nodeType === 'logic_evaluate_number';
+  // Determine node behavior flags - derived from nodeType
+  const isDynamicLogicNode = $derived(['logic_and', 'logic_or', 'logic_nand'].includes(nodeType));
+  const isPrimitiveNode = $derived(['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType));
+  const isEnumNode = $derived(['device', 'intensity', 'cause_reason', 'request_mode'].includes(nodeType));
+  const isEvaluateNumberNode = $derived(nodeType === 'logic_evaluate_number');
 
   // Get default value based on primitive type
   function getDefaultPrimitiveValue() {
@@ -25,10 +26,14 @@
     return 0;
   }
 
-  // Get default value for enum nodes (first enum value)
+  // Get default value for enum nodes (first enum value or first ID for EnumWithIds)
   function getDefaultEnumValue() {
     if (isEnumNode && outputs.length > 0) {
       const enumOutput = outputs[0];
+      if (enumOutput?.value_type?.type === 'EnumWithIds' && enumOutput?.value_type?.value?.length > 0) {
+        // For EnumWithIds, return the first ID
+        return enumOutput.value_type.value[0].id;
+      }
       if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value?.length > 0) {
         return enumOutput.value_type.value[0];
       }
@@ -123,12 +128,26 @@
     comment = event.target.value;
   }
 
+  // Check if this is an EnumWithIds type (for ID-based tracking)
+  function isEnumWithIds() {
+    if (outputs.length > 0) {
+      const enumOutput = outputs[0];
+      return enumOutput?.value_type?.type === 'EnumWithIds';
+    }
+    return false;
+  }
+
   // Get enum options for dropdown
+  // For EnumWithIds, returns array of {id, label} objects
+  // For Enum, returns array of strings (for backwards compatibility)
   function getEnumOptions() {
     if (outputs.length > 0) {
       const enumOutput = outputs[0];
+      if (enumOutput?.value_type?.type === 'EnumWithIds' && enumOutput?.value_type?.value) {
+        return enumOutput.value_type.value; // Array of {id, label}
+      }
       if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value) {
-        return enumOutput.value_type.value;
+        return enumOutput.value_type.value; // Array of strings
       }
     }
     return [];
@@ -222,9 +241,15 @@
           value={enumValue}
           onchange={handleEnumChange}
         >
-          {#each getEnumOptions() as option}
-            <option value={option}>{option}</option>
-          {/each}
+          {#if isEnumWithIds()}
+            {#each getEnumOptions() as option}
+              <option value={option.id}>{option.label}</option>
+            {/each}
+          {:else}
+            {#each getEnumOptions() as option}
+              <option value={option}>{option}</option>
+            {/each}
+          {/if}
         </select>
       </div>
     {/if}

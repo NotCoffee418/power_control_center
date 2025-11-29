@@ -541,7 +541,31 @@ async fn get_active_nodeset_id(pool: &sqlx::SqlitePool) -> Result<i64, sqlx::Err
 /// GET /api/nodes/definitions
 /// Returns all available node type definitions
 async fn get_node_definitions() -> Response {
-    let definitions = crate::nodes::get_all_node_definitions();
+    let mut definitions = crate::nodes::get_all_node_definitions();
+    
+    // Load cause reasons from database and inject them into the CauseReasonNode definition
+    match db::cause_reasons::get_all(false).await {
+        Ok(cause_reasons) => {
+            // Find the cause_reason node definition and update its enum values
+            if let Some(cause_reason_def) = definitions.iter_mut().find(|d| d.node_type == "cause_reason") {
+                if let Some(output) = cause_reason_def.outputs.first_mut() {
+                    // Replace the enum values with ID-label pairs from the database
+                    let options: Vec<crate::nodes::EnumOption> = cause_reasons.iter().map(|cr| {
+                        crate::nodes::EnumOption {
+                            id: cr.id.to_string(),
+                            label: cr.label.clone(),
+                        }
+                    }).collect();
+                    output.value_type = crate::nodes::ValueType::EnumWithIds(options);
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to load cause reasons from database, using defaults: {}", e);
+            // Continue with default values from the hardcoded definition
+        }
+    }
+    
     let response = ApiResponse::success(definitions);
     (StatusCode::OK, Json(response)).into_response()
 }

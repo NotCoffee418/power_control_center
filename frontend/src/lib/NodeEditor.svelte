@@ -10,6 +10,7 @@
   import CustomNode from './CustomNode.svelte';
   import ReconnectableEdge from './ReconnectableEdge.svelte';
   import SimulatorDrawer from './SimulatorDrawer.svelte';
+  import CauseReasonsPanel from './CauseReasonsPanel.svelte';
 
   // Constants for nodeset IDs
   const NEW_NODESET_ID = -1;
@@ -88,6 +89,69 @@
       }
     } catch (e) {
       console.error('Error loading node definitions:', e);
+    }
+  }
+
+  // Handle cause reasons changes - update node definitions and existing nodes
+  async function handleCauseReasonsChanged() {
+    await loadNodeDefinitions();
+    
+    // Find the cause_reason node definition to get updated options
+    const causeReasonDef = nodeDefinitions.find(d => d.node_type === 'cause_reason');
+    if (!causeReasonDef) return;
+    
+    // Get the new list of available cause reason IDs
+    const enumOutput = causeReasonDef.outputs?.[0];
+    let availableIds = [];
+    let defaultId = '0'; // ID for "Undefined"
+    
+    if (enumOutput?.value_type?.type === 'EnumWithIds') {
+      // New format with ID-label pairs
+      availableIds = enumOutput.value_type.value.map(opt => opt.id);
+      if (enumOutput.value_type.value.length > 0) {
+        defaultId = enumOutput.value_type.value[0].id;
+      }
+    } else if (enumOutput?.value_type?.type === 'Enum') {
+      // Legacy format with just labels
+      availableIds = enumOutput.value_type.value;
+      if (enumOutput.value_type.value.length > 0) {
+        defaultId = enumOutput.value_type.value[0];
+      }
+    }
+    
+    // Check if any cause_reason nodes need updating
+    const hasCauseReasonNodes = nodes.some(node => node.data?.definition?.node_type === 'cause_reason');
+    if (!hasCauseReasonNodes) return;
+    
+    // Update all cause_reason nodes
+    let hasChanges = false;
+    const updatedNodes = nodes.map(node => {
+      if (node.data?.definition?.node_type === 'cause_reason') {
+        const currentEnumValue = node.data.enumValue;
+        hasChanges = true; // Definition needs updating
+        
+        // Update the node's definition with the new options
+        const updatedNode = {
+          ...node,
+          data: {
+            ...node.data,
+            definition: causeReasonDef
+          }
+        };
+        
+        // If the current value (ID) is no longer valid, reset to default (Undefined)
+        if (currentEnumValue && !availableIds.includes(currentEnumValue)) {
+          updatedNode.data.enumValue = defaultId;
+        }
+        
+        return updatedNode;
+      }
+      return node;
+    });
+    
+    // Update nodes if there were cause_reason nodes to update
+    if (hasChanges) {
+      nodes = updatedNodes;
     }
   }
 
@@ -1171,6 +1235,9 @@
         {/if}
       </div>
     {/if}
+    
+    <!-- Cause Reasons Panel on the right -->
+    <CauseReasonsPanel onCauseReasonsChanged={handleCauseReasonsChanged} />
   </div>
   
   <!-- Simulator Drawer -->
