@@ -543,20 +543,29 @@ async fn get_active_nodeset_id(pool: &sqlx::SqlitePool) -> Result<i64, sqlx::Err
 async fn get_node_definitions() -> Response {
     let mut definitions = crate::nodes::get_all_node_definitions();
     
-    // Load cause reasons from database and inject them into the CauseReasonNode definition
+    // Load cause reasons from database and inject them into node definitions
     match db::cause_reasons::get_all(false).await {
         Ok(cause_reasons) => {
-            // Find the cause_reason node definition and update its enum values
+            // Create the enum options from database
+            let options: Vec<crate::nodes::EnumOption> = cause_reasons.iter().map(|cr| {
+                crate::nodes::EnumOption {
+                    id: cr.id.to_string(),
+                    label: cr.label.clone(),
+                }
+            }).collect();
+            let enum_with_ids = crate::nodes::ValueType::EnumWithIds(options);
+            
+            // Update the cause_reason node output
             if let Some(cause_reason_def) = definitions.iter_mut().find(|d| d.node_type == "cause_reason") {
                 if let Some(output) = cause_reason_def.outputs.first_mut() {
-                    // Replace the enum values with ID-label pairs from the database
-                    let options: Vec<crate::nodes::EnumOption> = cause_reasons.iter().map(|cr| {
-                        crate::nodes::EnumOption {
-                            id: cr.id.to_string(),
-                            label: cr.label.clone(),
-                        }
-                    }).collect();
-                    output.value_type = crate::nodes::ValueType::EnumWithIds(options);
+                    output.value_type = enum_with_ids.clone();
+                }
+            }
+            
+            // Update the flow_execute_action node's cause_reason input
+            if let Some(execute_action_def) = definitions.iter_mut().find(|d| d.node_type == "flow_execute_action") {
+                if let Some(cause_input) = execute_action_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
+                    cause_input.value_type = enum_with_ids;
                 }
             }
         }

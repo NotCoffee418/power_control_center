@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { 
     SvelteFlow, 
     Controls, 
@@ -596,10 +596,36 @@
     }
   }
 
+  // Warn user before leaving page with unsaved changes
+  function handleBeforeUnload(event) {
+    if (hasUnsavedChanges) {
+      event.preventDefault();
+      // Modern browsers ignore custom messages, but we still need to set returnValue
+      event.returnValue = '';
+      return '';
+    }
+  }
+
+  // Handle back button click with unsaved changes check
+  function handleBackClick(event) {
+    if (hasUnsavedChanges) {
+      if (!confirm('You have unsaved changes. Discard them and go back?')) {
+        event.preventDefault();
+        return;
+      }
+    }
+    // Allow navigation to proceed
+  }
+
   onMount(async () => {
+    window.addEventListener('beforeunload', handleBeforeUnload);
     await loadNodeDefinitions();
     await loadNodesets();
     await loadActiveNodeset();
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
   });
 
   // Handle node changes - with bind:nodes, position and selection are handled automatically
@@ -1118,7 +1144,7 @@
         <button onclick={deleteNodeset} class="btn btn-delete" disabled={currentNodesetId < 1}>
           🗑️ Delete
         </button>
-        <a href="/" class="btn btn-back">← Back</a>
+        <a href="/" class="btn btn-back" onclick={handleBackClick}>← Back</a>
       </div>
     </div>
     {#if saveStatus}

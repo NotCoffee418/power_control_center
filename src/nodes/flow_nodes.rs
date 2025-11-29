@@ -79,6 +79,9 @@ impl Node for StartNode {
 /// Execute Action Node - End point that executes the command and stores to database
 /// Takes raw AC control values: temperature, mode (Heat/Cool/Off), and isPowerful
 /// This node represents the final action in the evaluation flow
+/// NOTE: The cause_reason input's hardcoded enum values are deprecated.
+/// The actual cause reasons are loaded from the database at runtime
+/// via the get_node_definitions API endpoint.
 pub struct ExecuteActionNode;
 
 impl Node for ExecuteActionNode {
@@ -128,16 +131,8 @@ impl Node for ExecuteActionNode {
                     "cause_reason",
                     "Cause Reason",
                     "The reason for this action (for logging and debugging)",
-                    ValueType::Enum(vec![
-                        "Undefined".to_string(),
-                        "IceException".to_string(),
-                        "PirDetection".to_string(),
-                        "NobodyHome".to_string(),
-                        "MildTemperature".to_string(),
-                        "MajorTemperatureChangePending".to_string(),
-                        "ExcessiveSolarPower".to_string(),
-                        "ManualToAutoTransition".to_string(),
-                    ]),
+                    // Deprecated: These values are replaced with database values at runtime
+                    ValueType::Enum(vec![]),
                     true,
                 ),
             ],
@@ -274,14 +269,11 @@ mod tests {
         assert_eq!(powerful_input.value_type, ValueType::Boolean);
         assert!(powerful_input.required);
         
-        // Verify cause_reason input
+        // Verify cause_reason input (actual values loaded from database at runtime)
         let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
         match &cause_input.value_type {
             ValueType::Enum(values) => {
-                assert_eq!(values.len(), 8);
-                assert!(values.contains(&"Undefined".to_string()));
-                assert!(values.contains(&"IceException".to_string()));
-                assert!(values.contains(&"PirDetection".to_string()));
+                assert_eq!(values.len(), 0, "Cause reason values should be empty (loaded from database at runtime)");
             }
             _ => panic!("Expected Enum type for cause_reason input"),
         }

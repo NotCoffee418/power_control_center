@@ -57,6 +57,9 @@ impl Node for IntensityNode {
 
 /// CauseReason node - represents a cause/reason for AC action
 /// This node provides a dropdown for selecting cause reason
+/// NOTE: The hardcoded enum values below are deprecated defaults.
+/// The actual cause reasons are loaded from the database at runtime
+/// via the get_node_definitions API endpoint.
 pub struct CauseReasonNode;
 
 impl Node for CauseReasonNode {
@@ -72,16 +75,8 @@ impl Node for CauseReasonNode {
                     "cause_reason",
                     "Cause Reason",
                     "The selected cause reason",
-                    ValueType::Enum(vec![
-                        "Undefined".to_string(),
-                        "IceException".to_string(),
-                        "PirDetection".to_string(),
-                        "NobodyHome".to_string(),
-                        "MildTemperature".to_string(),
-                        "MajorTemperatureChangePending".to_string(),
-                        "ExcessiveSolarPower".to_string(),
-                        "ManualToAutoTransition".to_string(),
-                    ]),
+                    // Deprecated: These values are replaced with database values at runtime
+                    ValueType::Enum(vec![]),
                 ),
             ],
         )
@@ -190,18 +185,10 @@ mod tests {
         assert_eq!(def.inputs.len(), 0); // Source node has no inputs
         assert_eq!(def.outputs.len(), 1); // One output: cause_reason
         
-        // Verify output is an enum with cause reason values
+        // Verify output is an empty enum (actual values are loaded from database at runtime)
         match &def.outputs[0].value_type {
             ValueType::Enum(values) => {
-                assert_eq!(values.len(), 8);
-                assert!(values.contains(&"Undefined".to_string()));
-                assert!(values.contains(&"IceException".to_string()));
-                assert!(values.contains(&"PirDetection".to_string()));
-                assert!(values.contains(&"NobodyHome".to_string()));
-                assert!(values.contains(&"MildTemperature".to_string()));
-                assert!(values.contains(&"MajorTemperatureChangePending".to_string()));
-                assert!(values.contains(&"ExcessiveSolarPower".to_string()));
-                assert!(values.contains(&"ManualToAutoTransition".to_string()));
+                assert_eq!(values.len(), 0, "Cause reason values should be empty (loaded from database at runtime)");
             }
             _ => panic!("Expected Enum type for cause_reason output"),
         }
