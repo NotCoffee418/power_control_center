@@ -246,7 +246,7 @@ mod integration_tests {
         let start_node = definitions.iter().find(|d| d.node_type == "flow_start").unwrap();
         
         assert_eq!(start_node.inputs.len(), 0, "Start node should have no inputs");
-        assert_eq!(start_node.outputs.len(), 3, "Start node should have 3 outputs");
+        assert_eq!(start_node.outputs.len(), 4, "Start node should have 4 outputs");
         assert_eq!(start_node.category, "System");
         
         // Verify device output

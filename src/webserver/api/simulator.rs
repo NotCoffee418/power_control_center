@@ -43,6 +43,8 @@ pub struct SimulatorInputs {
     pub pir_detected: Option<bool>,
     /// PIR detection minutes ago (optional, used if pir_detected is true)
     pub pir_minutes_ago: Option<u32>,
+    /// Minutes since last AC command (optional, defaults to 60)
+    pub last_change_minutes: Option<i32>,
 }
 
 /// Result of simulating a workflow
@@ -101,6 +103,7 @@ pub struct SimulatorInputsUsed {
     pub avg_next_12h_outdoor_temp: f64,
     pub user_is_home: bool,
     pub pir_detected: bool,
+    pub last_change_minutes: i32,
 }
 
 impl SimulatorInputsUsed {
@@ -115,6 +118,7 @@ impl SimulatorInputsUsed {
             avg_next_12h_outdoor_temp: inputs.avg_next_12h_outdoor_temp.unwrap_or(20.0),
             user_is_home: inputs.user_is_home.unwrap_or(false),
             pir_detected: inputs.pir_detected.unwrap_or(false),
+            last_change_minutes: inputs.last_change_minutes.unwrap_or(60),
         }
     }
 }
@@ -142,6 +146,7 @@ pub struct LiveDeviceInput {
     pub is_auto_mode: bool,
     pub pir_recently_triggered: bool,
     pub pir_minutes_ago: Option<u32>,
+    pub last_change_minutes: Option<i32>,
 }
 
 /// POST /api/simulator/evaluate
@@ -210,6 +215,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     
     let pir_detected = inputs.pir_detected.unwrap_or(false);
     let pir_minutes_ago = inputs.pir_minutes_ago.unwrap_or(0);
+    let last_change_minutes = inputs.last_change_minutes.unwrap_or(60);
     
     // Build inputs used struct
     let inputs_used = SimulatorInputsUsed {
@@ -221,6 +227,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         avg_next_12h_outdoor_temp,
         user_is_home,
         pir_detected,
+        last_change_minutes,
     };
     
     // Check for PIR detection first
@@ -305,12 +312,16 @@ async fn get_live_inputs() -> Response {
             if minutes >= 0 { minutes as u32 } else { 0 }
         });
         
+        // Get last change minutes from database
+        let last_change_minutes = get_last_change_minutes_for_device(device_name).await;
+        
         devices.push(LiveDeviceInput {
             name: device_name.clone(),
             temperature: temp,
             is_auto_mode: is_auto,
             pir_recently_triggered,
             pir_minutes_ago,
+            last_change_minutes,
         });
     }
     
@@ -408,5 +419,28 @@ fn ac_state_to_simulator_state(state: &AcState) -> SimulatorAcState {
         temperature: state.temperature,
         swing: state.swing,
         powerful_mode: state.powerful_mode,
+    }
+}
+
+/// Get minutes since the last AC command for a specific device
+/// Returns i32::MAX if no actions have been recorded
+async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
+    use crate::db;
+    
+    match db::ac_actions::get_last_action_timestamp(device_name).await {
+        Ok(Some(timestamp)) => {
+            let now = chrono::Utc::now().timestamp() as i32;
+            let minutes_ago = (now - timestamp) / 60;
+            // Clamp to valid i32 range (should always be positive)
+            Some(minutes_ago.max(0))
+        }
+        Ok(None) => {
+            // No actions recorded - return max i32
+            Some(i32::MAX)
+        }
+        Err(_) => {
+            // Database error - return None to indicate unavailable
+            None
+        }
     }
 }
