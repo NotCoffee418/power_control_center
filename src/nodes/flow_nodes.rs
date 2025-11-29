@@ -35,6 +35,12 @@ impl Node for StartNode {
                     "True if the device is in automatic mode, false if in manual mode",
                     ValueType::Boolean,
                 ),
+                NodeOutput::new(
+                    "last_change_minutes",
+                    "Last Change Minutes",
+                    "Number of minutes since the AC last received a command (i32::MAX if never)",
+                    ValueType::Integer,
+                ),
             ],
         )
     }
@@ -148,7 +154,7 @@ mod tests {
         assert_eq!(def.name, "Start");
         assert_eq!(def.category, "System");
         assert_eq!(def.inputs.len(), 0); // Source node has no inputs
-        assert_eq!(def.outputs.len(), 3); // device, temperature, is_auto_mode
+        assert_eq!(def.outputs.len(), 4); // device, temperature, is_auto_mode, last_change_minutes
         
         // Verify device output is an enum with device values
         let device_output = def.outputs.iter().find(|o| o.id == "device").unwrap();
@@ -167,6 +173,10 @@ mod tests {
         // Verify is_auto_mode output is a boolean
         let auto_mode_output = def.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
         assert_eq!(auto_mode_output.value_type, ValueType::Boolean);
+        
+        // Verify last_change_minutes output is an integer
+        let last_change_output = def.outputs.iter().find(|o| o.id == "last_change_minutes").unwrap();
+        assert_eq!(last_change_output.value_type, ValueType::Integer);
     }
 
     #[test]

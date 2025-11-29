@@ -43,6 +43,8 @@ pub struct SimulatorInputs {
     pub pir_detected: Option<bool>,
     /// PIR detection minutes ago (optional, used if pir_detected is true)
     pub pir_minutes_ago: Option<u32>,
+    /// Minutes since last AC command (optional, defaults to 60)
+    pub last_change_minutes: Option<i32>,
 }
 
 /// Result of simulating a workflow
@@ -101,6 +103,7 @@ pub struct SimulatorInputsUsed {
     pub avg_next_12h_outdoor_temp: f64,
     pub user_is_home: bool,
     pub pir_detected: bool,
+    pub last_change_minutes: i32,
 }
 
 impl SimulatorInputsUsed {
@@ -115,6 +118,7 @@ impl SimulatorInputsUsed {
             avg_next_12h_outdoor_temp: inputs.avg_next_12h_outdoor_temp.unwrap_or(20.0),
             user_is_home: inputs.user_is_home.unwrap_or(false),
             pir_detected: inputs.pir_detected.unwrap_or(false),
+            last_change_minutes: inputs.last_change_minutes.unwrap_or(60),
         }
     }
 }
@@ -142,6 +146,7 @@ pub struct LiveDeviceInput {
     pub is_auto_mode: bool,
     pub pir_recently_triggered: bool,
     pub pir_minutes_ago: Option<u32>,
+    pub last_change_minutes: Option<i32>,
 }
 
 /// POST /api/simulator/evaluate
@@ -210,6 +215,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     
     let pir_detected = inputs.pir_detected.unwrap_or(false);
     let pir_minutes_ago = inputs.pir_minutes_ago.unwrap_or(0);
+    let last_change_minutes = inputs.last_change_minutes.unwrap_or(60);
     
     // Build inputs used struct
     let inputs_used = SimulatorInputsUsed {
@@ -221,6 +227,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         avg_next_12h_outdoor_temp,
         user_is_home,
         pir_detected,
+        last_change_minutes,
     };
     
     // Check for PIR detection first
