@@ -3,6 +3,7 @@ mod plan_types;
 pub mod pir_state;
 pub mod ac_executor;
 mod manual_mode_monitor;
+pub mod min_on_time;
 
 // Re-export types needed by other modules
 pub use plan_types::{AcDevices, RequestMode, Intensity, PlanResult};

@@ -185,8 +185,20 @@ async fn execute_state_change(
     cause_id: i32,
     force_send: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let min_on_time_state = super::min_on_time::get_min_on_time_state();
+
     // Case 1: Turning off the AC (or forcing off on first execution)
     if desired_state.is_on == false && current_state.is_on {
+        // Check minimum on-time before allowing turn-off
+        // (PIR detection clears this timer, so it can still turn off)
+        if !min_on_time_state.can_turn_off(device_name) {
+            log::info!(
+                "Device '{}' has not been on for minimum time, not turning off yet",
+                device_name
+            );
+            return Ok(());
+        }
+        
         log::info!("Turning off AC '{}'", device_name);
         device_requests::ac::turn_off_ac(device_name, cause_id).await?;
         return Ok(());
@@ -216,6 +228,11 @@ async fn execute_state_change(
         let swing = desired_state
             .swing
             .expect("Swing should be set when AC is on");
+
+        // Record turn-on time if device wasn't on before
+        if !current_state.is_on {
+            min_on_time_state.record_turn_on(device_name);
+        }
 
         // Send the turn on command with all settings
         log::info!(
@@ -461,16 +478,23 @@ mod tests {
         // This test validates the fix for the bug where IceException wouldn't send
         // OFF command on first execution if the tracked state was already OFF
         
-        // Reset to simulate fresh start
-        reset_all_states();
+        // Use unique device name to avoid conflicts with other tests
+        let unique_device = "TestDeviceFirstExec";
         
         let manager = get_state_manager();
         
+        // Clear any existing state for this specific device
+        manager.clear_device_initialization(unique_device);
+        {
+            let mut states = manager.states.write().unwrap();
+            states.remove(unique_device);
+        }
+        
         // Verify device is not initialized (simulating first run)
-        assert!(!manager.is_device_initialized("TestDevice"));
+        assert!(!manager.is_device_initialized(unique_device));
         
         // Get current state - should default to OFF
-        let current_state = manager.get_state("TestDevice");
+        let current_state = manager.get_state(unique_device);
         assert!(!current_state.is_on);
         
         // Create a desired state that is also OFF (like IceException would create)
