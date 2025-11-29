@@ -615,20 +615,16 @@
   // Handle node changes - with bind:nodes, position and selection are handled automatically
   // We only need to handle removal to protect default nodes
   function onNodesChange(changes) {
-    // Mark as having unsaved changes for any meaningful change (position, dimensions, remove, add)
-    // Selection changes don't count as unsaved changes
-    const meaningfulChanges = changes.filter(change => 
-      change.type === 'position' || 
-      change.type === 'dimensions' || 
-      change.type === 'remove' || 
-      change.type === 'add'
-    );
-    
-    if (meaningfulChanges.length > 0) {
-      hasUnsavedChanges = true;
-    }
-    
     changes.forEach(change => {
+      // Mark as having unsaved changes for any meaningful change (position, dimensions, remove, add)
+      // Selection changes don't count as unsaved changes
+      if (change.type === 'position' || 
+          change.type === 'dimensions' || 
+          change.type === 'remove' || 
+          change.type === 'add') {
+        hasUnsavedChanges = true;
+      }
+      
       if (change.type === 'remove') {
         // Check if node is default (OnEvaluate) - should not be deletable
         const node = nodes.find(n => n.id === change.id);
@@ -643,12 +639,16 @@
   }
 
   // Handle edge changes - with bind:edges, changes are handled automatically
-  // This function is kept for API consistency but no custom logic is needed
   function onEdgesChange(changes) {
-    // Mark as having unsaved changes for any edge modification
-    if (changes.length > 0) {
-      hasUnsavedChanges = true;
-    }
+    // Mark as having unsaved changes for meaningful edge modifications
+    // Filter out selection-only changes
+    changes.forEach(change => {
+      if (change.type === 'add' || 
+          change.type === 'remove' || 
+          change.type === 'reset') {
+        hasUnsavedChanges = true;
+      }
+    });
   }
 
   // Helper function to get connection details
