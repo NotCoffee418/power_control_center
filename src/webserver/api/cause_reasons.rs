@@ -203,22 +203,8 @@ async fn delete_cause_reason(Path(id): Path<i32>) -> Response {
     }
     
     // Check if the cause reason is editable
-    match db::cause_reasons::get_by_id(id).await {
-        Ok(Some(reason)) => {
-            if !reason.is_editable {
-                let response = ApiResponse::<()>::error("This cause reason cannot be deleted");
-                return (StatusCode::FORBIDDEN, Json(response)).into_response();
-            }
-        }
-        Ok(None) => {
-            let response = ApiResponse::<()>::error("Cause reason not found");
-            return (StatusCode::NOT_FOUND, Json(response)).into_response();
-        }
-        Err(e) => {
-            log::error!("Failed to check cause reason: {}", e);
-            let response = ApiResponse::<()>::error("Failed to check cause reason");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
+    if let Err(response) = check_editable(id, "deleted").await {
+        return response;
     }
     
     match db::cause_reasons::delete(id).await {
@@ -252,21 +238,10 @@ async fn set_hidden_status(
     }
     
     // Check if the cause reason is editable (non-editable items cannot be hidden)
-    match db::cause_reasons::get_by_id(id).await {
-        Ok(Some(reason)) => {
-            if !reason.is_editable && request.is_hidden {
-                let response = ApiResponse::<()>::error("This cause reason cannot be hidden");
-                return (StatusCode::FORBIDDEN, Json(response)).into_response();
-            }
-        }
-        Ok(None) => {
-            let response = ApiResponse::<()>::error("Cause reason not found");
-            return (StatusCode::NOT_FOUND, Json(response)).into_response();
-        }
-        Err(e) => {
-            log::error!("Failed to check cause reason: {}", e);
-            let response = ApiResponse::<()>::error("Failed to check cause reason");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+    // Only check editability when trying to hide (showing is always allowed)
+    if request.is_hidden {
+        if let Err(response) = check_editable(id, "hidden").await {
+            return response;
         }
     }
     
