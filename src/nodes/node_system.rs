@@ -1,5 +1,12 @@
 use serde::{Serialize, Deserialize};
 
+/// Represents a key-value pair for enums that need ID-based tracking
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EnumOption {
+    pub id: String,
+    pub label: String,
+}
+
 /// Represents a type of value that can flow through nodes
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "value")]
@@ -12,8 +19,10 @@ pub enum ValueType {
     Boolean,
     /// String value
     String,
-    /// Enumeration with possible values
+    /// Enumeration with possible values (simple string labels)
     Enum(Vec<String>),
+    /// Enumeration with ID-label pairs (for tracking by ID even when labels change)
+    EnumWithIds(Vec<EnumOption>),
     /// Structured object (for complex types like PlanResult)
     Object,
     /// Any type - used for dynamic type matching (e.g., Equals node, Evaluate Number node)
@@ -29,6 +38,7 @@ impl ValueType {
             ValueType::Boolean => "#95E1D3",    // Light green for booleans
             ValueType::String => "#FFA07A",     // Light salmon for strings
             ValueType::Enum(_) => "#C7A5E0",    // Purple for enums
+            ValueType::EnumWithIds(_) => "#C7A5E0", // Purple for enums with IDs
             ValueType::Object => "#FFD93D",     // Yellow for complex objects
             ValueType::Any => "#AAAAAA",        // Gray for any type (dynamic matching)
         }

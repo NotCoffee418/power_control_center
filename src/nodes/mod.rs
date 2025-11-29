@@ -7,7 +7,7 @@ mod flow_nodes;
 #[cfg(test)]
 mod integration_test;
 
-pub use node_system::{Node, NodeInput, NodeOutput, NodeDefinition, ValueType};
+pub use node_system::{Node, NodeInput, NodeOutput, NodeDefinition, ValueType, EnumOption};
 pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, EvaluateNumberNode, BranchNode};
 pub use primitive_nodes::{FloatNode, IntegerNode, BooleanNode};
 pub use enum_nodes::{DeviceNode, CurrentlyEvaluatingDeviceNode, IntensityNode, CauseReasonNode, RequestModeNode};

@@ -26,10 +26,14 @@
     return 0;
   }
 
-  // Get default value for enum nodes (first enum value)
+  // Get default value for enum nodes (first enum value or first ID for EnumWithIds)
   function getDefaultEnumValue() {
     if (isEnumNode && outputs.length > 0) {
       const enumOutput = outputs[0];
+      if (enumOutput?.value_type?.type === 'EnumWithIds' && enumOutput?.value_type?.value?.length > 0) {
+        // For EnumWithIds, return the first ID
+        return enumOutput.value_type.value[0].id;
+      }
       if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value?.length > 0) {
         return enumOutput.value_type.value[0];
       }
@@ -124,12 +128,26 @@
     comment = event.target.value;
   }
 
+  // Check if this is an EnumWithIds type (for ID-based tracking)
+  function isEnumWithIds() {
+    if (outputs.length > 0) {
+      const enumOutput = outputs[0];
+      return enumOutput?.value_type?.type === 'EnumWithIds';
+    }
+    return false;
+  }
+
   // Get enum options for dropdown
+  // For EnumWithIds, returns array of {id, label} objects
+  // For Enum, returns array of strings (for backwards compatibility)
   function getEnumOptions() {
     if (outputs.length > 0) {
       const enumOutput = outputs[0];
+      if (enumOutput?.value_type?.type === 'EnumWithIds' && enumOutput?.value_type?.value) {
+        return enumOutput.value_type.value; // Array of {id, label}
+      }
       if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value) {
-        return enumOutput.value_type.value;
+        return enumOutput.value_type.value; // Array of strings
       }
     }
     return [];
@@ -223,9 +241,15 @@
           value={enumValue}
           onchange={handleEnumChange}
         >
-          {#each getEnumOptions() as option}
-            <option value={option}>{option}</option>
-          {/each}
+          {#if isEnumWithIds()}
+            {#each getEnumOptions() as option}
+              <option value={option.id}>{option.label}</option>
+            {/each}
+          {:else}
+            {#each getEnumOptions() as option}
+              <option value={option}>{option}</option>
+            {/each}
+          {/if}
         </select>
       </div>
     {/if}

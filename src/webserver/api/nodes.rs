@@ -549,9 +549,14 @@ async fn get_node_definitions() -> Response {
             // Find the cause_reason node definition and update its enum values
             if let Some(cause_reason_def) = definitions.iter_mut().find(|d| d.node_type == "cause_reason") {
                 if let Some(output) = cause_reason_def.outputs.first_mut() {
-                    // Replace the enum values with the ones from the database
-                    let values: Vec<String> = cause_reasons.iter().map(|cr| cr.label.clone()).collect();
-                    output.value_type = crate::nodes::ValueType::Enum(values);
+                    // Replace the enum values with ID-label pairs from the database
+                    let options: Vec<crate::nodes::EnumOption> = cause_reasons.iter().map(|cr| {
+                        crate::nodes::EnumOption {
+                            id: cr.id.to_string(),
+                            label: cr.label.clone(),
+                        }
+                    }).collect();
+                    output.value_type = crate::nodes::ValueType::EnumWithIds(options);
                 }
             }
         }

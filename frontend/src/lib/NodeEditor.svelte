@@ -100,9 +100,24 @@
     const causeReasonDef = nodeDefinitions.find(d => d.node_type === 'cause_reason');
     if (!causeReasonDef) return;
     
-    // Get the new list of available cause reason labels
+    // Get the new list of available cause reason IDs
     const enumOutput = causeReasonDef.outputs?.[0];
-    const availableOptions = enumOutput?.value_type?.type === 'Enum' ? enumOutput.value_type.value : [];
+    let availableIds = [];
+    let defaultId = '0'; // ID for "Undefined"
+    
+    if (enumOutput?.value_type?.type === 'EnumWithIds') {
+      // New format with ID-label pairs
+      availableIds = enumOutput.value_type.value.map(opt => opt.id);
+      if (enumOutput.value_type.value.length > 0) {
+        defaultId = enumOutput.value_type.value[0].id;
+      }
+    } else if (enumOutput?.value_type?.type === 'Enum') {
+      // Legacy format with just labels
+      availableIds = enumOutput.value_type.value;
+      if (enumOutput.value_type.value.length > 0) {
+        defaultId = enumOutput.value_type.value[0];
+      }
+    }
     
     // Check if any cause_reason nodes need updating
     const hasCauseReasonNodes = nodes.some(node => node.data?.definition?.node_type === 'cause_reason');
@@ -124,9 +139,9 @@
           }
         };
         
-        // If the current value is no longer valid, reset to "Undefined"
-        if (currentEnumValue && !availableOptions.includes(currentEnumValue)) {
-          updatedNode.data.enumValue = 'Undefined';
+        // If the current value (ID) is no longer valid, reset to default (Undefined)
+        if (currentEnumValue && !availableIds.includes(currentEnumValue)) {
+          updatedNode.data.enumValue = defaultId;
         }
         
         return updatedNode;
