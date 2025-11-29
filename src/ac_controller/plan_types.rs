@@ -46,7 +46,7 @@ const COOLING_TURN_OFF_OVERSHOOT: f64 = 1.0; // °C
 
 /// Input parameters for AC planning
 #[derive(Debug, Clone)]
-pub(super) struct PlanInput {
+pub struct PlanInput {
     pub current_indoor_temp: f64,
     pub solar_production: u32,
     pub user_is_home: bool,
@@ -176,7 +176,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
 
 /// Get the desired AC plan based on provided conditions
 /// This is a pure function that can be easily unit tested
-pub(super) fn get_plan(input: &PlanInput) -> PlanResult {
+pub fn get_plan(input: &PlanInput) -> PlanResult {
     // Ice Exception: If outdoor temp is below 2°C, turn AC OFF to prevent ice formation
     // UNLESS:
     // - indoor temp is below 12°C, then we continue with normal planning
