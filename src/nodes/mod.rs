@@ -7,7 +7,7 @@ mod sensor_nodes;
 mod integration_test;
 
 pub use node_system::{Node, NodeInput, NodeOutput, NodeDefinition, ValueType};
-pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, EvaluateNumberNode};
+pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, EvaluateNumberNode, BranchNode};
 pub use primitive_nodes::{FloatNode, IntegerNode, BooleanNode};
 pub use enum_nodes::{DeviceNode, CurrentlyEvaluatingDeviceNode, IntensityNode, CauseReasonNode, RequestModeNode};
 pub use sensor_nodes::PirDetectionNode;
@@ -27,6 +27,7 @@ pub fn get_all_node_definitions() -> Vec<NodeDefinition> {
         NotNode::definition(),
         EqualsNode::definition(),
         EvaluateNumberNode::definition(),
+        BranchNode::definition(),
         // Primitive nodes
         FloatNode::definition(),
         IntegerNode::definition(),

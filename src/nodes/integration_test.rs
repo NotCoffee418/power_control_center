@@ -8,13 +8,13 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 16 node definitions:
+        // Verify we have 17 node definitions:
         // System: 1 (currently_evaluating_device)
         // Sensors: 1 (pir_detection)
-        // Logic: 7 (and, or, nand, if, not, equals, evaluate_number)
+        // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 4 (device, intensity, cause_reason, request_mode)
-        assert_eq!(definitions.len(), 16);
+        assert_eq!(definitions.len(), 17);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
@@ -31,6 +31,7 @@ mod integration_tests {
         assert!(node_types.contains(&"logic_not"));
         assert!(node_types.contains(&"logic_equals"));
         assert!(node_types.contains(&"logic_evaluate_number"));
+        assert!(node_types.contains(&"logic_branch"));
         
         // Verify primitive node types
         assert!(node_types.contains(&"primitive_float"));
@@ -73,7 +74,7 @@ mod integration_tests {
                 "pir_detection" => {
                     assert_eq!(def.category, "Sensors", "Sensor nodes should be in 'Sensors' category");
                 }
-                "logic_and" | "logic_or" | "logic_nand" | "logic_if" | "logic_not" | "logic_equals" | "logic_evaluate_number" => {
+                "logic_and" | "logic_or" | "logic_nand" | "logic_if" | "logic_not" | "logic_equals" | "logic_evaluate_number" | "logic_branch" => {
                     assert_eq!(def.category, "Logic", "Logic nodes should be in 'Logic' category");
                 }
                 "primitive_float" | "primitive_integer" | "primitive_boolean" => {
