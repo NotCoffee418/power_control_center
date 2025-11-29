@@ -12,6 +12,11 @@ use crate::{
     types::ApiResponse,
 };
 
+/// ID for a new unsaved nodeset (not yet in database)
+const NEW_NODESET_ID: i64 = -1;
+/// ID for the default nodeset that cannot be modified or deleted
+const DEFAULT_NODESET_ID: i64 = 0;
+
 pub fn nodes_routes() -> Router {
     Router::new()
         // Legacy endpoint for backwards compatibility - returns active nodeset configuration
@@ -19,11 +24,11 @@ pub fn nodes_routes() -> Router {
         // Nodeset management endpoints
         .route("/nodesets", get(list_nodesets))
         .route("/nodesets", post(create_nodeset))
-        .route("/nodesets/{id}", get(get_nodeset))
-        .route("/nodesets/{id}", put(update_nodeset))
-        .route("/nodesets/{id}", delete(delete_nodeset))
         .route("/nodesets/active", get(get_active_nodeset))
-        .route("/nodesets/active/{id}", put(set_active_nodeset))
+        .route("/nodesets/active/:id", put(set_active_nodeset))
+        .route("/nodesets/:id", get(get_nodeset))
+        .route("/nodesets/:id", put(update_nodeset))
+        .route("/nodesets/:id", delete(delete_nodeset))
         .route("/definitions", get(get_node_definitions))
 }
 
@@ -246,9 +251,9 @@ async fn create_nodeset(Json(request): Json<CreateNodesetRequest>) -> Response {
 async fn update_nodeset(Path(id): Path<i64>, Json(request): Json<UpdateNodesetRequest>) -> Response {
     let pool = db::get_pool().await;
     
-    // Prevent modifying the default nodeset (id 0)
-    if id == 0 {
-        let response = ApiResponse::<()>::error("Cannot modify the default nodeset (id 0). Please create a new profile instead.");
+    // Prevent modifying the default nodeset
+    if id == DEFAULT_NODESET_ID {
+        let response = ApiResponse::<()>::error("Cannot modify the default nodeset. Please create a new profile instead.");
         return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
     
@@ -353,9 +358,9 @@ async fn update_nodeset(Path(id): Path<i64>, Json(request): Json<UpdateNodesetRe
 async fn delete_nodeset(Path(id): Path<i64>) -> Response {
     let pool = db::get_pool().await;
     
-    // Prevent deleting the default nodeset (id 0)
-    if id == 0 {
-        let response = ApiResponse::<()>::error("Cannot delete the default nodeset (id 0)");
+    // Prevent deleting the default nodeset
+    if id == DEFAULT_NODESET_ID {
+        let response = ApiResponse::<()>::error("Cannot delete the default nodeset");
         return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
     
@@ -444,7 +449,7 @@ async fn get_active_nodeset() -> Response {
         Ok(None) => {
             // Active nodeset not found - return default empty
             let nodeset = Nodeset {
-                id: -1,
+                id: NEW_NODESET_ID,
                 name: "New".to_string(),
                 nodes: vec![],
                 edges: vec![],
@@ -465,8 +470,8 @@ async fn get_active_nodeset() -> Response {
 async fn set_active_nodeset(Path(id): Path<i64>) -> Response {
     let pool = db::get_pool().await;
     
-    // Check if nodeset exists (unless id is -1 for new)
-    if id != -1 {
+    // Check if nodeset exists (unless id is NEW_NODESET_ID for new unsaved nodeset)
+    if id != NEW_NODESET_ID {
         let exists = sqlx::query_as::<_, (i64,)>(
             "SELECT id FROM nodesets WHERE id = ?"
         )
@@ -529,7 +534,7 @@ async fn get_active_nodeset_id(pool: &sqlx::SqlitePool) -> Result<i64, sqlx::Err
                 )))
             })
         }
-        None => Ok(0) // Default to nodeset 0 if not set
+        None => Ok(DEFAULT_NODESET_ID) // Default to default nodeset if not set
     }
 }
 

@@ -11,6 +11,10 @@
   import ReconnectableEdge from './ReconnectableEdge.svelte';
   import SimulatorDrawer from './SimulatorDrawer.svelte';
 
+  // Constants for nodeset IDs
+  const NEW_NODESET_ID = -1;
+  const DEFAULT_NODESET_ID = 0;
+
   // Node and edge state - using $state.raw for proper SvelteFlow integration
   // $state.raw prevents deep reactivity, allowing SvelteFlow to manage internal state
   let nodes = $state.raw([]);
@@ -22,12 +26,16 @@
   
   // Nodeset state
   let nodesets = $state([]);
-  let currentNodesetId = $state(-1);
+  let currentNodesetId = $state(NEW_NODESET_ID);  // Currently being edited
   let currentNodesetName = $state('New');
-  let selectedNodesetId = $state(-1);
+  let selectedNodesetId = $state(NEW_NODESET_ID);
   let hasUnsavedChanges = $state(false);
   let originalNodes = $state.raw([]);
   let originalEdges = $state.raw([]);
+  
+  // Active profile state (the one used for AC logic)
+  let activeNodesetId = $state(DEFAULT_NODESET_ID);
+  let activeNodesetName = $state('Default');
   
   // Simulator drawer state
   let simulatorOpen = $state(false);
@@ -107,11 +115,16 @@
       const result = await response.json();
       
       if (result.success && result.data) {
+        // Set both the editing context and the active profile info
         currentNodesetId = result.data.id;
         currentNodesetName = result.data.name;
         selectedNodesetId = result.data.id;
         nodes = result.data.nodes || [];
         edges = result.data.edges || [];
+        
+        // Also store as the active profile
+        activeNodesetId = result.data.id;
+        activeNodesetName = result.data.name;
         
         // Store original state for change detection
         originalNodes = JSON.parse(JSON.stringify(nodes));
@@ -185,14 +198,14 @@
 
   // Save configuration to the current nodeset
   async function saveConfiguration() {
-    // If we're on a new nodeset (id -1), treat as Save As
-    if (currentNodesetId === -1) {
+    // If we're on a new nodeset, treat as Save As
+    if (currentNodesetId === NEW_NODESET_ID) {
       await saveAsNodeset();
       return;
     }
     
-    // Prevent saving to id 0
-    if (currentNodesetId === 0) {
+    // Prevent saving to the default nodeset
+    if (currentNodesetId === DEFAULT_NODESET_ID) {
       saveStatus = '⚠ Cannot modify default profile. Use Save As.';
       setTimeout(() => saveStatus = '', 3000);
       return;
@@ -282,7 +295,7 @@
 
   // Activate the selected profile
   async function activateProfile() {
-    if (selectedNodesetId === -1) {
+    if (selectedNodesetId === NEW_NODESET_ID) {
       saveStatus = '⚠ Please save the profile first';
       setTimeout(() => saveStatus = '', 3000);
       return;
@@ -300,6 +313,9 @@
       const result = await response.json();
       
       if (result.success) {
+        // Update the active profile display
+        activeNodesetId = currentNodesetId;
+        activeNodesetName = currentNodesetName;
         saveStatus = '✓ Profile activated';
         setTimeout(() => saveStatus = '', 2000);
       } else {
@@ -315,13 +331,13 @@
 
   // Delete the current nodeset
   async function deleteNodeset() {
-    if (currentNodesetId === -1) {
+    if (currentNodesetId === NEW_NODESET_ID) {
       // Just reset to new state
       createNewNodeset();
       return;
     }
     
-    if (currentNodesetId === 0) {
+    if (currentNodesetId === DEFAULT_NODESET_ID) {
       saveStatus = '⚠ Cannot delete the default profile';
       setTimeout(() => saveStatus = '', 3000);
       return;
@@ -355,17 +371,11 @@
     }
   }
 
-  // Create a new nodeset
+  // Create a new nodeset (resets to empty state)
   function createNewNodeset() {
-    if (hasUnsavedChanges) {
-      if (!confirm('You have unsaved changes. Discard them?')) {
-        return;
-      }
-    }
-    
-    currentNodesetId = -1;
+    currentNodesetId = NEW_NODESET_ID;
     currentNodesetName = 'New';
-    selectedNodesetId = -1;
+    selectedNodesetId = NEW_NODESET_ID;
     nodes = [];
     edges = [];
     originalNodes = [];
@@ -389,7 +399,7 @@
       }
     }
     
-    if (newId === -1) {
+    if (newId === NEW_NODESET_ID) {
       createNewNodeset();
     } else {
       await loadNodeset(newId);
@@ -1009,30 +1019,30 @@
     <div class="toolbar-header">
       <h1>🔧 Node-Based AC Logic Editor</h1>
       <div class="profile-info">
-        <span class="profile-label">Profile:</span>
-        <span class="profile-name">{currentNodesetId === -1 ? 'New (unsaved)' : `${currentNodesetId} - ${currentNodesetName}`}</span>
-        {#if hasUnsavedChanges}
-          <span class="unsaved-indicator">●</span>
-        {/if}
+        <span class="profile-label">Active Profile:</span>
+        <span class="profile-name">{activeNodesetId === NEW_NODESET_ID ? 'None' : `${activeNodesetId} - ${activeNodesetName}`}</span>
       </div>
     </div>
     <div class="toolbar-controls">
       <div class="profile-selector">
-        <label for="nodeset-select">Select Profile:</label>
+        <label for="nodeset-select">Editing:</label>
         <select 
           id="nodeset-select" 
-          value={selectedNodesetId} 
+          bind:value={selectedNodesetId} 
           onchange={handleNodesetChange}
           class="nodeset-dropdown"
         >
-          <option value={-1}>New Profile</option>
+          <option value={NEW_NODESET_ID}>New Profile</option>
           {#each nodesets as nodeset}
             <option value={nodeset.id}>{nodeset.id} - {nodeset.name}</option>
           {/each}
         </select>
+        {#if hasUnsavedChanges}
+          <span class="unsaved-indicator" title="Unsaved changes">●</span>
+        {/if}
       </div>
       <div class="toolbar-buttons">
-        <button onclick={activateProfile} class="btn btn-activate" disabled={selectedNodesetId === -1}>
+        <button onclick={activateProfile} class="btn btn-activate" disabled={selectedNodesetId === NEW_NODESET_ID}>
           ⚡ Activate
         </button>
         <button onclick={saveConfiguration} class="btn btn-save">
@@ -1041,10 +1051,7 @@
         <button onclick={saveAsNodeset} class="btn btn-saveas">
           📝 Save As
         </button>
-        <button onclick={createNewNodeset} class="btn btn-new">
-          ➕ New
-        </button>
-        <button onclick={deleteNodeset} class="btn btn-delete" disabled={currentNodesetId === -1 || currentNodesetId === 0}>
+        <button onclick={deleteNodeset} class="btn btn-delete" disabled={currentNodesetId < 1}>
           🗑️ Delete
         </button>
         <a href="/" class="btn btn-back">← Back</a>
@@ -1308,11 +1315,6 @@
 
   .btn-saveas {
     background: #9C27B0;
-    color: white;
-  }
-
-  .btn-new {
-    background: #FF9800;
     color: white;
   }
 
