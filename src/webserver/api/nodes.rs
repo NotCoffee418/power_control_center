@@ -336,6 +336,26 @@ async fn update_nodeset(Path(id): Path<i64>, Json(request): Json<UpdateNodesetRe
         Ok(Some(_)) => {}
     }
     
+    // Check if this is the active nodeset - if so, validate before allowing update
+    let active_id = match get_active_nodeset_id(pool).await {
+        Ok(aid) => aid,
+        Err(e) => {
+            log::error!("Failed to get active nodeset id: {}", e);
+            let response = ApiResponse::<()>::error("Failed to update nodeset");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+    
+    if id == active_id {
+        // Validate the nodeset since it's the active one
+        let validation = validate_nodeset(&request.nodes);
+        if !validation.is_valid {
+            let error_message = validation.errors.join("; ");
+            let response = ApiResponse::<()>::error(format!("Cannot save active profile with invalid configuration: {}", error_message));
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+        }
+    }
+    
     // Serialize the configuration
     let config = NodeConfiguration {
         nodes: request.nodes.clone(),
