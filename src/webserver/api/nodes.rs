@@ -15,7 +15,7 @@ use crate::{
 /// ID for a new unsaved nodeset (not yet in database)
 const NEW_NODESET_ID: i64 = -1;
 /// ID for the default nodeset that cannot be modified or deleted
-const DEFAULT_NODESET_ID: i64 = 0;
+pub const DEFAULT_NODESET_ID: i64 = 0;
 
 /// Node type for the Start node
 const NODE_TYPE_START: &str = "flow_start";
@@ -613,7 +613,7 @@ async fn set_active_nodeset(Path(id): Path<i64>) -> Response {
 }
 
 /// Helper function to get the active nodeset id
-async fn get_active_nodeset_id(pool: &sqlx::SqlitePool) -> Result<i64, sqlx::Error> {
+pub async fn get_active_nodeset_id(pool: &sqlx::SqlitePool) -> Result<i64, sqlx::Error> {
     let result = sqlx::query_as::<_, (String,)>(
         "SELECT setting_value FROM settings WHERE setting_key = 'active_nodeset'"
     )

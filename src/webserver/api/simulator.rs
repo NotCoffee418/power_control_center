@@ -17,7 +17,7 @@ use crate::{
     types::{ApiResponse, CauseReason},
 };
 
-use super::nodes::{validate_nodeset, NodeConfiguration};
+use super::nodes::{validate_nodeset, NodeConfiguration, get_active_nodeset_id, DEFAULT_NODESET_ID};
 
 const KW_TO_W_MULTIPLIER: f64 = 1000.0;
 
@@ -485,16 +485,9 @@ async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
 /// Validate the active nodeset configuration
 /// Returns Ok(()) if valid, Err(error_message) if invalid
 async fn validate_active_nodeset(pool: &sqlx::SqlitePool) -> Result<(), String> {
-    // Get the active nodeset id
-    let active_id_result = sqlx::query_as::<_, (String,)>(
-        "SELECT setting_value FROM settings WHERE setting_key = 'active_nodeset'"
-    )
-    .fetch_optional(pool)
-    .await;
-
-    let active_id: i64 = match active_id_result {
-        Ok(Some((value,))) => value.parse().unwrap_or(0),
-        Ok(None) => 0, // Default nodeset
+    // Get the active nodeset id using shared helper
+    let active_id = match get_active_nodeset_id(pool).await {
+        Ok(id) => id,
         Err(e) => {
             log::error!("Failed to get active nodeset id: {}", e);
             return Err("Failed to get active nodeset".to_string());
@@ -530,7 +523,7 @@ async fn validate_active_nodeset(pool: &sqlx::SqlitePool) -> Result<(), String> 
         Ok(None) => {
             // No nodeset found - could be default or missing
             // For default nodeset (id 0), we skip validation as it may be empty
-            if active_id == 0 {
+            if active_id == DEFAULT_NODESET_ID {
                 Ok(()) // Default nodeset is allowed to be empty
             } else {
                 Err("Active profile not found".to_string())
