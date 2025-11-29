@@ -484,6 +484,7 @@
     );
     
     nodes = [...nodes, newNode];
+    checkForChanges();
   }
 
   // Computed: Filter nodes based on search query
@@ -560,6 +561,7 @@
       edges = edges.filter(e => 
         e.source !== contextMenu.nodeId && e.target !== contextMenu.nodeId
       );
+      checkForChanges();
     }
     
     resetContextMenu();
@@ -577,6 +579,7 @@
     // Confirm deletion
     if (confirm('Delete this connection?')) {
       edges = edges.filter(e => e.id !== edgeId);
+      checkForChanges();
     }
     
     resetContextMenu();
@@ -1031,6 +1034,7 @@
       type: 'default',
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
+    checkForChanges();
   }
 
   // Handle edge reconnection
@@ -1061,6 +1065,7 @@
       type: 'default',
       style: `stroke: ${sourceOutput.color}; stroke-width: 2px;`
     }];
+    checkForChanges();
   }
 
   // Handle reconnection end - if dropped without a valid target, remove the edge
