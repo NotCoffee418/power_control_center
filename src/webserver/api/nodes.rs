@@ -17,6 +17,64 @@ const NEW_NODESET_ID: i64 = -1;
 /// ID for the default nodeset that cannot be modified or deleted
 const DEFAULT_NODESET_ID: i64 = 0;
 
+/// Node type for the Start node
+const NODE_TYPE_START: &str = "flow_start";
+/// Node type for the Execute Action node
+const NODE_TYPE_EXECUTE_ACTION: &str = "flow_execute_action";
+
+/// Result of nodeset validation
+#[derive(Debug)]
+pub struct NodesetValidationResult {
+    pub is_valid: bool,
+    pub start_count: usize,
+    pub execute_count: usize,
+    pub errors: Vec<String>,
+}
+
+/// Validates that a nodeset has exactly one Start node and exactly one Execute Action node
+/// Returns a validation result with counts and any errors
+pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult {
+    let mut start_count = 0;
+    let mut execute_count = 0;
+
+    for node in nodes {
+        // Node type is stored in data.definition.node_type
+        if let Some(node_type) = node
+            .get("data")
+            .and_then(|d| d.get("definition"))
+            .and_then(|def| def.get("node_type"))
+            .and_then(|nt| nt.as_str())
+        {
+            match node_type {
+                NODE_TYPE_START => start_count += 1,
+                NODE_TYPE_EXECUTE_ACTION => execute_count += 1,
+                _ => {}
+            }
+        }
+    }
+
+    let mut errors = Vec::new();
+    
+    if start_count == 0 {
+        errors.push("Profile must have exactly one Start node (found 0)".to_string());
+    } else if start_count > 1 {
+        errors.push(format!("Profile must have exactly one Start node (found {})", start_count));
+    }
+    
+    if execute_count == 0 {
+        errors.push("Profile must have exactly one Execute Action node (found 0)".to_string());
+    } else if execute_count > 1 {
+        errors.push(format!("Profile must have exactly one Execute Action node (found {})", execute_count));
+    }
+
+    NodesetValidationResult {
+        is_valid: start_count == 1 && execute_count == 1,
+        start_count,
+        execute_count,
+        errors,
+    }
+}
+
 pub fn nodes_routes() -> Router {
     Router::new()
         // Legacy endpoint for backwards compatibility - returns active nodeset configuration
@@ -472,14 +530,15 @@ async fn set_active_nodeset(Path(id): Path<i64>) -> Response {
     
     // Check if nodeset exists (unless id is NEW_NODESET_ID for new unsaved nodeset)
     if id != NEW_NODESET_ID {
-        let exists = sqlx::query_as::<_, (i64,)>(
-            "SELECT id FROM nodesets WHERE id = ?"
+        // Fetch nodeset to validate it
+        let result = sqlx::query_as::<_, (String,)>(
+            "SELECT node_json FROM nodesets WHERE id = ?"
         )
         .bind(id)
         .fetch_optional(pool)
         .await;
         
-        match exists {
+        match result {
             Ok(None) => {
                 let response = ApiResponse::<()>::error("Nodeset not found");
                 return (StatusCode::NOT_FOUND, Json(response)).into_response();
@@ -489,7 +548,24 @@ async fn set_active_nodeset(Path(id): Path<i64>) -> Response {
                 let response = ApiResponse::<()>::error("Failed to set active nodeset");
                 return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
             }
-            Ok(Some(_)) => {}
+            Ok(Some((node_json,))) => {
+                // Parse and validate the nodeset
+                match serde_json::from_str::<NodeConfiguration>(&node_json) {
+                    Ok(config) => {
+                        let validation = validate_nodeset(&config.nodes);
+                        if !validation.is_valid {
+                            let error_message = validation.errors.join("; ");
+                            let response = ApiResponse::<()>::error(format!("Invalid profile: {}", error_message));
+                            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse nodeset configuration: {}", e);
+                        let response = ApiResponse::<()>::error("Failed to parse nodeset configuration");
+                        return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+                    }
+                }
+            }
         }
     }
     
@@ -568,4 +644,152 @@ async fn get_node_definitions() -> Response {
     
     let response = ApiResponse::success(definitions);
     (StatusCode::OK, Json(response)).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn create_node(node_type: &str) -> serde_json::Value {
+        json!({
+            "id": format!("{}-1", node_type),
+            "type": "custom",
+            "position": { "x": 0, "y": 0 },
+            "data": {
+                "label": "Test Node",
+                "definition": {
+                    "node_type": node_type,
+                    "name": "Test",
+                    "description": "Test node",
+                    "category": "System",
+                    "inputs": [],
+                    "outputs": [],
+                    "color": "#000000"
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_validate_nodeset_empty() {
+        let nodes: Vec<serde_json::Value> = vec![];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert_eq!(result.start_count, 0);
+        assert_eq!(result.execute_count, 0);
+        assert_eq!(result.errors.len(), 2);
+        assert!(result.errors.iter().any(|e| e.contains("Start node")));
+        assert!(result.errors.iter().any(|e| e.contains("Execute Action node")));
+    }
+
+    #[test]
+    fn test_validate_nodeset_valid() {
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.execute_count, 1);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_missing_start() {
+        let nodes = vec![
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert_eq!(result.start_count, 0);
+        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains("Start node"));
+    }
+
+    #[test]
+    fn test_validate_nodeset_missing_execute() {
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.execute_count, 0);
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains("Execute Action node"));
+    }
+
+    #[test]
+    fn test_validate_nodeset_multiple_starts() {
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert_eq!(result.start_count, 2);
+        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains("found 2"));
+    }
+
+    #[test]
+    fn test_validate_nodeset_multiple_executes() {
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.execute_count, 2);
+        assert_eq!(result.errors.len(), 1);
+        assert!(result.errors[0].contains("found 2"));
+    }
+
+    #[test]
+    fn test_validate_nodeset_with_other_nodes() {
+        // Valid nodeset with additional nodes that should be ignored
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_node("logic_and"),
+            create_node("primitive_float"),
+            create_node("device"),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.execute_count, 1);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_invalid_structure() {
+        // Node without proper structure should be safely ignored
+        let nodes = vec![
+            json!({}),
+            json!({ "data": {} }),
+            json!({ "data": { "definition": {} } }),
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.execute_count, 1);
+    }
 }
