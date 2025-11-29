@@ -36,10 +36,10 @@ const MILD_TEMPERATURE_BUFFER: f64 = 2.0; // °C
 
 /// Temperature overshoot for heating hysteresis
 /// When heating, only turn off when temperature exceeds target by this amount
-/// Example: if target is 21°C, turn off at 22°C
+/// Example: if target is 20°C, turn off at 21°C
 const HEATING_TURN_OFF_OVERSHOOT: f64 = 1.0; // °C
 
-/// Temperature overshoot for cooling hysteresis
+/// Temperature buffer for cooling hysteresis (how much below target to turn off)
 /// When cooling, only turn off when temperature goes below target by this amount
 /// Example: if target is 24°C, turn off at 23°C
 const COOLING_TURN_OFF_OVERSHOOT: f64 = 1.0; // °C
@@ -275,27 +275,17 @@ fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
     // Apply temperature hysteresis to prevent rapid on/off cycling
     // If currently heating, only stop when temperature reaches target + overshoot
     // If currently cooling, only stop when temperature reaches target - overshoot
-    let (heating_turn_off_temp, cooling_turn_off_temp) = match input.current_ac_mode {
-        Some(true) => {
-            // Currently heating: require higher temperature to turn off
-            // When user is home, turn off at COMFORTABLE_TEMP_MIN + overshoot
-            // When too cold, turn off at TOO_COLD_THRESHOLD + overshoot
-            (
-                COMFORTABLE_TEMP_MIN + HEATING_TURN_OFF_OVERSHOOT,
-                COMFORTABLE_TEMP_MAX - COOLING_TURN_OFF_OVERSHOOT,
-            )
-        }
-        Some(false) => {
-            // Currently cooling: require lower temperature to turn off
-            (
-                COMFORTABLE_TEMP_MIN + HEATING_TURN_OFF_OVERSHOOT,
-                COMFORTABLE_TEMP_MAX - COOLING_TURN_OFF_OVERSHOOT,
-            )
-        }
-        None => {
-            // Not currently running, use normal thresholds to turn on
-            (COMFORTABLE_TEMP_MIN, COMFORTABLE_TEMP_MAX)
-        }
+    // When AC is running, use hysteresis thresholds to prevent cycling
+    // When AC is off, use normal thresholds to start
+    let (heating_turn_off_temp, cooling_turn_off_temp) = if input.current_ac_mode.is_some() {
+        // AC is running - use hysteresis thresholds
+        (
+            COMFORTABLE_TEMP_MIN + HEATING_TURN_OFF_OVERSHOOT,
+            COMFORTABLE_TEMP_MAX - COOLING_TURN_OFF_OVERSHOOT,
+        )
+    } else {
+        // Not currently running, use normal thresholds to turn on
+        (COMFORTABLE_TEMP_MIN, COMFORTABLE_TEMP_MAX)
     };
 
     let mode = if input.current_indoor_temp < TOO_COLD_THRESHOLD {
