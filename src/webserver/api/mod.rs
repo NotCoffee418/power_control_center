@@ -3,6 +3,7 @@ mod pir;
 mod dashboard;
 mod nodes;
 mod simulator;
+mod cause_reasons;
 
 use axum::{
     routing::get,
@@ -18,6 +19,7 @@ pub fn api_routes() -> Router {
         .nest("/dashboard", dashboard::dashboard_routes())
         .nest("/nodes", nodes::nodes_routes())
         .nest("/simulator", simulator::simulator_routes())
+        .nest("/cause-reasons", cause_reasons::cause_reasons_routes())
 }
 
 async fn status_handler() -> axum::Json<crate::types::ApiResponse<&'static str>> {

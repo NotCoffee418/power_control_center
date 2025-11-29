@@ -10,6 +10,7 @@
   import CustomNode from './CustomNode.svelte';
   import ReconnectableEdge from './ReconnectableEdge.svelte';
   import SimulatorDrawer from './SimulatorDrawer.svelte';
+  import CauseReasonsPanel from './CauseReasonsPanel.svelte';
 
   // Constants for nodeset IDs
   const NEW_NODESET_ID = -1;
@@ -1171,6 +1172,9 @@
         {/if}
       </div>
     {/if}
+    
+    <!-- Cause Reasons Panel on the right -->
+    <CauseReasonsPanel onCauseReasonsChanged={loadNodeDefinitions} />
   </div>
   
   <!-- Simulator Drawer -->
