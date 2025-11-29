@@ -5,7 +5,7 @@ pub mod ac_executor;
 mod manual_mode_monitor;
 
 // Re-export types needed by other modules
-pub use plan_types::{AcDevices, RequestMode, PlanResult};
+pub use plan_types::{AcDevices, RequestMode, Intensity, PlanResult};
 pub use manual_mode_monitor::get_manual_mode_monitor;
 
 use std::time::Duration;
@@ -148,7 +148,8 @@ async fn manual_mode_monitoring_loop() {
                         // Execute the plan with force_execution flag to bypass NoChange optimization
                         // Override the cause to ManualToAutoTransition
                         let transition_plan = plan_types::PlanResult::new(
-                            plan.mode, 
+                            plan.mode,
+                            plan.intensity,
                             crate::types::CauseReason::ManualToAutoTransition
                         );
                         

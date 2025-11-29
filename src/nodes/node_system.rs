@@ -16,7 +16,7 @@ pub enum ValueType {
     Enum(Vec<String>),
     /// Structured object (for complex types like PlanResult)
     Object,
-    /// Any type - used for dynamic type matching (e.g., Equals node)
+    /// Any type - used for dynamic type matching (e.g., Equals node, Evaluate Number node)
     Any,
 }
 

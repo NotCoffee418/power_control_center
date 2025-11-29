@@ -134,7 +134,7 @@ pub async fn execute_plan(
     let current_state = state_manager.get_state(device_name);
 
     // Convert plan to desired state
-    let desired_state = plan_to_state(plan, device_name);
+    let desired_state = plan_to_state(plan, &plan_result.intensity, device_name);
 
     // Check if we need to make changes
     // On first execution or force_execution, always send command
@@ -334,15 +334,10 @@ mod tests {
     #[test]
     fn test_plan_conversion_integration() {
         // Test that plans are correctly converted to states
-        let plan_off = RequestMode::Off;
-        let plan_no_change = RequestMode::NoChange;
-        let plan_cool = RequestMode::Colder(Intensity::Medium);
-        let plan_heat = RequestMode::Warmer(Intensity::High);
-
-        let state_off = plan_to_state(&plan_off, "LivingRoom");
-        let state_no_change = plan_to_state(&plan_no_change, "LivingRoom");
-        let state_cool = plan_to_state(&plan_cool, "LivingRoom");
-        let state_heat = plan_to_state(&plan_heat, "LivingRoom");
+        let state_off = plan_to_state(&RequestMode::Off, &Intensity::Low, "LivingRoom");
+        let state_no_change = plan_to_state(&RequestMode::NoChange, &Intensity::Low, "LivingRoom");
+        let state_cool = plan_to_state(&RequestMode::Colder, &Intensity::Medium, "LivingRoom");
+        let state_heat = plan_to_state(&RequestMode::Warmer, &Intensity::High, "LivingRoom");
 
         assert!(!state_off.is_on);
         assert!(!state_no_change.is_on);
@@ -545,6 +540,7 @@ mod tests {
         use crate::ac_controller::PlanResult;
         let plan = PlanResult::new(
             RequestMode::Off,
+            Intensity::Low,
             CauseReason::IceException
         );
         

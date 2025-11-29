@@ -9,7 +9,7 @@ use serde::Deserialize;
 use log::{info, warn};
 
 use crate::{
-    ac_controller::{pir_state, ac_executor, AcDevices, RequestMode, PlanResult},
+    ac_controller::{pir_state, ac_executor, AcDevices, RequestMode, Intensity, PlanResult},
     types::{ApiError, ApiResponse, CauseReason},
 };
 
@@ -61,7 +61,7 @@ async fn pir_detect(
     }
 
     // Device is on, use executor to turn it off
-    let plan = PlanResult::new(RequestMode::Off, CauseReason::PirDetection);
+    let plan = PlanResult::new(RequestMode::Off, Intensity::Low, CauseReason::PirDetection);
     match ac_executor::execute_plan(&device_enum, &plan, false).await {
         Ok(_) => {
             info!("AC turned off for device {} due to PIR detection", params.device);

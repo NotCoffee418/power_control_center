@@ -227,6 +227,55 @@ impl Node for EqualsNode {
     }
 }
 
+/// Evaluate Number node - compares two numeric values
+/// Has a built-in combobox for selecting comparison operator and two numeric inputs
+/// 
+/// Type Constraint Behavior (handled by frontend):
+/// - Initial state: Both inputs accept Float or Integer types
+/// - When one input is connected to a specific type (Float or Integer), 
+///   the other input's type constraint is updated to match that type
+/// - When all pins are disconnected, constraints reset to accept Float/Integer
+/// 
+/// The operator selection (>, >=, ==, <=, <) is a built-in combobox on the node,
+/// not an input pin. This differs from the Equals node which can compare any types,
+/// while this node is specifically designed for numeric comparisons.
+pub struct EvaluateNumberNode;
+
+impl Node for EvaluateNumberNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "logic_evaluate_number",
+            "Evaluate Number",
+            "Compares two numeric values using the selected comparison operator. When one input is connected, the other input's type constraint matches that input's type (Float or Integer). Resets to Float/Integer constraint when all pins are disconnected.",
+            "Logic",
+            vec![
+                NodeInput::new(
+                    "input_a",
+                    "Input A",
+                    "First numeric value to compare (accepts Float or Integer)",
+                    ValueType::Any, // Uses Any for flexible type matching, but frontend constrains to Float/Integer
+                    true,
+                ),
+                NodeInput::new(
+                    "input_b",
+                    "Input B",
+                    "Second numeric value to compare (accepts Float or Integer)",
+                    ValueType::Any, // Uses Any for flexible type matching, but frontend constrains to Float/Integer
+                    true,
+                ),
+            ],
+            vec![
+                NodeOutput::new(
+                    "result",
+                    "Result",
+                    "True if the comparison is satisfied",
+                    ValueType::Boolean,
+                ),
+            ],
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,6 +413,30 @@ mod tests {
     }
 
     #[test]
+    fn test_evaluate_number_node_definition() {
+        let def = EvaluateNumberNode::definition();
+        
+        assert_eq!(def.node_type, "logic_evaluate_number");
+        assert_eq!(def.name, "Evaluate Number");
+        assert_eq!(def.category, "Logic");
+        assert_eq!(def.inputs.len(), 2); // input_a, input_b (operator is a built-in combobox, not an input)
+        assert_eq!(def.outputs.len(), 1); // Single boolean output
+        
+        // Verify inputs are Any type for flexible matching between Float/Integer
+        let input_a = def.inputs.iter().find(|i| i.id == "input_a").unwrap();
+        assert_eq!(input_a.value_type, ValueType::Any);
+        assert!(input_a.required);
+        
+        let input_b = def.inputs.iter().find(|i| i.id == "input_b").unwrap();
+        assert_eq!(input_b.value_type, ValueType::Any);
+        assert!(input_b.required);
+        
+        // Verify output is boolean
+        assert_eq!(def.outputs[0].id, "result");
+        assert_eq!(def.outputs[0].value_type, ValueType::Boolean);
+    }
+
+    #[test]
     fn test_logical_nodes_serializable() {
         let definitions = vec![
             AndNode::definition(),
@@ -372,6 +445,7 @@ mod tests {
             IfNode::definition(),
             NotNode::definition(),
             EqualsNode::definition(),
+            EvaluateNumberNode::definition(),
         ];
         
         for def in definitions {

@@ -16,7 +16,8 @@
   // Determine node behavior flags
   const isDynamicLogicNode = ['logic_and', 'logic_or', 'logic_nand'].includes(nodeType);
   const isPrimitiveNode = ['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType);
-  const isEnumNode = ['device', 'intensity'].includes(nodeType);
+  const isEnumNode = ['device', 'intensity', 'cause_reason', 'request_mode'].includes(nodeType);
+  const isEvaluateNumberNode = nodeType === 'logic_evaluate_number';
 
   // Get default value based on primitive type
   function getDefaultPrimitiveValue() {
@@ -39,6 +40,7 @@
   let dynamicInputs = $state(data?.dynamicInputs || definition?.inputs || []);
   let primitiveValue = $state(data?.primitiveValue ?? getDefaultPrimitiveValue());
   let enumValue = $state(data?.enumValue ?? getDefaultEnumValue());
+  let operatorValue = $state(data?.operatorValue ?? '>'); // For Evaluate Number node
   let isValidInput = $state(true);
   let comment = $state(data?.comment || '');
 
@@ -52,6 +54,9 @@
     }
     if (isEnumNode && data) {
       data.enumValue = enumValue;
+    }
+    if (isEvaluateNumberNode && data) {
+      data.operatorValue = operatorValue;
     }
     // Always sync comment - available for all node types
     if (data && data.comment !== comment) {
@@ -108,6 +113,11 @@
     enumValue = event.target.value;
   }
 
+  // Handle operator selection change for Evaluate Number node
+  function handleOperatorChange(event) {
+    operatorValue = event.target.value;
+  }
+
   // Handle comment input change
   function handleCommentChange(event) {
     comment = event.target.value;
@@ -125,8 +135,17 @@
   }
 
   // Get the inputs to display (either dynamic or static)
+  // For Evaluate Number node, filter out the operator input since it's shown as a combobox
   function getDisplayInputs() {
-    return isDynamicLogicNode ? dynamicInputs : (definition?.inputs || []);
+    if (isDynamicLogicNode) {
+      return dynamicInputs;
+    }
+    const inputs = definition?.inputs || [];
+    if (isEvaluateNumberNode) {
+      // Filter out the operator input - it's rendered as a built-in combobox
+      return inputs.filter(input => input.id !== 'operator');
+    }
+    return inputs;
   }
 </script>
 
@@ -210,25 +229,64 @@
       </div>
     {/if}
 
-    <!-- Input handles on the left -->
-    {#each getDisplayInputs() as input, i}
-      <div class="port-row input-port">
-        <Handle
-          type="target"
-          position={Position.Left}
-          id={input.id}
-          style="background: {input.color}; border-color: {input.color};"
-          class="custom-handle"
-          title="{input.label} ({input.value_type.type})"
-        />
-        <div class="port-label" title={input.description}>
-          {input.label}
-          {#if input.required}
-            <span class="required">*</span>
-          {/if}
+    <!-- Evaluate Number node - custom layout with operator between inputs -->
+    {#if isEvaluateNumberNode}
+      {#each getDisplayInputs() as input, i}
+        <div class="port-row input-port">
+          <Handle
+            type="target"
+            position={Position.Left}
+            id={input.id}
+            style="background: {input.color}; border-color: {input.color};"
+            class="custom-handle"
+            title="{input.label} ({input.value_type.type})"
+          />
+          <div class="port-label" title={input.description}>
+            {input.label}
+            {#if input.required}
+              <span class="required">*</span>
+            {/if}
+          </div>
         </div>
-      </div>
-    {/each}
+        <!-- Show operator dropdown after first input (Input A) -->
+        {#if i === 0}
+          <div class="operator-input">
+            <select 
+              class="operator-select"
+              value={operatorValue}
+              onchange={handleOperatorChange}
+              title="Comparison operator"
+            >
+              <option value=">">&gt; (greater than)</option>
+              <option value=">=">&gt;= (greater or equal)</option>
+              <option value="==">== (equals)</option>
+              <option value="<=">&lt;= (less or equal)</option>
+              <option value="<">&lt; (less than)</option>
+            </select>
+          </div>
+        {/if}
+      {/each}
+    {:else}
+      <!-- Standard input handles on the left -->
+      {#each getDisplayInputs() as input, i}
+        <div class="port-row input-port">
+          <Handle
+            type="target"
+            position={Position.Left}
+            id={input.id}
+            style="background: {input.color}; border-color: {input.color};"
+            class="custom-handle"
+            title="{input.label} ({input.value_type.type})"
+          />
+          <div class="port-label" title={input.description}>
+            {input.label}
+            {#if input.required}
+              <span class="required">*</span>
+            {/if}
+          </div>
+        </div>
+      {/each}
+    {/if}
 
     <!-- Output handles on the right -->
     {#each outputs as output, i}
@@ -418,6 +476,39 @@
   }
 
   .enum-select option {
+    background: #2d2d2d;
+    color: white;
+  }
+
+  .operator-input {
+    margin: 4px 0;
+    padding: 0 16px;
+  }
+
+  .operator-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    font-size: 13px;
+    box-sizing: border-box;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+    text-align: center;
+  }
+
+  .operator-select:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.6);
+  }
+
+  .operator-select option {
     background: #2d2d2d;
     color: white;
   }

@@ -8,13 +8,13 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 13 node definitions:
+        // Verify we have 16 node definitions:
         // System: 1 (currently_evaluating_device)
         // Sensors: 1 (pir_detection)
-        // Logic: 6 (and, or, nand, if, not, equals)
+        // Logic: 7 (and, or, nand, if, not, equals, evaluate_number)
         // Primitives: 3 (float, integer, boolean)
-        // Enums: 2 (device, intensity)
-        assert_eq!(definitions.len(), 13);
+        // Enums: 4 (device, intensity, cause_reason, request_mode)
+        assert_eq!(definitions.len(), 16);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
@@ -30,6 +30,7 @@ mod integration_tests {
         assert!(node_types.contains(&"logic_if"));
         assert!(node_types.contains(&"logic_not"));
         assert!(node_types.contains(&"logic_equals"));
+        assert!(node_types.contains(&"logic_evaluate_number"));
         
         // Verify primitive node types
         assert!(node_types.contains(&"primitive_float"));
@@ -39,6 +40,8 @@ mod integration_tests {
         // Verify enum node types
         assert!(node_types.contains(&"device"));
         assert!(node_types.contains(&"intensity"));
+        assert!(node_types.contains(&"cause_reason"));
+        assert!(node_types.contains(&"request_mode"));
     }
     
     #[test]
@@ -70,13 +73,13 @@ mod integration_tests {
                 "pir_detection" => {
                     assert_eq!(def.category, "Sensors", "Sensor nodes should be in 'Sensors' category");
                 }
-                "logic_and" | "logic_or" | "logic_nand" | "logic_if" | "logic_not" | "logic_equals" => {
+                "logic_and" | "logic_or" | "logic_nand" | "logic_if" | "logic_not" | "logic_equals" | "logic_evaluate_number" => {
                     assert_eq!(def.category, "Logic", "Logic nodes should be in 'Logic' category");
                 }
                 "primitive_float" | "primitive_integer" | "primitive_boolean" => {
                     assert_eq!(def.category, "Primitives", "Primitive nodes should be in 'Primitives' category");
                 }
-                "device" | "intensity" => {
+                "device" | "intensity" | "cause_reason" | "request_mode" => {
                     assert_eq!(def.category, "Enums", "Enum nodes should be in 'Enums' category");
                 }
                 _ => panic!("Unexpected node type: {}", def.node_type),
@@ -211,15 +214,25 @@ mod integration_tests {
         let current_device_node = definitions.iter().find(|d| d.node_type == "currently_evaluating_device").unwrap();
         
         assert_eq!(current_device_node.inputs.len(), 0, "Currently Evaluating Device should have no inputs");
-        assert_eq!(current_device_node.outputs.len(), 1, "Currently Evaluating Device should have 1 output");
+        assert_eq!(current_device_node.outputs.len(), 3, "Currently Evaluating Device should have 3 outputs");
         assert_eq!(current_device_node.category, "System");
         
-        match &current_device_node.outputs[0].value_type {
+        // Verify device output
+        let device_output = current_device_node.outputs.iter().find(|o| o.id == "device").unwrap();
+        match &device_output.value_type {
             nodes::ValueType::Enum(values) => {
                 assert!(values.contains(&"LivingRoom".to_string()));
                 assert!(values.contains(&"Veranda".to_string()));
             }
             _ => panic!("Expected Enum type for device output"),
         }
+        
+        // Verify temperature output
+        let temp_output = current_device_node.outputs.iter().find(|o| o.id == "temperature").unwrap();
+        assert_eq!(temp_output.value_type, nodes::ValueType::Float);
+        
+        // Verify is_auto_mode output
+        let auto_mode_output = current_device_node.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
+        assert_eq!(auto_mode_output.value_type, nodes::ValueType::Boolean);
     }
 }
