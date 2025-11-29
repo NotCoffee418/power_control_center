@@ -103,13 +103,29 @@ pub struct SimulatorInputsUsed {
     pub pir_detected: bool,
 }
 
+impl SimulatorInputsUsed {
+    /// Create SimulatorInputsUsed from SimulatorInputs with default values for optional fields
+    fn from_inputs_with_defaults(inputs: &SimulatorInputs) -> Self {
+        Self {
+            device: inputs.device.clone(),
+            temperature: inputs.temperature,
+            is_auto_mode: inputs.is_auto_mode,
+            solar_production: inputs.solar_production.unwrap_or(0),
+            outdoor_temp: inputs.outdoor_temp.unwrap_or(20.0),
+            avg_next_12h_outdoor_temp: inputs.avg_next_12h_outdoor_temp.unwrap_or(20.0),
+            user_is_home: inputs.user_is_home.unwrap_or(false),
+            pir_detected: inputs.pir_detected.unwrap_or(false),
+        }
+    }
+}
+
 /// Live inputs from the current environment
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveInputs {
     /// All configured devices
     pub devices: Vec<LiveDeviceInput>,
     /// Current solar production in watts
-    pub solar_production: Option<i32>,
+    pub solar_production: Option<u32>,
     /// Current outdoor temperature
     pub outdoor_temp: Option<f64>,
     /// Average outdoor temperature in next 12 hours
@@ -125,7 +141,7 @@ pub struct LiveDeviceInput {
     pub temperature: Option<f64>,
     pub is_auto_mode: bool,
     pub pir_recently_triggered: bool,
-    pub pir_minutes_ago: Option<i64>,
+    pub pir_minutes_ago: Option<u32>,
 }
 
 /// POST /api/simulator/evaluate
@@ -137,21 +153,13 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     let _device = match AcDevices::from_str(&inputs.device) {
         Some(d) => d,
         None => {
+            // Return a simulation result with an error - API call succeeded but simulation has invalid input
             let error_result = SimulatorResult {
                 success: false,
                 plan: None,
                 ac_state: None,
                 error: Some(format!("Unknown device: {}", inputs.device)),
-                inputs_used: SimulatorInputsUsed {
-                    device: inputs.device.clone(),
-                    temperature: inputs.temperature,
-                    is_auto_mode: inputs.is_auto_mode,
-                    solar_production: inputs.solar_production.unwrap_or(0),
-                    outdoor_temp: inputs.outdoor_temp.unwrap_or(20.0),
-                    avg_next_12h_outdoor_temp: inputs.avg_next_12h_outdoor_temp.unwrap_or(20.0),
-                    user_is_home: inputs.user_is_home.unwrap_or(false),
-                    pir_detected: inputs.pir_detected.unwrap_or(false),
-                },
+                inputs_used: SimulatorInputsUsed::from_inputs_with_defaults(&inputs),
             };
             let response = ApiResponse::success(error_result);
             return (StatusCode::OK, Json(response)).into_response();
@@ -170,16 +178,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
             }),
             ac_state: None,
             error: None,
-            inputs_used: SimulatorInputsUsed {
-                device: inputs.device.clone(),
-                temperature: inputs.temperature,
-                is_auto_mode: inputs.is_auto_mode,
-                solar_production: inputs.solar_production.unwrap_or(0),
-                outdoor_temp: inputs.outdoor_temp.unwrap_or(20.0),
-                avg_next_12h_outdoor_temp: inputs.avg_next_12h_outdoor_temp.unwrap_or(20.0),
-                user_is_home: inputs.user_is_home.unwrap_or(false),
-                pir_detected: inputs.pir_detected.unwrap_or(false),
-            },
+            inputs_used: SimulatorInputsUsed::from_inputs_with_defaults(&inputs),
         };
         let response = ApiResponse::success(result);
         return (StatusCode::OK, Json(response)).into_response();
@@ -301,7 +300,9 @@ async fn get_live_inputs() -> Response {
         let pir_recently_triggered = pir_state.has_recent_detection(device_name, cfg.pir_timeout_minutes);
         let pir_minutes_ago = pir_state.get_last_detection(device_name).map(|dt| {
             let now = chrono::Utc::now();
-            now.signed_duration_since(dt).num_minutes()
+            let minutes = now.signed_duration_since(dt).num_minutes();
+            // Convert to u32, clamping negative values to 0
+            if minutes >= 0 { minutes as u32 } else { 0 }
         });
         
         devices.push(LiveDeviceInput {
@@ -315,7 +316,14 @@ async fn get_live_inputs() -> Response {
     
     // Get environmental data
     let solar_production = match device_requests::meter::get_solar_production_cached().await {
-        Ok(production) => Some(production.current_production),
+        Ok(production) => {
+            // Convert i32 to u32, treating negative values as 0
+            if production.current_production >= 0 {
+                Some(production.current_production as u32)
+            } else {
+                Some(0)
+            }
+        },
         Err(_) => None,
     };
     
