@@ -440,20 +440,15 @@
 
 <style>
   .simulator-drawer {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    position: relative;
     background: #2d2d2d;
     border-top: 2px solid #404040;
-    z-index: 100;
     display: flex;
     flex-direction: column;
-    transition: height 0.3s ease;
+    flex-shrink: 0;
   }
 
   .simulator-drawer.resizing {
-    transition: none;
     user-select: none;
   }
 
@@ -465,6 +460,7 @@
     height: 8px;
     cursor: ns-resize;
     background: transparent;
+    z-index: 10;
   }
 
   .resize-handle:hover {
