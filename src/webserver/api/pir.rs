@@ -9,7 +9,7 @@ use serde::Deserialize;
 use log::{info, warn};
 
 use crate::{
-    ac_controller::{pir_state, ac_executor, AcDevices, RequestMode, PlanResult},
+    ac_controller::{pir_state, ac_executor, min_on_time, AcDevices, RequestMode, PlanResult},
     types::{ApiError, ApiResponse, CauseReason},
 };
 
@@ -42,6 +42,11 @@ async fn pir_detect(
     // Record the detection
     let pir_state = pir_state::get_pir_state();
     pir_state.record_detection(&params.device);
+
+    // Clear the minimum on-time timer when PIR is triggered
+    // This allows the device to be turned off regardless of how long it's been on
+    let min_on_time_state = min_on_time::get_min_on_time_state();
+    min_on_time_state.clear_turn_on_time(&params.device);
 
     // Convert device name to AcDevices enum
     let device_enum = match AcDevices::from_str(&params.device) {

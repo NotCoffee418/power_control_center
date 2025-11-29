@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use super::min_on_time;
 
 /// Tracks whether each device is in manual or automatic mode
 pub struct ManualModeMonitor {
@@ -17,6 +18,7 @@ impl ManualModeMonitor {
 
     /// Update the mode for a device and detect if it transitioned from Manual to Auto
     /// Returns true if device just transitioned from Manual (false) to Auto (true)
+    /// Also clears minimum on-time timer when transitioning to Manual mode
     pub fn update_mode(&self, device_name: &str, is_automatic_mode: bool) -> bool {
         let mut modes = self.device_modes.write().unwrap();
         
@@ -25,6 +27,14 @@ impl ManualModeMonitor {
         
         // Update to the new mode
         modes.insert(device_name.to_string(), is_automatic_mode);
+        
+        // If transitioning to Manual mode, clear the minimum on-time timer
+        // This allows manual mode to override the minimum on-time restriction
+        if !is_automatic_mode && previous_mode != Some(false) {
+            let min_on_time_state = min_on_time::get_min_on_time_state();
+            min_on_time_state.clear_turn_on_time(device_name);
+            log::debug!("Cleared minimum on-time timer for device '{}' due to manual mode transition", device_name);
+        }
         
         // Detect Manual→Auto transition
         // Previous mode was Some(false) (Manual) and new mode is true (Auto)

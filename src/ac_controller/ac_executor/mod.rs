@@ -185,8 +185,20 @@ async fn execute_state_change(
     cause_id: i32,
     force_send: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let min_on_time_state = super::min_on_time::get_min_on_time_state();
+
     // Case 1: Turning off the AC (or forcing off on first execution)
     if desired_state.is_on == false && current_state.is_on {
+        // Check minimum on-time before allowing turn-off
+        // (PIR detection clears this timer, so it can still turn off)
+        if !min_on_time_state.can_turn_off(device_name) {
+            log::info!(
+                "Device '{}' has not been on for minimum time, not turning off yet",
+                device_name
+            );
+            return Ok(());
+        }
+        
         log::info!("Turning off AC '{}'", device_name);
         device_requests::ac::turn_off_ac(device_name, cause_id).await?;
         return Ok(());
@@ -216,6 +228,11 @@ async fn execute_state_change(
         let swing = desired_state
             .swing
             .expect("Swing should be set when AC is on");
+
+        // Record turn-on time if device wasn't on before
+        if !current_state.is_on {
+            min_on_time_state.record_turn_on(device_name);
+        }
 
         // Send the turn on command with all settings
         log::info!(
