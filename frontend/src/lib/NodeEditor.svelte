@@ -390,9 +390,11 @@
             
             // If allowedTypes is specified, verify the constraint is valid
             if (allowedTypes && !allowedTypes.includes(constrainedType.type)) {
-              // The connected type is not in the allowed list - this shouldn't happen
-              // but return the constraint anyway for consistency
-              return constrainedType;
+              // The connected type is not in the allowed list - this indicates
+              // an invalid state (shouldn't happen in normal usage)
+              console.warn(`Type constraint violation: ${constrainedType.type} is not in allowed types [${allowedTypes.join(', ')}]`);
+              // Return null to allow any connection, as the existing connection is invalid
+              return null;
             }
             
             return constrainedType;
@@ -528,40 +530,52 @@
     );
   }
 
+  /**
+   * Generate an error message for an invalid connection based on type constraints.
+   * 
+   * @param connection - The connection being attempted
+   * @returns Error message string describing why the connection is invalid
+   */
+  function getConnectionErrorMessage(connection) {
+    const details = getConnectionDetails(connection);
+    if (!details) return null;
+    
+    const { sourceOutput, targetInput, targetNode } = details;
+    const sourceType = sourceOutput.value_type?.type;
+    const targetType = targetInput.value_type?.type;
+    
+    // Check if this is a type constraint violation for "Any" type inputs
+    if (targetType === 'Any') {
+      const nodeType = targetNode.data.definition?.node_type;
+      const allowedTypes = getAllowedTypesForNode(nodeType);
+      const constrainedType = getConstrainedTypeFromConnectedInputs(
+        connection.target, 
+        connection.targetHandle,
+        allowedTypes
+      );
+      
+      if (constrainedType) {
+        return `⚠ Input constrained to ${constrainedType.type} by other connection`;
+      } else if (allowedTypes && !allowedTypes.includes(sourceType)) {
+        return `⚠ Only ${allowedTypes.join(' or ')} types allowed`;
+      }
+    }
+    
+    // Check for enum type mismatch
+    if (sourceType === 'Enum' && targetType === 'Enum') {
+      return `⚠ Incompatible enum types`;
+    }
+    
+    // Default type mismatch message
+    return `⚠ Type mismatch: ${sourceType} → ${targetType}`;
+  }
+
   function onConnect(connection) {
     // Validate connection using isValidConnection
     if (!isValidConnection(connection)) {
-      // Get details for error message
-      const details = getConnectionDetails(connection);
-      if (details) {
-        const { sourceOutput, targetInput, targetNode } = details;
-        const sourceType = sourceOutput.value_type?.type;
-        const targetType = targetInput.value_type?.type;
-        
-        // Check if this is a type constraint violation
-        if (targetType === 'Any') {
-          const nodeType = targetNode.data.definition?.node_type;
-          const allowedTypes = getAllowedTypesForNode(nodeType);
-          const constrainedType = getConstrainedTypeFromConnectedInputs(
-            connection.target, 
-            connection.targetHandle,
-            allowedTypes
-          );
-          
-          if (constrainedType) {
-            // Type was constrained by another input
-            saveStatus = `⚠ Input constrained to ${constrainedType.type} by other connection`;
-          } else if (allowedTypes && !allowedTypes.includes(sourceType)) {
-            // Type not in allowed list
-            saveStatus = `⚠ Only ${allowedTypes.join(' or ')} types allowed`;
-          } else {
-            saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-          }
-        } else if (sourceType === 'Enum' && targetType === 'Enum') {
-          saveStatus = `⚠ Incompatible enum types`;
-        } else {
-          saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-        }
+      const errorMessage = getConnectionErrorMessage(connection);
+      if (errorMessage) {
+        saveStatus = errorMessage;
         setTimeout(() => saveStatus = '', 3000);
       }
       return;
@@ -588,34 +602,9 @@
   function onReconnect(oldEdge, newConnection) {
     // Validate the new connection
     if (!isValidConnection(newConnection)) {
-      const details = getConnectionDetails(newConnection);
-      if (details) {
-        const { sourceOutput, targetInput, targetNode } = details;
-        const sourceType = sourceOutput.value_type?.type;
-        const targetType = targetInput.value_type?.type;
-        
-        // Check if this is a type constraint violation
-        if (targetType === 'Any') {
-          const nodeType = targetNode.data.definition?.node_type;
-          const allowedTypes = getAllowedTypesForNode(nodeType);
-          const constrainedType = getConstrainedTypeFromConnectedInputs(
-            newConnection.target, 
-            newConnection.targetHandle,
-            allowedTypes
-          );
-          
-          if (constrainedType) {
-            saveStatus = `⚠ Input constrained to ${constrainedType.type} by other connection`;
-          } else if (allowedTypes && !allowedTypes.includes(sourceType)) {
-            saveStatus = `⚠ Only ${allowedTypes.join(' or ')} types allowed`;
-          } else {
-            saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-          }
-        } else if (sourceType === 'Enum' && targetType === 'Enum') {
-          saveStatus = `⚠ Incompatible enum types`;
-        } else {
-          saveStatus = `⚠ Type mismatch: ${sourceType} → ${targetType}`;
-        }
+      const errorMessage = getConnectionErrorMessage(newConnection);
+      if (errorMessage) {
+        saveStatus = errorMessage;
         setTimeout(() => saveStatus = '', 3000);
       }
       return;
