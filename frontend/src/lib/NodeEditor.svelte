@@ -607,14 +607,16 @@
   }
 
   // Handle back button click with unsaved changes check
+  // Stops propagation to prevent App.svelte's global click handler from navigating
   function handleBackClick(event) {
     if (hasUnsavedChanges) {
       if (!confirm('You have unsaved changes. Discard them and go back?')) {
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
     }
-    // Allow navigation to proceed
+    // Allow navigation to proceed (App.svelte's global handler will navigate)
   }
 
   onMount(async () => {
