@@ -137,6 +137,25 @@ async fn update_cause_reason(
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
     
+    // Check if the cause reason is editable
+    match db::cause_reasons::get_by_id(id).await {
+        Ok(Some(reason)) => {
+            if !reason.is_editable {
+                let response = ApiResponse::<()>::error("This cause reason cannot be modified");
+                return (StatusCode::FORBIDDEN, Json(response)).into_response();
+            }
+        }
+        Ok(None) => {
+            let response = ApiResponse::<()>::error("Cause reason not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
+        }
+        Err(e) => {
+            log::error!("Failed to check cause reason: {}", e);
+            let response = ApiResponse::<()>::error("Failed to check cause reason");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    }
+    
     match db::cause_reasons::update(id, &request.label, &request.description).await {
         Ok(true) => {
             log::info!("Updated cause reason {}", id);
@@ -173,6 +192,25 @@ async fn delete_cause_reason(Path(id): Path<i32>) -> Response {
         return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
     
+    // Check if the cause reason is editable
+    match db::cause_reasons::get_by_id(id).await {
+        Ok(Some(reason)) => {
+            if !reason.is_editable {
+                let response = ApiResponse::<()>::error("This cause reason cannot be deleted");
+                return (StatusCode::FORBIDDEN, Json(response)).into_response();
+            }
+        }
+        Ok(None) => {
+            let response = ApiResponse::<()>::error("Cause reason not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
+        }
+        Err(e) => {
+            log::error!("Failed to check cause reason: {}", e);
+            let response = ApiResponse::<()>::error("Failed to check cause reason");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    }
+    
     match db::cause_reasons::delete(id).await {
         Ok(true) => {
             log::info!("Deleted cause reason {}", id);
@@ -201,6 +239,25 @@ async fn set_hidden_status(
     if id == 0 && request.is_hidden {
         let response = ApiResponse::<()>::error("Cannot hide the Undefined cause reason");
         return (StatusCode::FORBIDDEN, Json(response)).into_response();
+    }
+    
+    // Check if the cause reason is editable (non-editable items cannot be hidden)
+    match db::cause_reasons::get_by_id(id).await {
+        Ok(Some(reason)) => {
+            if !reason.is_editable && request.is_hidden {
+                let response = ApiResponse::<()>::error("This cause reason cannot be hidden");
+                return (StatusCode::FORBIDDEN, Json(response)).into_response();
+            }
+        }
+        Ok(None) => {
+            let response = ApiResponse::<()>::error("Cause reason not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
+        }
+        Err(e) => {
+            log::error!("Failed to check cause reason: {}", e);
+            let response = ApiResponse::<()>::error("Failed to check cause reason");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
     }
     
     match db::cause_reasons::set_hidden(id, request.is_hidden).await {

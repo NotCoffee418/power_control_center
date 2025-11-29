@@ -37,9 +37,9 @@
   }
 
   // Toggle hidden status
-  async function toggleHidden(id, currentlyHidden) {
-    if (id === 0) {
-      statusMessage = '⚠ Cannot hide the Undefined cause reason';
+  async function toggleHidden(id, currentlyHidden, isEditable) {
+    if (!isEditable) {
+      statusMessage = 'Cannot modify system cause reason';
       setTimeout(() => statusMessage = '', 3000);
       return;
     }
@@ -56,21 +56,26 @@
       if (result.success) {
         await loadCauseReasons();
         onCauseReasonsChanged();
-        statusMessage = currentlyHidden ? '✓ Shown' : '✓ Hidden';
+        statusMessage = currentlyHidden ? 'Shown' : 'Hidden';
         setTimeout(() => statusMessage = '', 2000);
       } else {
-        statusMessage = '✗ ' + (result.error || 'Failed to update');
+        statusMessage = result.error || 'Failed to update';
         setTimeout(() => statusMessage = '', 3000);
       }
     } catch (e) {
       console.error('Error toggling hidden status:', e);
-      statusMessage = '✗ Error updating status';
+      statusMessage = 'Error updating status';
       setTimeout(() => statusMessage = '', 3000);
     }
   }
 
   // Start editing a cause reason
   function startEditing(reason) {
+    if (!reason.is_editable) {
+      statusMessage = 'Cannot edit system cause reason';
+      setTimeout(() => statusMessage = '', 3000);
+      return;
+    }
     editingId = reason.id;
     editLabel = reason.label;
     editDescription = reason.description;
@@ -86,7 +91,7 @@
   // Save edited cause reason
   async function saveEditing() {
     if (!editLabel.trim() || !editDescription.trim()) {
-      statusMessage = '⚠ Label and description are required';
+      statusMessage = 'Label and description are required';
       setTimeout(() => statusMessage = '', 3000);
       return;
     }
@@ -104,15 +109,15 @@
         await loadCauseReasons();
         onCauseReasonsChanged();
         cancelEditing();
-        statusMessage = '✓ Saved';
+        statusMessage = 'Saved';
         setTimeout(() => statusMessage = '', 2000);
       } else {
-        statusMessage = '✗ ' + (result.error || 'Failed to save');
+        statusMessage = result.error || 'Failed to save';
         setTimeout(() => statusMessage = '', 3000);
       }
     } catch (e) {
       console.error('Error saving cause reason:', e);
-      statusMessage = '✗ Error saving';
+      statusMessage = 'Error saving';
       setTimeout(() => statusMessage = '', 3000);
     }
   }
@@ -120,7 +125,7 @@
   // Create new cause reason
   async function createCauseReason() {
     if (!newLabel.trim() || !newDescription.trim()) {
-      statusMessage = '⚠ Label and description are required';
+      statusMessage = 'Label and description are required';
       setTimeout(() => statusMessage = '', 3000);
       return;
     }
@@ -140,23 +145,23 @@
         newLabel = '';
         newDescription = '';
         showAddForm = false;
-        statusMessage = '✓ Created';
+        statusMessage = 'Created';
         setTimeout(() => statusMessage = '', 2000);
       } else {
-        statusMessage = '✗ ' + (result.error || 'Failed to create');
+        statusMessage = result.error || 'Failed to create';
         setTimeout(() => statusMessage = '', 3000);
       }
     } catch (e) {
       console.error('Error creating cause reason:', e);
-      statusMessage = '✗ Error creating';
+      statusMessage = 'Error creating';
       setTimeout(() => statusMessage = '', 3000);
     }
   }
 
   // Delete cause reason
-  async function deleteCauseReason(id) {
-    if (id === 0) {
-      statusMessage = '⚠ Cannot delete the Undefined cause reason';
+  async function deleteCauseReason(id, isEditable) {
+    if (!isEditable) {
+      statusMessage = 'Cannot delete system cause reason';
       setTimeout(() => statusMessage = '', 3000);
       return;
     }
@@ -175,15 +180,15 @@
       if (result.success) {
         await loadCauseReasons();
         onCauseReasonsChanged();
-        statusMessage = '✓ Deleted';
+        statusMessage = 'Deleted';
         setTimeout(() => statusMessage = '', 2000);
       } else {
-        statusMessage = '✗ ' + (result.error || 'Failed to delete');
+        statusMessage = result.error || 'Failed to delete';
         setTimeout(() => statusMessage = '', 3000);
       }
     } catch (e) {
       console.error('Error deleting cause reason:', e);
-      statusMessage = '✗ Error deleting';
+      statusMessage = 'Error deleting';
       setTimeout(() => statusMessage = '', 3000);
     }
   }
@@ -198,13 +203,13 @@
 
 <div class="cause-reasons-panel">
   <div class="panel-header">
-    <h3>📋 Cause Reasons</h3>
+    <h3>Cause Reasons</h3>
     <button 
-      class="btn-add" 
+      class="btn-header-action" 
       onclick={() => showAddForm = !showAddForm}
-      title="Add new cause reason"
+      title={showAddForm ? "Cancel" : "Add new cause reason"}
     >
-      {showAddForm ? '✕' : '+'}
+      {showAddForm ? 'Cancel' : 'Add'}
     </button>
   </div>
   
@@ -251,7 +256,7 @@
       <p class="empty-text">No cause reasons found</p>
     {:else}
       {#each causeReasons as reason}
-        <div class="cause-reason-item" class:hidden={reason.is_hidden}>
+        <div class="cause-reason-item" class:hidden={reason.is_hidden} class:readonly={!reason.is_editable}>
           {#if editingId === reason.id}
             <div class="edit-form">
               <input
@@ -275,33 +280,37 @@
             <div class="reason-header">
               <span class="reason-id">#{reason.id}</span>
               <span class="reason-label">{reason.label}</span>
+              {#if !reason.is_editable}
+                <span class="system-badge">System</span>
+              {/if}
             </div>
             <div class="reason-description" title={reason.description}>
               {reason.description.length > DESCRIPTION_TRUNCATE_LENGTH ? reason.description.substring(0, DESCRIPTION_TRUNCATE_LENGTH) + '...' : reason.description}
             </div>
             <div class="reason-actions">
               <button
-                class="btn-action btn-edit"
+                class="btn-action"
                 onclick={() => startEditing(reason)}
                 title="Edit"
+                disabled={!reason.is_editable}
               >
-                ✏️
+                Edit
               </button>
               <button
-                class="btn-action btn-hide"
-                onclick={() => toggleHidden(reason.id, reason.is_hidden)}
+                class="btn-action"
+                onclick={() => toggleHidden(reason.id, reason.is_hidden, reason.is_editable)}
                 title={reason.is_hidden ? 'Show' : 'Hide'}
-                disabled={reason.id === 0}
+                disabled={!reason.is_editable}
               >
-                {reason.is_hidden ? '👁️' : '🙈'}
+                {reason.is_hidden ? 'Show' : 'Hide'}
               </button>
               <button
-                class="btn-action btn-delete"
-                onclick={() => deleteCauseReason(reason.id)}
+                class="btn-action btn-danger"
+                onclick={() => deleteCauseReason(reason.id, reason.is_editable)}
                 title="Delete"
-                disabled={reason.id === 0}
+                disabled={!reason.is_editable}
               >
-                🗑️
+                Delete
               </button>
             </div>
           {/if}
@@ -336,24 +345,19 @@
     color: #e0e0e0;
   }
 
-  .btn-add {
-    width: 28px;
-    height: 28px;
+  .btn-header-action {
+    padding: 0.4rem 0.75rem;
     border: none;
-    border-radius: 50%;
+    border-radius: 4px;
     background: #4CAF50;
     color: white;
-    font-size: 1.2rem;
+    font-size: 0.8rem;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     transition: all 0.2s;
   }
 
-  .btn-add:hover {
+  .btn-header-action:hover {
     background: #45a049;
-    transform: scale(1.1);
   }
 
   .panel-controls {
@@ -483,11 +487,16 @@
     background: #222;
   }
 
+  .cause-reason-item.readonly {
+    border-left: 3px solid #666;
+  }
+
   .reason-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin-bottom: 0.25rem;
+    flex-wrap: wrap;
   }
 
   .reason-id {
@@ -504,6 +513,15 @@
     font-size: 0.9rem;
   }
 
+  .system-badge {
+    font-size: 0.65rem;
+    color: #999;
+    background: #333;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    margin-left: auto;
+  }
+
   .reason-description {
     font-size: 0.75rem;
     color: #aaa;
@@ -518,21 +536,19 @@
   }
 
   .btn-action {
-    width: 28px;
-    height: 28px;
+    padding: 0.25rem 0.5rem;
     border: none;
     border-radius: 4px;
     background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .btn-action:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.2);
+    color: #fff;
   }
 
   .btn-action:disabled {
@@ -540,15 +556,8 @@
     cursor: not-allowed;
   }
 
-  .btn-edit:hover:not(:disabled) {
-    background: rgba(33, 150, 243, 0.3);
-  }
-
-  .btn-hide:hover:not(:disabled) {
-    background: rgba(255, 152, 0, 0.3);
-  }
-
-  .btn-delete:hover:not(:disabled) {
+  .btn-action.btn-danger:hover:not(:disabled) {
     background: rgba(244, 67, 54, 0.3);
+    color: #f44336;
   }
 </style>

@@ -9,6 +9,7 @@ pub struct CauseReasonRecord {
     pub label: String,
     pub description: String,
     pub is_hidden: bool,
+    pub is_editable: bool,
 }
 
 /// Get all cause reasons (optionally include hidden)
@@ -17,13 +18,13 @@ pub async fn get_all(include_hidden: bool) -> Result<Vec<CauseReasonRecord>, sql
     
     if include_hidden {
         sqlx::query_as::<_, CauseReasonRecord>(
-            "SELECT id, label, description, is_hidden FROM cause_reasons ORDER BY id"
+            "SELECT id, label, description, is_hidden, is_editable FROM cause_reasons ORDER BY id"
         )
         .fetch_all(pool)
         .await
     } else {
         sqlx::query_as::<_, CauseReasonRecord>(
-            "SELECT id, label, description, is_hidden FROM cause_reasons WHERE is_hidden = 0 ORDER BY id"
+            "SELECT id, label, description, is_hidden, is_editable FROM cause_reasons WHERE is_hidden = 0 ORDER BY id"
         )
         .fetch_all(pool)
         .await
@@ -35,14 +36,14 @@ pub async fn get_by_id(id: i32) -> Result<Option<CauseReasonRecord>, sqlx::Error
     let pool = get_pool().await;
     
     sqlx::query_as::<_, CauseReasonRecord>(
-        "SELECT id, label, description, is_hidden FROM cause_reasons WHERE id = ?"
+        "SELECT id, label, description, is_hidden, is_editable FROM cause_reasons WHERE id = ?"
     )
     .bind(id)
     .fetch_optional(pool)
     .await
 }
 
-/// Create a new cause reason (ID is auto-generated)
+/// Create a new cause reason (ID is auto-generated, new reasons are always editable)
 pub async fn create(label: &str, description: &str) -> Result<CauseReasonRecord, sqlx::Error> {
     let pool = get_pool().await;
     
@@ -56,7 +57,7 @@ pub async fn create(label: &str, description: &str) -> Result<CauseReasonRecord,
     let new_id = max_id.unwrap_or(0) + 1;
     
     sqlx::query(
-        "INSERT INTO cause_reasons (id, label, description, is_hidden) VALUES (?, ?, ?, 0)"
+        "INSERT INTO cause_reasons (id, label, description, is_hidden, is_editable) VALUES (?, ?, ?, 0, 1)"
     )
     .bind(new_id)
     .bind(label)
@@ -69,6 +70,7 @@ pub async fn create(label: &str, description: &str) -> Result<CauseReasonRecord,
         label: label.to_string(),
         description: description.to_string(),
         is_hidden: false,
+        is_editable: true,
     })
 }
 
@@ -133,6 +135,7 @@ mod tests {
             label: "Test".to_string(),
             description: "Test description".to_string(),
             is_hidden: false,
+            is_editable: true,
         };
         
         let json = serde_json::to_string(&record).unwrap();
@@ -142,5 +145,6 @@ mod tests {
         assert_eq!(record.label, deserialized.label);
         assert_eq!(record.description, deserialized.description);
         assert_eq!(record.is_hidden, deserialized.is_hidden);
+        assert_eq!(record.is_editable, deserialized.is_editable);
     }
 }

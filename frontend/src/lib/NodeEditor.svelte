@@ -92,6 +92,50 @@
     }
   }
 
+  // Handle cause reasons changes - update node definitions and existing nodes
+  async function handleCauseReasonsChanged() {
+    await loadNodeDefinitions();
+    
+    // Find the cause_reason node definition to get updated options
+    const causeReasonDef = nodeDefinitions.find(d => d.node_type === 'cause_reason');
+    if (!causeReasonDef) return;
+    
+    // Get the new list of available cause reason labels
+    const enumOutput = causeReasonDef.outputs?.[0];
+    const availableOptions = enumOutput?.value_type?.type === 'Enum' ? enumOutput.value_type.value : [];
+    
+    // Update all cause_reason nodes
+    let hasChanges = false;
+    const updatedNodes = nodes.map(node => {
+      if (node.data?.definition?.node_type === 'cause_reason') {
+        const currentEnumValue = node.data.enumValue;
+        
+        // Update the node's definition with the new options
+        const updatedNode = {
+          ...node,
+          data: {
+            ...node.data,
+            definition: causeReasonDef
+          }
+        };
+        
+        // If the current value is no longer valid, reset to "Undefined"
+        if (currentEnumValue && !availableOptions.includes(currentEnumValue)) {
+          updatedNode.data.enumValue = 'Undefined';
+          hasChanges = true;
+        }
+        
+        return updatedNode;
+      }
+      return node;
+    });
+    
+    // Only update if there were actual changes
+    if (hasChanges || nodes.some((n, i) => n.data?.definition?.node_type === 'cause_reason' && n !== updatedNodes[i])) {
+      nodes = updatedNodes;
+    }
+  }
+
   // Load list of nodesets
   async function loadNodesets() {
     try {
@@ -1174,7 +1218,7 @@
     {/if}
     
     <!-- Cause Reasons Panel on the right -->
-    <CauseReasonsPanel onCauseReasonsChanged={loadNodeDefinitions} />
+    <CauseReasonsPanel onCauseReasonsChanged={handleCauseReasonsChanged} />
   </div>
   
   <!-- Simulator Drawer -->
