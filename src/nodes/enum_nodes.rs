@@ -128,7 +128,7 @@ impl Node for CauseReasonNode {
 }
 
 /// RequestMode node - represents a request mode for AC operation
-/// This node provides a dropdown for selecting request mode (Colder, Warmer, Off, NoChange)
+/// This node provides a dropdown for selecting request mode (Heat, Cool, Off)
 pub struct RequestModeNode;
 
 impl Node for RequestModeNode {
@@ -145,10 +145,9 @@ impl Node for RequestModeNode {
                     "Request Mode",
                     "The selected request mode",
                     ValueType::Enum(vec![
-                        "Colder".to_string(),
-                        "Warmer".to_string(),
+                        "Heat".to_string(),
+                        "Cool".to_string(),
                         "Off".to_string(),
-                        "NoChange".to_string(),
                     ]),
                 ),
             ],
@@ -290,11 +289,10 @@ mod tests {
         // Verify output is an enum with request mode values
         match &def.outputs[0].value_type {
             ValueType::Enum(values) => {
-                assert_eq!(values.len(), 4);
-                assert!(values.contains(&"Colder".to_string()));
-                assert!(values.contains(&"Warmer".to_string()));
+                assert_eq!(values.len(), 3);
+                assert!(values.contains(&"Heat".to_string()));
+                assert!(values.contains(&"Cool".to_string()));
                 assert!(values.contains(&"Off".to_string()));
-                assert!(values.contains(&"NoChange".to_string()));
             }
             _ => panic!("Expected Enum type for request_mode output"),
         }
