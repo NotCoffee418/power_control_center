@@ -8,17 +8,20 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 17 node definitions:
-        // System: 1 (currently_evaluating_device)
+        // Verify we have 20 node definitions:
+        // System: 4 (flow_start, currently_evaluating_device, flow_execute_action, flow_do_nothing)
         // Sensors: 1 (pir_detection)
         // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 4 (device, intensity, cause_reason, request_mode)
-        assert_eq!(definitions.len(), 17);
+        assert_eq!(definitions.len(), 20);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
+        assert!(node_types.contains(&"flow_start"));
         assert!(node_types.contains(&"currently_evaluating_device"));
+        assert!(node_types.contains(&"flow_execute_action"));
+        assert!(node_types.contains(&"flow_do_nothing"));
         
         // Verify sensor node types
         assert!(node_types.contains(&"pir_detection"));
@@ -68,7 +71,7 @@ mod integration_tests {
         // Verify categories are assigned appropriately
         for def in &definitions {
             match def.node_type.as_str() {
-                "currently_evaluating_device" => {
+                "flow_start" | "currently_evaluating_device" | "flow_execute_action" | "flow_do_nothing" => {
                     assert_eq!(def.category, "System", "System nodes should be in 'System' category");
                 }
                 "pir_detection" => {
@@ -235,5 +238,71 @@ mod integration_tests {
         // Verify is_auto_mode output
         let auto_mode_output = current_device_node.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
         assert_eq!(auto_mode_output.value_type, nodes::ValueType::Boolean);
+    }
+    
+    #[test]
+    fn test_flow_start_node() {
+        let definitions = nodes::get_all_node_definitions();
+        let start_node = definitions.iter().find(|d| d.node_type == "flow_start").unwrap();
+        
+        assert_eq!(start_node.inputs.len(), 0, "Start node should have no inputs");
+        assert_eq!(start_node.outputs.len(), 3, "Start node should have 3 outputs");
+        assert_eq!(start_node.category, "System");
+        
+        // Verify device output
+        let device_output = start_node.outputs.iter().find(|o| o.id == "device").unwrap();
+        match &device_output.value_type {
+            nodes::ValueType::Enum(values) => {
+                assert!(values.contains(&"LivingRoom".to_string()));
+                assert!(values.contains(&"Veranda".to_string()));
+            }
+            _ => panic!("Expected Enum type for device output"),
+        }
+        
+        // Verify temperature output
+        let temp_output = start_node.outputs.iter().find(|o| o.id == "temperature").unwrap();
+        assert_eq!(temp_output.value_type, nodes::ValueType::Float);
+        
+        // Verify is_auto_mode output
+        let auto_mode_output = start_node.outputs.iter().find(|o| o.id == "is_auto_mode").unwrap();
+        assert_eq!(auto_mode_output.value_type, nodes::ValueType::Boolean);
+    }
+    
+    #[test]
+    fn test_flow_execute_action_node() {
+        let definitions = nodes::get_all_node_definitions();
+        let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
+        
+        assert_eq!(execute_node.inputs.len(), 5, "Execute Action node should have 5 inputs");
+        assert_eq!(execute_node.outputs.len(), 0, "Execute Action node should have no outputs (terminal)");
+        assert_eq!(execute_node.category, "System");
+        
+        // Verify all inputs exist and are required
+        let input_ids: Vec<&str> = execute_node.inputs.iter().map(|i| i.id.as_str()).collect();
+        assert!(input_ids.contains(&"device"));
+        assert!(input_ids.contains(&"temperature"));
+        assert!(input_ids.contains(&"mode"));
+        assert!(input_ids.contains(&"is_powerful"));
+        assert!(input_ids.contains(&"cause_reason"));
+        
+        for input in &execute_node.inputs {
+            assert!(input.required, "All Execute Action inputs should be required");
+        }
+    }
+    
+    #[test]
+    fn test_flow_do_nothing_node() {
+        let definitions = nodes::get_all_node_definitions();
+        let do_nothing_node = definitions.iter().find(|d| d.node_type == "flow_do_nothing").unwrap();
+        
+        assert_eq!(do_nothing_node.inputs.len(), 1, "Do Nothing node should have 1 input");
+        assert_eq!(do_nothing_node.outputs.len(), 0, "Do Nothing node should have no outputs (terminal)");
+        assert_eq!(do_nothing_node.category, "System");
+        
+        // Verify input is Any type
+        let input = &do_nothing_node.inputs[0];
+        assert_eq!(input.id, "input");
+        assert_eq!(input.value_type, nodes::ValueType::Any);
+        assert!(input.required);
     }
 }

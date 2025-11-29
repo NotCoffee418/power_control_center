@@ -3,6 +3,7 @@ mod logical_nodes;
 mod primitive_nodes;
 mod enum_nodes;
 mod sensor_nodes;
+mod flow_nodes;
 #[cfg(test)]
 mod integration_test;
 
@@ -11,12 +12,16 @@ pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, 
 pub use primitive_nodes::{FloatNode, IntegerNode, BooleanNode};
 pub use enum_nodes::{DeviceNode, CurrentlyEvaluatingDeviceNode, IntensityNode, CauseReasonNode, RequestModeNode};
 pub use sensor_nodes::PirDetectionNode;
+pub use flow_nodes::{StartNode, ExecuteActionNode, DoNothingNode};
 
 /// Get all available node definitions for the frontend
 pub fn get_all_node_definitions() -> Vec<NodeDefinition> {
     vec![
-        // System nodes
+        // System/Flow nodes
+        StartNode::definition(),
         CurrentlyEvaluatingDeviceNode::definition(),
+        ExecuteActionNode::definition(),
+        DoNothingNode::definition(),
         // Sensor nodes
         PirDetectionNode::definition(),
         // Logic nodes
