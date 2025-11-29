@@ -545,7 +545,8 @@
         // Equals accepts all types
         return null;
       case 'logic_branch':
-        // Branch accepts all types (True/False inputs and Output all constrained together)
+        // Branch accepts all types for its Any-typed inputs (True/False).
+        // Type constraints between inputs and output are handled by getConstrainedOutputType.
         return null;
       default:
         return null;
