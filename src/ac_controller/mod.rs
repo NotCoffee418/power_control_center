@@ -6,7 +6,7 @@ mod manual_mode_monitor;
 pub mod min_on_time;
 
 // Re-export types needed by other modules
-pub use plan_types::{AcDevices, RequestMode, Intensity, PlanResult};
+pub use plan_types::{AcDevices, RequestMode, Intensity, PlanResult, PlanInput, get_plan};
 pub use manual_mode_monitor::get_manual_mode_monitor;
 
 use std::time::Duration;

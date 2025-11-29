@@ -2,6 +2,7 @@ mod ac;
 mod pir;
 mod dashboard;
 mod nodes;
+mod simulator;
 
 use axum::{
     routing::get,
@@ -16,6 +17,7 @@ pub fn api_routes() -> Router {
         .nest("/pir", pir::pir_routes())
         .nest("/dashboard", dashboard::dashboard_routes())
         .nest("/nodes", nodes::nodes_routes())
+        .nest("/simulator", simulator::simulator_routes())
 }
 
 async fn status_handler() -> axum::Json<crate::types::ApiResponse<&'static str>> {

@@ -9,6 +9,7 @@
   import '@xyflow/svelte/dist/style.css';
   import CustomNode from './CustomNode.svelte';
   import ReconnectableEdge from './ReconnectableEdge.svelte';
+  import SimulatorDrawer from './SimulatorDrawer.svelte';
 
   // Node and edge state - using $state.raw for proper SvelteFlow integration
   // $state.raw prevents deep reactivity, allowing SvelteFlow to manage internal state
@@ -18,6 +19,9 @@
   let loading = $state(true);
   let saveStatus = $state('');
   let searchQuery = $state('');
+  
+  // Simulator drawer state
+  let simulatorOpen = $state(false);
   let nodeIdCounter = 100;
   
   // Context menu state
@@ -883,6 +887,9 @@
       </div>
     {/if}
   </div>
+  
+  <!-- Simulator Drawer -->
+  <SimulatorDrawer bind:isOpen={simulatorOpen} />
 </div>
 
 <style>
