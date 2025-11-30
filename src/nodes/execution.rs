@@ -22,6 +22,7 @@ use crate::ac_controller::ac_executor::{AC_MODE_HEAT, AC_MODE_COOL};
 pub const NODE_TYPE_START: &str = "flow_start";
 pub const NODE_TYPE_EXECUTE_ACTION: &str = "flow_execute_action";
 pub const NODE_TYPE_DO_NOTHING: &str = "flow_do_nothing";
+pub const NODE_TYPE_TURN_OFF: &str = "flow_turn_off";
 pub const NODE_TYPE_ACTIVE_COMMAND: &str = "flow_active_command";
 pub const NODE_TYPE_RESET_ACTIVE_COMMAND: &str = "flow_reset_active_command";
 pub const NODE_TYPE_LOGIC_AND: &str = "logic_and";
@@ -45,6 +46,9 @@ pub const NODE_TYPE_PIR_DETECTION: &str = "pir_detection";
 
 /// Sentinel value indicating no PIR detection has ever occurred
 pub const PIR_NEVER_DETECTED: i64 = -1;
+
+/// Default temperature value for Turn Off node (used when the AC is turned off)
+pub const TURN_OFF_DEFAULT_TEMPERATURE: f64 = 21.0;
 
 /// Tolerance for floating-point comparisons (suitable for temperature values in AC control)
 const FLOAT_TOLERANCE: f64 = 0.0001;
@@ -387,7 +391,7 @@ impl NodesetExecutor {
         
         // Find all terminal nodes - collect IDs and types to avoid borrow issues
         let terminal_nodes: Vec<(String, String)> = self.nodes.values()
-            .filter(|n| n.node_type == NODE_TYPE_EXECUTE_ACTION || n.node_type == NODE_TYPE_DO_NOTHING)
+            .filter(|n| n.node_type == NODE_TYPE_EXECUTE_ACTION || n.node_type == NODE_TYPE_DO_NOTHING || n.node_type == NODE_TYPE_TURN_OFF)
             .map(|n| (n.id.clone(), n.node_type.clone()))
             .collect();
         
@@ -473,6 +477,19 @@ impl NodesetExecutor {
                             terminal_type: Some("Do Nothing".to_string()),
                             action: None,
                             do_nothing: Some(do_nothing),
+                            error: None,
+                            warnings: vec![],
+                            reset_active_command: false,
+                        })
+                    }
+                    NODE_TYPE_TURN_OFF => {
+                        // Terminal node - alias for Execute Action with fixed "turn off" parameters
+                        let action = self.evaluate_turn_off_node(&target_node.id)?;
+                        Ok(ExecutionResult {
+                            completed: true,
+                            terminal_type: Some("Execute Action".to_string()),
+                            action: Some(action),
+                            do_nothing: None,
                             error: None,
                             warnings: vec![],
                             reset_active_command: false,
@@ -709,6 +726,29 @@ impl NodesetExecutor {
         
         Ok(DoNothingResult {
             device,
+            cause_reason,
+        })
+    }
+    
+    /// Evaluate the Turn Off node and return action parameters
+    /// This is an alias for Execute Action with fixed "turn off" parameters:
+    /// - Temperature: 21
+    /// - Mode: Off
+    /// - Fan Speed: Auto
+    /// - Is Powerful: false
+    /// Device is inferred from the execution context (Start node)
+    fn evaluate_turn_off_node(&mut self, node_id: &str) -> Result<ActionResult, ExecutionError> {
+        // Device is inferred from execution context, not from node input
+        let device = self.inputs.device.clone();
+        let cause_reason = self.get_input_value(node_id, "cause_reason")?
+            .as_string();
+        
+        Ok(ActionResult {
+            device,
+            temperature: TURN_OFF_DEFAULT_TEMPERATURE,
+            mode: "Off".to_string(),
+            fan_speed: "Auto".to_string(),
+            is_powerful: false,
             cause_reason,
         })
     }
@@ -1128,12 +1168,12 @@ pub fn validate_nodeset_for_execution(
                 .and_then(|d| d.get("definition"))
                 .and_then(|def| def.get("node_type"))
                 .and_then(|nt| nt.as_str());
-            matches!(node_type, Some(NODE_TYPE_EXECUTE_ACTION) | Some(NODE_TYPE_DO_NOTHING))
+            matches!(node_type, Some(NODE_TYPE_EXECUTE_ACTION) | Some(NODE_TYPE_DO_NOTHING) | Some(NODE_TYPE_TURN_OFF))
         })
         .collect();
     
     if terminal_nodes.is_empty() {
-        errors.push("Missing terminal node (Execute Action or Do Nothing)".to_string());
+        errors.push("Missing terminal node (Execute Action, Do Nothing, or Turn Off)".to_string());
     }
     
     // Build a map of node IDs
@@ -1926,5 +1966,146 @@ mod tests {
         assert!(error_msg.contains("not connected"), "Error should indicate exec_out is not connected, got: {}", error_msg);
         // The reset flag should still be propagated even in error case since the node was executed
         assert!(result.reset_active_command, "Reset Active Command flag should be set even when exec_out is not connected");
+    }
+
+    fn create_turn_off_node(id: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "type": "custom",
+            "position": { "x": 400, "y": 0 },
+            "data": {
+                "definition": {
+                    "node_type": "flow_turn_off",
+                    "name": "Turn Off",
+                    "description": "Turns off the AC",
+                    "category": "System",
+                    "inputs": [
+                        { "id": "exec_in", "label": "▶" },
+                        { "id": "cause_reason", "label": "Cause Reason" }
+                    ],
+                    "outputs": []
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_turn_off_node_execution() {
+        // Test Turn Off node executes with fixed parameters
+        // Flow: Start -> Turn Off
+        let nodes = vec![
+            create_start_node(),
+            create_turn_off_node("turn-off-1"),
+            create_enum_node("cause-1", "cause_reason", "TooHot"),
+        ];
+        
+        let edges = vec![
+            // Execution flow: Start -> Turn Off
+            create_edge("start-1", "exec_out", "turn-off-1", "exec_in"),
+            // Data connection for cause reason
+            create_edge("cause-1", "value", "turn-off-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            device_sensor_temperature: 28.0,
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        assert!(result.completed);
+        // Turn Off should result in an Execute Action with specific terminal type
+        assert_eq!(result.terminal_type, Some("Execute Action".to_string()));
+        assert!(result.action.is_some());
+        assert!(result.do_nothing.is_none());
+        
+        let action = result.action.unwrap();
+        assert_eq!(action.device, "LivingRoom");
+        // Verify the fixed "turn off" parameters
+        assert!((action.temperature - TURN_OFF_DEFAULT_TEMPERATURE).abs() < f64::EPSILON, "Temperature should be TURN_OFF_DEFAULT_TEMPERATURE");
+        assert_eq!(action.mode, "Off", "Mode should be Off");
+        assert_eq!(action.fan_speed, "Auto", "Fan Speed should be Auto");
+        assert!(!action.is_powerful, "Is Powerful should be false");
+        assert_eq!(action.cause_reason, "TooHot");
+    }
+
+    #[test]
+    fn test_turn_off_node_with_if_node() {
+        // Test Turn Off node works correctly when routed through If node
+        // Flow: Start -> If (condition=true) -> Turn Off
+        let nodes = vec![
+            create_start_node(),
+            create_boolean_node("condition", true),
+            create_if_node("if-1"),
+            create_turn_off_node("turn-off-1"),
+            create_do_nothing_node_with_id("do-nothing-1"),
+            create_enum_node("cause-1", "cause_reason", "1"),
+            create_enum_node("cause-2", "cause_reason", "2"),
+        ];
+        
+        let edges = vec![
+            // Data: condition -> If
+            create_edge("condition", "value", "if-1", "condition"),
+            // Execution flow: Start -> If
+            create_edge("start-1", "exec_out", "if-1", "exec_in"),
+            // If true -> Turn Off
+            create_edge("if-1", "exec_true", "turn-off-1", "exec_in"),
+            // If false -> Do Nothing (not taken)
+            create_edge("if-1", "exec_false", "do-nothing-1", "exec_in"),
+            // Data connections for cause reasons
+            create_edge("cause-1", "value", "turn-off-1", "cause_reason"),
+            create_edge("cause-2", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "Veranda".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        assert!(result.completed);
+        assert_eq!(result.terminal_type, Some("Execute Action".to_string()));
+        assert!(result.action.is_some());
+        
+        let action = result.action.unwrap();
+        assert_eq!(action.device, "Veranda");
+        assert!((action.temperature - TURN_OFF_DEFAULT_TEMPERATURE).abs() < f64::EPSILON);
+        assert_eq!(action.mode, "Off");
+        assert_eq!(action.fan_speed, "Auto");
+        assert!(!action.is_powerful);
+    }
+
+    #[test]
+    fn test_turn_off_node_missing_cause_reason() {
+        // Test that Turn Off node fails when cause_reason is not connected
+        let nodes = vec![
+            create_start_node(),
+            create_turn_off_node("turn-off-1"),
+            // Note: no cause reason node
+        ];
+        
+        let edges = vec![
+            // Execution flow: Start -> Turn Off
+            create_edge("start-1", "exec_out", "turn-off-1", "exec_in"),
+            // Missing: cause_reason connection
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        // Should fail because cause_reason is required
+        assert!(!result.completed);
+        assert!(result.error.is_some());
+        let error_msg = result.error.unwrap();
+        assert!(error_msg.contains("cause_reason"), "Error should mention missing cause_reason input, got: {}", error_msg);
     }
 }

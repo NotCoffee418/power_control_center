@@ -293,6 +293,48 @@ impl Node for DoNothingNode {
     }
 }
 
+/// Turn Off Node - Terminates the flow by executing a "turn off" action
+/// This is an alias node for Execute Action with preset values:
+/// - Temperature: TURN_OFF_DEFAULT_TEMPERATURE (21°C) - see execution.rs
+/// - Mode: Off
+/// - Fan Speed: Auto
+/// - Is Powerful: False
+/// - Cause: required from input pin
+/// 
+/// Requires an execution flow input to trigger - execution must be connected from
+/// Start through If/Sequence nodes to reach this terminal.
+/// NOTE: The device is inferred from the evaluation context (Start node) at runtime.
+/// NOTE: The cause_reason input accepts a CauseReason type (connect from a Cause Reason node).
+pub struct TurnOffNode;
+
+impl Node for TurnOffNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "flow_turn_off",
+            "Turn Off",
+            "Turns off the AC with preset values (Temperature: 21, Mode: Off, Fan Speed: Auto, Is Powerful: false). This is an alias for Execute Action with fixed off-state parameters. The device is inferred from the evaluation context.",
+            "System",
+            vec![
+                NodeInput::new(
+                    "exec_in",
+                    "▶",
+                    "Execution flow input - triggers this action to execute",
+                    ValueType::Execution,
+                    true,
+                ),
+                NodeInput::new(
+                    "cause_reason",
+                    "Cause Reason",
+                    "The reason for turning off (for logging and debugging). Connect from a Cause Reason node.",
+                    ValueType::CauseReason(vec![]),
+                    true,
+                ),
+            ],
+            vec![], // No outputs - this is a terminal node
+        )
+    }
+}
+
 /// Reset Active Command Node - Resets the active command to the startup state
 /// This is a pass-through execution node with input and output execution pins.
 /// When execution flows through this node, it resets the active command for the current
@@ -499,11 +541,41 @@ mod tests {
     }
 
     #[test]
+    fn test_turn_off_node_definition() {
+        let def = TurnOffNode::definition();
+        
+        assert_eq!(def.node_type, "flow_turn_off");
+        assert_eq!(def.name, "Turn Off");
+        assert_eq!(def.category, "System");
+        assert_eq!(def.inputs.len(), 2); // exec_in and cause_reason inputs
+        assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
+        
+        // Verify exec_in input (execution flow)
+        let exec_input = def.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, ValueType::Execution);
+        assert!(exec_input.required);
+        
+        // Verify cause_reason input (CauseReason type with empty options - populated from database at runtime)
+        let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
+        match &cause_input.value_type {
+            ValueType::CauseReason(options) => {
+                assert_eq!(options.len(), 0, "Cause reason options should be empty (loaded from database at runtime)");
+            }
+            _ => panic!("Expected CauseReason type for cause_reason input"),
+        }
+        assert!(cause_input.required);
+        
+        // Verify no device input (device is inferred from context)
+        assert!(def.inputs.iter().find(|i| i.id == "device").is_none());
+    }
+
+    #[test]
     fn test_flow_nodes_serializable() {
         let definitions = vec![
             StartNode::definition(),
             ExecuteActionNode::definition(),
             DoNothingNode::definition(),
+            TurnOffNode::definition(),
             ActiveCommandNode::definition(),
             ResetActiveCommandNode::definition(),
         ];
@@ -533,6 +605,9 @@ mod tests {
         
         let do_nothing_def = DoNothingNode::definition();
         assert_eq!(do_nothing_def.outputs.len(), 0, "Do Nothing should have no outputs (terminal)");
+        
+        let turn_off_def = TurnOffNode::definition();
+        assert_eq!(turn_off_def.outputs.len(), 0, "Turn Off should have no outputs (terminal)");
     }
 
     #[test]
