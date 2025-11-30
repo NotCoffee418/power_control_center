@@ -669,6 +669,91 @@
     });
   }
 
+  // Helper function to check if a point is inside a comment area's bounds
+  function isInsideCommentArea(nodePosition, nodeWidth, nodeHeight, commentArea) {
+    const commentX = commentArea.position?.x || 0;
+    const commentY = commentArea.position?.y || 0;
+    // Parse dimensions from style or use defaults
+    const commentWidth = commentArea.measured?.width || commentArea.width || 300;
+    const commentHeight = commentArea.measured?.height || commentArea.height || 200;
+    
+    // Check if the node's center is within the comment area bounds
+    const nodeCenterX = nodePosition.x + (nodeWidth || 100) / 2;
+    const nodeCenterY = nodePosition.y + (nodeHeight || 50) / 2;
+    
+    return nodeCenterX >= commentX && 
+           nodeCenterX <= commentX + commentWidth &&
+           nodeCenterY >= commentY && 
+           nodeCenterY <= commentY + commentHeight;
+  }
+
+  // Find the comment area that contains a given node position
+  function findContainingCommentArea(node) {
+    if (node.type === 'commentArea') return null; // Comment areas can't be inside other comment areas
+    
+    const nodeWidth = node.measured?.width || node.width || 100;
+    const nodeHeight = node.measured?.height || node.height || 50;
+    
+    const commentAreas = nodes.filter(n => n.type === 'commentArea');
+    
+    for (const commentArea of commentAreas) {
+      if (isInsideCommentArea(node.position, nodeWidth, nodeHeight, commentArea)) {
+        return commentArea;
+      }
+    }
+    return null;
+  }
+
+  // Handle node drag stop - update parent relationships for comment areas
+  function onNodeDragStop(event, draggedNode) {
+    // Skip if dragging a comment area itself
+    if (draggedNode.type === 'commentArea') {
+      return;
+    }
+
+    // Find if this node is now inside a comment area
+    const containingCommentArea = findContainingCommentArea(draggedNode);
+    
+    // Get the current parentId of the node
+    const currentParentId = draggedNode.parentId || null;
+    const newParentId = containingCommentArea?.id || null;
+    
+    // If parent changed, update the node
+    if (currentParentId !== newParentId) {
+      nodes = nodes.map(n => {
+        if (n.id === draggedNode.id) {
+          if (newParentId) {
+            // Calculate relative position within the comment area
+            const commentArea = nodes.find(ca => ca.id === newParentId);
+            const relativeX = n.position.x - (commentArea?.position?.x || 0);
+            const relativeY = n.position.y - (commentArea?.position?.y || 0);
+            
+            return {
+              ...n,
+              parentId: newParentId,
+              position: { x: relativeX, y: relativeY },
+              extent: 'parent' // Constrain to parent bounds
+            };
+          } else {
+            // Removing from parent - convert to absolute position
+            const oldParent = nodes.find(p => p.id === currentParentId);
+            const absoluteX = n.position.x + (oldParent?.position?.x || 0);
+            const absoluteY = n.position.y + (oldParent?.position?.y || 0);
+            
+            // Remove parentId and extent
+            const { parentId, extent, ...rest } = n;
+            return {
+              ...rest,
+              position: { x: absoluteX, y: absoluteY }
+            };
+          }
+        }
+        return n;
+      });
+      hasUnsavedChanges = true;
+    }
+  }
+
   // Handle edge changes - with bind:edges, changes are handled automatically
   function onEdgesChange(changes) {
     // Mark as having unsaved changes for meaningful edge modifications
@@ -1368,6 +1453,7 @@
           onreconnect={onReconnect}
           onreconnectend={onReconnectEnd}
           onbeforedelete={onBeforeDelete}
+          onnodedragstop={onNodeDragStop}
           isValidConnection={isValidConnection}
           onnodecontextmenu={handleNodeContextMenu}
           onedgecontextmenu={handleEdgeContextMenu}
@@ -1596,6 +1682,42 @@
     background: #252525;
     border-bottom: 1px solid #404040;
     color: #e0e0e0;
+  }
+
+  .utility-section {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #404040;
+    background: #252525;
+  }
+
+  .comment-area-btn {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    color: #e0e0e0;
+  }
+
+  .comment-area-btn:hover {
+    background: linear-gradient(135deg, #5a6578 0%, #3d4758 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .comment-area-icon {
+    font-size: 1.1rem;
+  }
+
+  .comment-area-text {
+    font-size: 0.85rem;
+    font-weight: 500;
   }
 
   .search-input {
