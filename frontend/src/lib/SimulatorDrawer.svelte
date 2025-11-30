@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
 
   // Props
-  let { isOpen = $bindable(true) } = $props();
+  let { isOpen = $bindable(true), currentNodesetId = $bindable(null), nodes = $bindable([]), edges = $bindable([]) } = $props();
 
   // State
   let drawerHeight = $state(300);
@@ -21,6 +21,8 @@
   let pirDetected = $state(false);
   let pirMinutesAgoStr = $state('0');
   let lastChangeMinutesStr = $state('60');
+  let netPowerWattStr = $state('0');
+  let outsideTempTrendStr = $state('0.0');
 
   // Available devices
   let devices = $state([]);
@@ -73,6 +75,12 @@
   function getLastChangeMinutes() {
     return isValidInteger(lastChangeMinutesStr) ? parseInt(lastChangeMinutesStr, 10) : 0;
   }
+  function getNetPowerWatt() {
+    return isValidInteger(netPowerWattStr) ? parseInt(netPowerWattStr, 10) : 0;
+  }
+  function getOutsideTempTrend() {
+    return isValidFloat(outsideTempTrendStr) ? parseFloat(outsideTempTrendStr) : 0;
+  }
 
   // Check if all inputs are valid
   function areAllInputsValid() {
@@ -81,7 +89,9 @@
            isValidFloat(outdoorTempStr) &&
            isValidFloat(avgNext12hOutdoorTempStr) &&
            isValidInteger(pirMinutesAgoStr) &&
-           isValidInteger(lastChangeMinutesStr);
+           isValidInteger(lastChangeMinutesStr) &&
+           isValidInteger(netPowerWattStr) &&
+           isValidFloat(outsideTempTrendStr);
   }
 
   // Load live inputs from backend
@@ -125,6 +135,12 @@
         if (data.avg_next_12h_outdoor_temp !== null) {
           avgNext12hOutdoorTempStr = String(roundToOneDecimal(data.avg_next_12h_outdoor_temp));
         }
+        if (data.net_power_watt !== null) {
+          netPowerWattStr = String(data.net_power_watt);
+        }
+        if (data.outside_temperature_trend !== null) {
+          outsideTempTrendStr = String(roundToOneDecimal(data.outside_temperature_trend));
+        }
         userIsHome = data.user_is_home;
       } else {
         errorMessage = result.error || 'Failed to load live inputs';
@@ -150,23 +166,40 @@
     simulationResult = null;
     
     try {
+      // Build the request payload
+      const payload = {
+        device: selectedDevice,
+        temperature: getTemperature(),
+        is_auto_mode: isAutoMode,
+        solar_production: getSolarProduction(),
+        outdoor_temp: getOutdoorTemp(),
+        avg_next_12h_outdoor_temp: getAvgNext12hOutdoorTemp(),
+        user_is_home: userIsHome,
+        pir_detected: pirDetected,
+        pir_minutes_ago: getPirMinutesAgo(),
+        last_change_minutes: getLastChangeMinutes(),
+        net_power_watt: getNetPowerWatt(),
+        outside_temperature_trend: getOutsideTempTrend(),
+      };
+      
+      // If we have a current nodeset, include it in the request
+      // nodeset_id of -1 means use the provided nodes/edges (new/unsaved)
+      // nodeset_id of null means use the active nodeset
+      if (currentNodesetId !== null) {
+        payload.nodeset_id = currentNodesetId;
+        // For new/unsaved nodesets (id = -1), also pass the nodes and edges
+        if (currentNodesetId === -1 && nodes && edges) {
+          payload.nodes = nodes;
+          payload.edges = edges;
+        }
+      }
+      
       const response = await fetch('/api/simulator/evaluate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          device: selectedDevice,
-          temperature: getTemperature(),
-          is_auto_mode: isAutoMode,
-          solar_production: getSolarProduction(),
-          outdoor_temp: getOutdoorTemp(),
-          avg_next_12h_outdoor_temp: getAvgNext12hOutdoorTemp(),
-          user_is_home: userIsHome,
-          pir_detected: pirDetected,
-          pir_minutes_ago: getPirMinutesAgo(),
-          last_change_minutes: getLastChangeMinutes(),
-        }),
+        body: JSON.stringify(payload),
       });
       
       const result = await response.json();
