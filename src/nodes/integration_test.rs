@@ -8,19 +8,20 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 19 node definitions:
-        // System: 3 (flow_start, flow_execute_action, flow_do_nothing)
+        // Verify we have 20 node definitions:
+        // System: 4 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command)
         // Sensors: 1 (pir_detection)
         // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 4 (device, intensity, cause_reason, request_mode)
-        assert_eq!(definitions.len(), 19);
+        assert_eq!(definitions.len(), 20);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
         assert!(node_types.contains(&"flow_start"));
         assert!(node_types.contains(&"flow_execute_action"));
         assert!(node_types.contains(&"flow_do_nothing"));
+        assert!(node_types.contains(&"flow_active_command"));
         
         // Verify sensor node types
         assert!(node_types.contains(&"pir_detection"));
@@ -70,7 +71,7 @@ mod integration_tests {
         // Verify categories are assigned appropriately
         for def in &definitions {
             match def.node_type.as_str() {
-                "flow_start" | "flow_execute_action" | "flow_do_nothing" => {
+                "flow_start" | "flow_execute_action" | "flow_do_nothing" | "flow_active_command" => {
                     assert_eq!(def.category, "System", "System nodes should be in 'System' category");
                 }
                 "pir_detection" => {
@@ -217,7 +218,7 @@ mod integration_tests {
         let start_node = definitions.iter().find(|d| d.node_type == "flow_start").unwrap();
         
         assert_eq!(start_node.inputs.len(), 0, "Start node should have no inputs");
-        assert_eq!(start_node.outputs.len(), 9, "Start node should have 9 outputs");
+        assert_eq!(start_node.outputs.len(), 10, "Start node should have 10 outputs");
         assert_eq!(start_node.category, "System");
         
         // Verify device output
@@ -257,6 +258,10 @@ mod integration_tests {
         // Verify outside_temperature_trend output
         let trend_output = start_node.outputs.iter().find(|o| o.id == "outside_temperature_trend").unwrap();
         assert_eq!(trend_output.value_type, nodes::ValueType::Float);
+        
+        // Verify active_command output
+        let active_command_output = start_node.outputs.iter().find(|o| o.id == "active_command").unwrap();
+        assert_eq!(active_command_output.value_type, nodes::ValueType::Object);
     }
     
     #[test]

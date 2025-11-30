@@ -7,10 +7,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Import AC mode constants from ac_executor
+use crate::ac_controller::ac_executor::{AC_MODE_HEAT, AC_MODE_COOL};
+
 /// Node type identifiers
 pub const NODE_TYPE_START: &str = "flow_start";
 pub const NODE_TYPE_EXECUTE_ACTION: &str = "flow_execute_action";
 pub const NODE_TYPE_DO_NOTHING: &str = "flow_do_nothing";
+pub const NODE_TYPE_ACTIVE_COMMAND: &str = "flow_active_command";
 pub const NODE_TYPE_LOGIC_AND: &str = "logic_and";
 pub const NODE_TYPE_LOGIC_OR: &str = "logic_or";
 pub const NODE_TYPE_LOGIC_NAND: &str = "logic_nand";
@@ -41,6 +45,41 @@ pub enum RuntimeValue {
     Integer(i64),
     Boolean(bool),
     String(String),
+    /// Represents an Active Command object (the last command sent to a device)
+    ActiveCommand(ActiveCommandData),
+}
+
+/// Data for the Active Command - represents the last command sent to a device
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActiveCommandData {
+    /// Whether an active command exists (a command was previously sent)
+    pub is_defined: bool,
+    /// Whether the AC is currently on (based on last command)
+    pub is_on: bool,
+    /// Target temperature in Celsius from the last command
+    pub temperature: f64,
+    /// AC mode: 1 = Heat, 4 = Cool, 0 = Off
+    pub mode: i32,
+    /// Fan speed setting (0-5, where 0 is auto)
+    pub fan_speed: i32,
+    /// Swing setting (0 = off, 1 = on)
+    pub swing: i32,
+    /// Whether powerful/turbo mode was enabled
+    pub is_powerful: bool,
+}
+
+impl Default for ActiveCommandData {
+    fn default() -> Self {
+        Self {
+            is_defined: false,
+            is_on: false,
+            temperature: 0.0,
+            mode: 0,
+            fan_speed: 0,
+            swing: 0,
+            is_powerful: false,
+        }
+    }
 }
 
 impl RuntimeValue {
@@ -51,6 +90,7 @@ impl RuntimeValue {
             RuntimeValue::Integer(_) => "Integer",
             RuntimeValue::Boolean(_) => "Boolean",
             RuntimeValue::String(_) => "String",
+            RuntimeValue::ActiveCommand(_) => "ActiveCommand",
         }
     }
 
@@ -78,6 +118,15 @@ impl RuntimeValue {
             RuntimeValue::Integer(v) => v.to_string(),
             RuntimeValue::Boolean(v) => v.to_string(),
             RuntimeValue::String(v) => v.clone(),
+            RuntimeValue::ActiveCommand(_) => "ActiveCommand".to_string(),
+        }
+    }
+
+    /// Try to get as ActiveCommandData
+    pub fn as_active_command(&self) -> Option<&ActiveCommandData> {
+        match self {
+            RuntimeValue::ActiveCommand(data) => Some(data),
+            _ => None,
         }
     }
 }
@@ -96,6 +145,8 @@ pub struct ExecutionInputs {
     pub outside_temperature_trend: f64,
     /// PIR detection state by device: (is_recently_triggered, minutes_ago)
     pub pir_state: HashMap<String, (bool, i64)>,
+    /// Active command data (last command sent to the device)
+    pub active_command: ActiveCommandData,
 }
 
 /// Result of executing a nodeset
@@ -431,6 +482,10 @@ impl NodesetExecutor {
             (start_node_id.to_string(), "outside_temperature_trend".to_string()),
             RuntimeValue::Float(self.inputs.outside_temperature_trend),
         );
+        self.output_cache.insert(
+            (start_node_id.to_string(), "active_command".to_string()),
+            RuntimeValue::ActiveCommand(self.inputs.active_command.clone()),
+        );
         
         Ok(())
     }
@@ -699,6 +754,10 @@ impl NodesetExecutor {
                 self.evaluate_pir_detection(&node.id, output_id)
             }
             
+            NODE_TYPE_ACTIVE_COMMAND => {
+                self.evaluate_active_command(&node.id, output_id)
+            }
+            
             _ => Err(ExecutionError::InvalidNode {
                 node_id: node.id.clone(),
                 reason: format!("Unknown node type: {}", node.node_type),
@@ -808,6 +867,49 @@ impl NodesetExecutor {
             }),
         }
     }
+    
+    /// Evaluate Active Command node
+    /// Extracts properties from the active command input
+    fn evaluate_active_command(&mut self, node_id: &str, output_id: &str) -> Result<RuntimeValue, ExecutionError> {
+        // Get the active_command input
+        let active_command_input = self.get_input_value(node_id, "active_command")?;
+        let active_command = match active_command_input {
+            RuntimeValue::ActiveCommand(data) => data,
+            _ => return Err(ExecutionError::TypeMismatch {
+                expected: "ActiveCommand".to_string(),
+                got: active_command_input.type_name().to_string(),
+            }),
+        };
+        
+        match output_id {
+            "is_defined" => Ok(RuntimeValue::Boolean(active_command.is_defined)),
+            "is_on" => Ok(RuntimeValue::Boolean(active_command.is_on)),
+            "temperature" => Ok(RuntimeValue::Float(active_command.temperature)),
+            "mode" => {
+                // Convert mode integer to string
+                let mode_str = if !active_command.is_on {
+                    "Off"
+                } else {
+                    match active_command.mode {
+                        m if m == AC_MODE_HEAT => "Heat",
+                        m if m == AC_MODE_COOL => "Cool",
+                        m => {
+                            log::warn!("Unknown AC mode value {} in active command, defaulting to 'Off'", m);
+                            "Off"
+                        }
+                    }
+                };
+                Ok(RuntimeValue::String(mode_str.to_string()))
+            }
+            "fan_speed" => Ok(RuntimeValue::Integer(active_command.fan_speed as i64)),
+            "swing" => Ok(RuntimeValue::Integer(active_command.swing as i64)),
+            "is_powerful" => Ok(RuntimeValue::Boolean(active_command.is_powerful)),
+            _ => Err(ExecutionError::InvalidNode {
+                node_id: node_id.to_string(),
+                reason: format!("Unknown output: {}", output_id),
+            }),
+        }
+    }
 }
 
 /// Validate a nodeset configuration and return any errors
@@ -864,6 +966,32 @@ pub fn validate_nodeset_for_execution(
         }
         if !target.is_empty() && !node_ids.contains(target) {
             errors.push(format!("Edge {} references non-existent target node: {}", i, target));
+        }
+    }
+    
+    // Check that if Active Command node exists, its is_defined output must be connected
+    let active_command_nodes: Vec<_> = nodes.iter()
+        .filter(|n| {
+            n.get("data")
+                .and_then(|d| d.get("definition"))
+                .and_then(|def| def.get("node_type"))
+                .and_then(|nt| nt.as_str())
+                == Some(NODE_TYPE_ACTIVE_COMMAND)
+        })
+        .collect();
+    
+    for active_command_node in active_command_nodes {
+        let node_id = active_command_node.get("id").and_then(|id| id.as_str()).unwrap_or("");
+        
+        // Check if is_defined output is connected
+        let is_defined_connected = edges.iter().any(|edge| {
+            let source = edge.get("source").and_then(|v| v.as_str()).unwrap_or("");
+            let source_handle = edge.get("sourceHandle").and_then(|v| v.as_str()).unwrap_or("");
+            source == node_id && source_handle == "is_defined"
+        });
+        
+        if !is_defined_connected {
+            errors.push("Active Command requires Is Defined pin to be handled".to_string());
         }
     }
     
@@ -1230,5 +1358,171 @@ mod tests {
         let action = result.action.unwrap();
         // Should use false path value (15.0) since condition is false
         assert!((action.temperature - 15.0).abs() < f64::EPSILON);
+    }
+
+    fn create_active_command_node(id: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "type": "custom",
+            "position": { "x": 300, "y": 0 },
+            "data": {
+                "definition": {
+                    "node_type": "flow_active_command",
+                    "name": "Active Command",
+                    "description": "Gets active command properties",
+                    "category": "System",
+                    "inputs": [
+                        { "id": "active_command", "label": "Active Command" }
+                    ],
+                    "outputs": [
+                        { "id": "is_defined", "label": "Is Defined" },
+                        { "id": "is_on", "label": "Is On" },
+                        { "id": "temperature", "label": "Temperature" },
+                        { "id": "mode", "label": "Mode" },
+                        { "id": "fan_speed", "label": "Fan Speed" },
+                        { "id": "swing", "label": "Swing" },
+                        { "id": "is_powerful", "label": "Is Powerful" }
+                    ]
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_active_command_validation_missing_is_defined() {
+        // Active Command node without is_defined connected should fail validation
+        let nodes = vec![
+            create_start_node(),
+            create_active_command_node("active-cmd-1"),
+            create_execute_action_node(),
+        ];
+        
+        // Only connect active_command input, not the is_defined output
+        let edges = vec![
+            create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
+            create_edge("active-cmd-1", "temperature", "execute-1", "temperature"),
+        ];
+        
+        let errors = validate_nodeset_for_execution(&nodes, &edges);
+        
+        assert!(errors.iter().any(|e| e.contains("Active Command requires Is Defined pin to be handled")));
+    }
+
+    #[test]
+    fn test_active_command_validation_with_is_defined() {
+        // Active Command node with is_defined connected should not produce this error
+        let nodes = vec![
+            create_start_node(),
+            create_active_command_node("active-cmd-1"),
+            json!({
+                "id": "do-nothing-1",
+                "type": "custom",
+                "position": { "x": 500, "y": 0 },
+                "data": {
+                    "definition": {
+                        "node_type": "flow_do_nothing",
+                        "name": "Do Nothing",
+                        "category": "System"
+                    }
+                }
+            }),
+        ];
+        
+        // Connect is_defined output to some node
+        let edges = vec![
+            create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
+            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "input"),
+        ];
+        
+        let errors = validate_nodeset_for_execution(&nodes, &edges);
+        
+        // Should not contain the Active Command validation error
+        assert!(!errors.iter().any(|e| e.contains("Active Command requires Is Defined pin to be handled")));
+    }
+
+    #[test]
+    fn test_active_command_evaluation_defined() {
+        // Test evaluation of Active Command node when command is defined
+        let nodes = vec![
+            create_start_node(),
+            create_active_command_node("active-cmd-1"),
+            json!({
+                "id": "do-nothing-1",
+                "type": "custom",
+                "position": { "x": 500, "y": 0 },
+                "data": {
+                    "definition": {
+                        "node_type": "flow_do_nothing",
+                        "name": "Do Nothing",
+                        "category": "System"
+                    }
+                }
+            }),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
+            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "input"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            active_command: ActiveCommandData {
+                is_defined: true,
+                is_on: true,
+                temperature: 22.5,
+                mode: 1, // Heat
+                fan_speed: 2,
+                swing: 1,
+                is_powerful: false,
+            },
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        assert!(result.completed);
+        assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
+    }
+
+    #[test]
+    fn test_active_command_evaluation_not_defined() {
+        // Test evaluation of Active Command node when command is not defined
+        let nodes = vec![
+            create_start_node(),
+            create_active_command_node("active-cmd-1"),
+            json!({
+                "id": "do-nothing-1",
+                "type": "custom",
+                "position": { "x": 500, "y": 0 },
+                "data": {
+                    "definition": {
+                        "node_type": "flow_do_nothing",
+                        "name": "Do Nothing",
+                        "category": "System"
+                    }
+                }
+            }),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
+            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "input"),
+        ];
+        
+        // Default ActiveCommandData has is_defined = false
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        assert!(result.completed);
+        // is_defined is false (RuntimeValue::Boolean(false))
+        // Do Nothing node should still work as it accepts any input
+        assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
     }
 }
