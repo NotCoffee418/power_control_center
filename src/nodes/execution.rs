@@ -23,6 +23,7 @@ pub const NODE_TYPE_START: &str = "flow_start";
 pub const NODE_TYPE_EXECUTE_ACTION: &str = "flow_execute_action";
 pub const NODE_TYPE_DO_NOTHING: &str = "flow_do_nothing";
 pub const NODE_TYPE_ACTIVE_COMMAND: &str = "flow_active_command";
+pub const NODE_TYPE_RESET_ACTIVE_COMMAND: &str = "flow_reset_active_command";
 pub const NODE_TYPE_LOGIC_AND: &str = "logic_and";
 pub const NODE_TYPE_LOGIC_OR: &str = "logic_or";
 pub const NODE_TYPE_LOGIC_NAND: &str = "logic_nand";
@@ -175,6 +176,8 @@ pub struct ExecutionResult {
     pub error: Option<String>,
     /// Validation warnings (e.g., disconnected nodes)
     pub warnings: Vec<String>,
+    /// Whether the active command should be reset to undefined state
+    pub reset_active_command: bool,
 }
 
 /// Action parameters when Execute Action node is reached
@@ -267,6 +270,8 @@ pub struct NodesetExecutor {
     evaluating: std::collections::HashSet<String>,
     /// Inputs from the simulation context
     inputs: ExecutionInputs,
+    /// Flag to track if reset_active_command was triggered during execution
+    reset_active_command_triggered: bool,
 }
 
 impl NodesetExecutor {
@@ -337,6 +342,7 @@ impl NodesetExecutor {
             output_cache: HashMap::new(),
             evaluating: std::collections::HashSet::new(),
             inputs,
+            reset_active_command_triggered: false,
         })
     }
     
@@ -361,6 +367,7 @@ impl NodesetExecutor {
                 do_nothing: None,
                 error: Some(ExecutionError::MissingStartNode.to_string()),
                 warnings: vec![],
+                reset_active_command: false,
             };
         }
         
@@ -372,6 +379,7 @@ impl NodesetExecutor {
                 do_nothing: None,
                 error: Some(ExecutionError::MultipleStartNodes.to_string()),
                 warnings: vec![],
+                reset_active_command: false,
             };
         }
         
@@ -391,6 +399,7 @@ impl NodesetExecutor {
                 do_nothing: None,
                 error: Some(ExecutionError::MissingTerminalNode.to_string()),
                 warnings: vec![],
+                reset_active_command: false,
             };
         }
         
@@ -403,12 +412,17 @@ impl NodesetExecutor {
                 do_nothing: None,
                 error: Some(e.to_string()),
                 warnings: vec![],
+                reset_active_command: false,
             };
         }
         
         // Follow execution flow from Start node's exec_out pin
         match self.follow_execution_flow(&start_node_id, "exec_out") {
-            Ok(result) => result,
+            Ok(mut result) => {
+                // Propagate the reset_active_command flag from the executor
+                result.reset_active_command = self.reset_active_command_triggered;
+                result
+            }
             Err(e) => ExecutionResult {
                 completed: false,
                 terminal_type: None,
@@ -416,6 +430,7 @@ impl NodesetExecutor {
                 do_nothing: None,
                 error: Some(e.to_string()),
                 warnings: vec![],
+                reset_active_command: self.reset_active_command_triggered,
             },
         }
     }
@@ -447,6 +462,7 @@ impl NodesetExecutor {
                             do_nothing: None,
                             error: None,
                             warnings: vec![],
+                            reset_active_command: false,
                         })
                     }
                     NODE_TYPE_DO_NOTHING => {
@@ -459,7 +475,14 @@ impl NodesetExecutor {
                             do_nothing: Some(do_nothing),
                             error: None,
                             warnings: vec![],
+                            reset_active_command: false,
                         })
+                    }
+                    NODE_TYPE_RESET_ACTIVE_COMMAND => {
+                        // Pass-through node - set reset flag and continue to next node
+                        self.reset_active_command_triggered = true;
+                        // Continue execution from this node's exec_out
+                        self.follow_execution_flow(&target_node.id, "exec_out")
                     }
                     NODE_TYPE_LOGIC_IF => {
                         // If node - evaluate condition and follow appropriate path
@@ -1775,5 +1798,98 @@ mod tests {
         assert!(result.completed);
         // Do Nothing node should be reached via false path since is_defined = false
         assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
+    }
+
+    fn create_reset_active_command_node(id: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "type": "custom",
+            "position": { "x": 200, "y": 0 },
+            "data": {
+                "definition": {
+                    "node_type": "flow_reset_active_command",
+                    "name": "Reset Active Command",
+                    "description": "Resets the active command to undefined state",
+                    "category": "System",
+                    "inputs": [
+                        { "id": "exec_in", "label": "▶" }
+                    ],
+                    "outputs": [
+                        { "id": "exec_out", "label": "▶" }
+                    ]
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_reset_active_command_node_execution() {
+        // Test that Reset Active Command node passes execution through and sets the flag
+        // Flow: Start -> Reset Active Command -> Do Nothing
+        let nodes = vec![
+            create_start_node(),
+            create_reset_active_command_node("reset-1"),
+            create_do_nothing_node_with_id("do-nothing-1"),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            // Execution flow: Start -> Reset Active Command -> Do Nothing
+            create_edge("start-1", "exec_out", "reset-1", "exec_in"),
+            create_edge("reset-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            active_command: ActiveCommandData {
+                is_defined: true,
+                is_on: true,
+                temperature: 22.5,
+                mode: 1,
+                fan_speed: 2,
+                swing: 1,
+                is_powerful: false,
+            },
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        assert!(result.completed);
+        assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
+        // The reset_active_command flag should be set
+        assert!(result.reset_active_command, "Reset Active Command flag should be set");
+    }
+
+    #[test]
+    fn test_reset_active_command_flag_not_set_without_node() {
+        // Test that when Reset Active Command node is not used, the flag is false
+        // Flow: Start -> Do Nothing (no reset node)
+        let nodes = vec![
+            create_start_node(),
+            create_do_nothing_node_with_id("do-nothing-1"),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            // Execution flow: Start -> Do Nothing (no reset node in between)
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        assert!(result.completed);
+        assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
+        // The reset_active_command flag should NOT be set
+        assert!(!result.reset_active_command, "Reset Active Command flag should NOT be set when node is not used");
     }
 }

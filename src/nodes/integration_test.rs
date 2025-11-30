@@ -8,13 +8,13 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 22 node definitions:
-        // System: 4 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command)
+        // Verify we have 23 node definitions:
+        // System: 5 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command, flow_reset_active_command)
         // Sensors: 1 (pir_detection)
         // Logic: 9 (and, or, nand, if, not, equals, evaluate_number, branch, sequence)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 5 (device, intensity, cause_reason, request_mode, fan_speed)
-        assert_eq!(definitions.len(), 22);
+        assert_eq!(definitions.len(), 23);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
@@ -22,6 +22,7 @@ mod integration_tests {
         assert!(node_types.contains(&"flow_execute_action"));
         assert!(node_types.contains(&"flow_do_nothing"));
         assert!(node_types.contains(&"flow_active_command"));
+        assert!(node_types.contains(&"flow_reset_active_command"));
         
         // Verify sensor node types
         assert!(node_types.contains(&"pir_detection"));
@@ -72,7 +73,7 @@ mod integration_tests {
         // Verify categories are assigned appropriately
         for def in &definitions {
             match def.node_type.as_str() {
-                "flow_start" | "flow_execute_action" | "flow_do_nothing" | "flow_active_command" => {
+                "flow_start" | "flow_execute_action" | "flow_do_nothing" | "flow_active_command" | "flow_reset_active_command" => {
                     assert_eq!(def.category, "System", "System nodes should be in 'System' category");
                 }
                 "pir_detection" => {

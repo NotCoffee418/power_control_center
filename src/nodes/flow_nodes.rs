@@ -297,6 +297,41 @@ impl Node for DoNothingNode {
     }
 }
 
+/// Reset Active Command Node - Resets the active command to the startup state
+/// This is a pass-through execution node with input and output execution pins.
+/// When execution flows through this node, it resets the active command for the current
+/// device to its initial/undefined state (as if no command has been sent).
+/// NOTE: The device is inferred from the evaluation context (Start node) at runtime.
+pub struct ResetActiveCommandNode;
+
+impl Node for ResetActiveCommandNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "flow_reset_active_command",
+            "Reset Active Command",
+            "Resets the active command to undefined state (as on startup). Execution flows through this node to the next connected node. The device is inferred from the evaluation context.",
+            "System",
+            vec![
+                NodeInput::new(
+                    "exec_in",
+                    "▶",
+                    "Execution flow input - triggers the reset",
+                    ValueType::Execution,
+                    true,
+                ),
+            ],
+            vec![
+                NodeOutput::new(
+                    "exec_out",
+                    "▶",
+                    "Execution flow output - continues to the next node",
+                    ValueType::Execution,
+                ),
+            ],
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -474,6 +509,7 @@ mod tests {
             ExecuteActionNode::definition(),
             DoNothingNode::definition(),
             ActiveCommandNode::definition(),
+            ResetActiveCommandNode::definition(),
         ];
         
         for def in definitions {
@@ -559,6 +595,37 @@ mod tests {
     #[test]
     fn test_active_command_node_serializable() {
         let def = ActiveCommandNode::definition();
+        let json = serde_json::to_string(&def).unwrap();
+        let deserialized: NodeDefinition = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(def.node_type, deserialized.node_type);
+        assert_eq!(def.inputs.len(), deserialized.inputs.len());
+        assert_eq!(def.outputs.len(), deserialized.outputs.len());
+    }
+
+    #[test]
+    fn test_reset_active_command_node_definition() {
+        let def = ResetActiveCommandNode::definition();
+        
+        assert_eq!(def.node_type, "flow_reset_active_command");
+        assert_eq!(def.name, "Reset Active Command");
+        assert_eq!(def.category, "System");
+        assert_eq!(def.inputs.len(), 1); // exec_in
+        assert_eq!(def.outputs.len(), 1); // exec_out
+        
+        // Verify exec_in input (execution flow)
+        let exec_input = def.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, ValueType::Execution);
+        assert!(exec_input.required);
+        
+        // Verify exec_out output (execution flow)
+        let exec_output = def.outputs.iter().find(|o| o.id == "exec_out").unwrap();
+        assert_eq!(exec_output.value_type, ValueType::Execution);
+    }
+
+    #[test]
+    fn test_reset_active_command_node_serializable() {
+        let def = ResetActiveCommandNode::definition();
         let json = serde_json::to_string(&def).unwrap();
         let deserialized: NodeDefinition = serde_json::from_str(&json).unwrap();
         

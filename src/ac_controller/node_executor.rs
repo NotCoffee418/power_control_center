@@ -290,6 +290,15 @@ async fn execute_result_to_commands(device: &AcDevices, result: ExecutionResult)
         return NodeExecutionResult::Error(error);
     }
 
+    // Handle reset_active_command flag - reset the device state to undefined
+    if result.reset_active_command {
+        log::info!(
+            "Reset Active Command triggered for device '{}'. Resetting state to undefined.",
+            device_name
+        );
+        super::ac_executor::reset_device_state(device);
+    }
+
     // Handle different terminal types
     match result.terminal_type.as_deref() {
         Some("Do Nothing") => {
@@ -579,6 +588,15 @@ async fn execute_result_to_commands_forced(device: &AcDevices, result: Execution
     if let Some(error) = result.error {
         log::error!("Nodeset execution error for {}: {}", device_name, error);
         return NodeExecutionResult::Error(error);
+    }
+
+    // Handle reset_active_command flag - reset the device state to undefined
+    if result.reset_active_command {
+        log::info!(
+            "Reset Active Command triggered for device '{}'. Resetting state to undefined.",
+            device_name
+        );
+        super::ac_executor::reset_device_state(device);
     }
 
     // Handle different terminal types
