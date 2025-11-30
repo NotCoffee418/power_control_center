@@ -758,6 +758,13 @@ async fn get_node_definitions() -> Response {
             // Update the flow_execute_action node's cause_reason input
             if let Some(execute_action_def) = definitions.iter_mut().find(|d| d.node_type == "flow_execute_action") {
                 if let Some(cause_input) = execute_action_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
+                    cause_input.value_type = enum_with_ids.clone();
+                }
+            }
+            
+            // Update the flow_do_nothing node's cause_reason input
+            if let Some(do_nothing_def) = definitions.iter_mut().find(|d| d.node_type == "flow_do_nothing") {
+                if let Some(cause_input) = do_nothing_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
                     cause_input.value_type = enum_with_ids;
                 }
             }
