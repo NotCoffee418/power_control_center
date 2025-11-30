@@ -297,20 +297,23 @@ mod integration_tests {
         assert!(input.required);
     }
     
-    // ===========================================================================
-    // TYPE CONSTRAINT VALIDATION TESTS
-    // ===========================================================================
+    // -------------------------------------------------------------------------
+    // Type Constraint Validation Tests
+    // -------------------------------------------------------------------------
     // These tests verify that node type constraints are correctly defined.
     // The actual connection validation is handled by the frontend, but the
     // backend must provide the correct type definitions for proper validation.
-    // ===========================================================================
+    // -------------------------------------------------------------------------
     
+    /// Boolean logic nodes (AND, OR, NAND, If, Not) must use explicit Boolean type
+    /// to ensure only Boolean connections are accepted - they should not use Any type.
     #[test]
     fn test_boolean_logic_nodes_only_accept_boolean() {
         let definitions = nodes::get_all_node_definitions();
         
-        // AND, OR, NAND, If, Not nodes should ONLY have Boolean type inputs/outputs
+        // These node types should ONLY have Boolean type inputs/outputs
         // They should NOT use Any type - this ensures strict type checking
+        // NOTE: If new boolean logic nodes are added, they should be added here
         let boolean_only_nodes = ["logic_and", "logic_or", "logic_nand", "logic_if", "logic_not"];
         
         for node_type in &boolean_only_nodes {

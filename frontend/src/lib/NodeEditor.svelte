@@ -697,13 +697,17 @@
     return sortedSource.every((val, idx) => val === sortedTarget[idx]);
   }
 
+  // Node types that have bidirectional type constraints between inputs and outputs
+  // These nodes require that all Any-typed pins (both input and output) share the same type
+  const BIDIRECTIONAL_CONSTRAINT_NODES = ['logic_branch'];
+
   /**
    * Get the constrained type for a node's "Any" type inputs based on existing connections.
    * When one input with "Any" type is already connected, other "Any" type inputs on the same
    * node should be constrained to match that type.
    * 
-   * For nodes like Branch where inputs and outputs are all constrained together,
-   * this also checks outgoing connections from Any-type outputs.
+   * For nodes with bidirectional constraints (like Branch), this also checks outgoing
+   * connections from Any-type outputs to determine the constraint.
    * 
    * @param nodeId - The node ID to check
    * @param excludeHandle - The handle ID to exclude (the one we're connecting to)
@@ -716,7 +720,7 @@
     if (!node) return null;
 
     const nodeType = node.data.definition?.node_type;
-    const hasBidirectionalConstraint = nodeType === 'logic_branch';
+    const hasBidirectionalConstraint = BIDIRECTIONAL_CONSTRAINT_NODES.includes(nodeType);
 
     // Get all inputs for this node that have "Any" type
     const anyTypeInputs = (node.data.definition?.inputs || [])
@@ -815,8 +819,12 @@
           if (targetInput?.value_type) {
             // If target is also "Any", we need to look at what it's constrained to
             if (targetInput.value_type.type === 'Any') {
-              // Check if the target node has constraints from its other connections
-              // Pass checkOutputs=false to avoid infinite recursion back to outputs
+              // Check if the target node has constraints from its other connections.
+              // Pass checkOutputs=false to prevent infinite recursion. Without this:
+              // getConstrainedTypeFromConnectedOutputs(BranchNode) ->
+              //   getConstrainedTypeFromConnectedInputs(TargetNode, checkOutputs=true) ->
+              //     getConstrainedTypeFromConnectedOutputs(TargetNode) ->
+              //       ... potentially back to BranchNode (infinite loop)
               const targetConstraint = getConstrainedTypeFromConnectedInputs(
                 existingEdge.target,
                 existingEdge.targetHandle,
@@ -826,7 +834,7 @@
               if (targetConstraint) {
                 return targetConstraint;
               }
-              // We don't recursively check target outputs to avoid infinite loops
+              // We don't recursively check target's outputs - the constraint should come from concrete types
             } else {
               // Target has a concrete type
               return targetInput.value_type;
@@ -843,7 +851,7 @@
    * Get the constrained type for a node's "Any" type output based on connected inputs.
    * For nodes like Branch where the output type depends on the input types,
    * this returns the type that the output should be constrained to.
-   * 
+   *
    * @param nodeId - The node ID to check
    * @param outputHandle - The output handle ID
    * @returns The constrained type from connected inputs, or null if no constraint exists
@@ -854,8 +862,8 @@
 
     const nodeType = node.data.definition?.node_type;
     
-    // Only certain node types have constrained outputs based on inputs
-    if (nodeType !== 'logic_branch') {
+    // Only nodes with bidirectional constraints have constrained outputs based on inputs
+    if (!BIDIRECTIONAL_CONSTRAINT_NODES.includes(nodeType)) {
       return null;
     }
 
@@ -865,9 +873,10 @@
       return null;
     }
 
-    // For Branch node, the output type is constrained by the True or False inputs
-    // Check if either true_value or false_value has a connection
-    // Pass checkOutputs=false to avoid infinite recursion
+    // For bidirectional constraint nodes (like Branch), the output type is constrained by the inputs.
+    // Pass checkOutputs=false to prevent infinite recursion:
+    // Without this flag, we would have: getConstrainedOutputType -> getConstrainedTypeFromConnectedInputs
+    // -> (if checkOutputs=true) getConstrainedTypeFromConnectedOutputs -> getConstrainedOutputType (infinite loop)
     return getConstrainedTypeFromConnectedInputs(nodeId, null, null, false);
   }
 
