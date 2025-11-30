@@ -512,9 +512,10 @@ impl NodesetExecutor {
     }
     
     /// Evaluate the Execute Action node and return the action parameters
+    /// Device is inferred from the execution context (Start node)
     fn evaluate_execute_action_node(&mut self, node_id: &str) -> Result<ActionResult, ExecutionError> {
-        let device = self.get_input_value(node_id, "device")?
-            .as_string();
+        // Device is inferred from execution context, not from node input
+        let device = self.inputs.device.clone();
         let temperature = self.get_input_value(node_id, "temperature")?
             .as_f64()
             .ok_or_else(|| ExecutionError::TypeMismatch {
@@ -545,10 +546,15 @@ impl NodesetExecutor {
     }
     
     /// Evaluate the Do Nothing node and return the device and cause_reason for debugging
+    /// Device is inferred from the execution context (Start node)
+    /// The trigger input accepts any signal type to terminate the evaluation
     fn evaluate_do_nothing_node(&mut self, node_id: &str) -> Result<DoNothingResult, ExecutionError> {
-        // Extract device and cause_reason for debugging/simulation purposes
-        let device = self.get_input_value(node_id, "device")?
-            .as_string();
+        // Trigger input is used to signal that "do nothing" should be executed
+        // We just need to verify it's connected (the value itself doesn't matter)
+        let _trigger = self.get_input_value(node_id, "trigger")?;
+        
+        // Device is inferred from execution context, not from node input
+        let device = self.inputs.device.clone();
         let cause_reason = self.get_input_value(node_id, "cause_reason")?
             .as_string();
         
@@ -1067,7 +1073,6 @@ mod tests {
                     "description": "Executes AC command",
                     "category": "System",
                     "inputs": [
-                        { "id": "device", "label": "Device" },
                         { "id": "temperature", "label": "Temperature" },
                         { "id": "mode", "label": "Mode" },
                         { "id": "fan_speed", "label": "Fan Speed" },
@@ -1158,7 +1163,7 @@ mod tests {
                     "name": "Do Nothing",
                     "category": "System",
                     "inputs": [
-                        { "id": "device", "label": "Device" },
+                        { "id": "trigger", "label": "Trigger" },
                         { "id": "cause_reason", "label": "Cause Reason" }
                     ],
                     "outputs": []
@@ -1170,6 +1175,7 @@ mod tests {
     #[test]
     fn test_simple_execution() {
         // Create a simple nodeset: Start -> Float(22.0) -> Execute Action
+        // Device is inferred from execution context
         let nodes = vec![
             create_start_node(),
             create_float_node("float-1", 22.0),
@@ -1181,7 +1187,6 @@ mod tests {
         ];
         
         let edges = vec![
-            create_edge("start-1", "device", "execute-1", "device"),
             create_edge("float-1", "value", "execute-1", "temperature"),
             create_edge("mode-1", "value", "execute-1", "mode"),
             create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
@@ -1288,19 +1293,22 @@ mod tests {
                 }
             }),
             create_do_nothing_node("do-nothing-1"),
-            create_enum_node("device-1", "device", "LivingRoom"),
             create_enum_node("cause-1", "cause_reason", "1"),
         ];
         
         let edges = vec![
             create_edge("bool-1", "value", "and-1", "input_1"),
             create_edge("bool-2", "value", "and-1", "input_2"),
-            // Do Nothing now requires device and cause_reason inputs
-            create_edge("device-1", "value", "do-nothing-1", "device"),
+            // Do Nothing now requires trigger (any type) and cause_reason inputs
+            // Device is inferred from context
+            create_edge("and-1", "result", "do-nothing-1", "trigger"),
             create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
-        let inputs = ExecutionInputs::default();
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
         let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
         let result = executor.execute();
         
@@ -1339,8 +1347,8 @@ mod tests {
             create_execute_action_node(),
         ];
         
+        // Device is inferred from context (ExecutionInputs)
         let edges = vec![
-            create_edge("start-1", "device", "execute-1", "device"),
             create_edge("condition", "value", "branch-1", "condition"),
             create_edge("true-val", "value", "branch-1", "true_value"),
             create_edge("false-val", "value", "branch-1", "false_value"),
@@ -1391,8 +1399,8 @@ mod tests {
             create_execute_action_node(),
         ];
         
+        // Device is inferred from context (ExecutionInputs)
         let edges = vec![
-            create_edge("start-1", "device", "execute-1", "device"),
             create_edge("condition", "value", "branch-1", "condition"),
             create_edge("true-val", "value", "branch-1", "true_value"),
             create_edge("false-val", "value", "branch-1", "false_value"),
@@ -1473,7 +1481,6 @@ mod tests {
             create_start_node(),
             create_active_command_node("active-cmd-1"),
             create_do_nothing_node("do-nothing-1"),
-            create_enum_node("device-1", "device", "LivingRoom"),
             create_enum_node("cause-1", "cause_reason", "1"),
             json!({
                 "id": "not-1",
@@ -1490,11 +1497,12 @@ mod tests {
         ];
         
         // Connect is_defined to a NOT node (any node that accepts it), proving is_defined is handled
-        // Also connect the required device and cause_reason inputs for Do Nothing
+        // Do Nothing now requires trigger (any type) and cause_reason inputs
+        // Device is inferred from context
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
             create_edge("active-cmd-1", "is_defined", "not-1", "input"), // is_defined is connected (handled)
-            create_edge("device-1", "value", "do-nothing-1", "device"),
+            create_edge("not-1", "result", "do-nothing-1", "trigger"),
             create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
@@ -1507,12 +1515,11 @@ mod tests {
     #[test]
     fn test_active_command_evaluation_defined() {
         // Test evaluation of Active Command node when command is defined
-        // We need to connect is_defined to a node for validation, and connect device/cause_reason for Do Nothing
+        // We need to connect is_defined to a node for validation, and connect trigger/cause_reason for Do Nothing
         let nodes = vec![
             create_start_node(),
             create_active_command_node("active-cmd-1"),
             create_do_nothing_node("do-nothing-1"),
-            create_enum_node("device-1", "device", "LivingRoom"),
             create_enum_node("cause-1", "cause_reason", "1"),
             json!({
                 "id": "not-1",
@@ -1528,10 +1535,12 @@ mod tests {
             }),
         ];
         
+        // Do Nothing now requires trigger (any type) and cause_reason inputs
+        // Device is inferred from context
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
             create_edge("active-cmd-1", "is_defined", "not-1", "input"), // Connect is_defined to NOT node
-            create_edge("device-1", "value", "do-nothing-1", "device"),
+            create_edge("not-1", "result", "do-nothing-1", "trigger"),
             create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
@@ -1563,7 +1572,6 @@ mod tests {
             create_start_node(),
             create_active_command_node("active-cmd-1"),
             create_do_nothing_node("do-nothing-1"),
-            create_enum_node("device-1", "device", "LivingRoom"),
             create_enum_node("cause-1", "cause_reason", "1"),
             json!({
                 "id": "not-1",
@@ -1579,10 +1587,12 @@ mod tests {
             }),
         ];
         
+        // Do Nothing now requires trigger (any type) and cause_reason inputs
+        // Device is inferred from context
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
             create_edge("active-cmd-1", "is_defined", "not-1", "input"), // Connect is_defined to NOT node
-            create_edge("device-1", "value", "do-nothing-1", "device"),
+            create_edge("not-1", "result", "do-nothing-1", "trigger"),
             create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
@@ -1596,7 +1606,7 @@ mod tests {
         let result = executor.execute();
         
         assert!(result.completed);
-        // Do Nothing node should still work with device and cause_reason inputs
+        // Do Nothing node should still work with trigger and cause_reason inputs
         assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
     }
 }

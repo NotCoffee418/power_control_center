@@ -274,18 +274,20 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
         
-        assert_eq!(execute_node.inputs.len(), 6, "Execute Action node should have 6 inputs");
+        assert_eq!(execute_node.inputs.len(), 5, "Execute Action node should have 5 inputs (device is inferred from context)");
         assert_eq!(execute_node.outputs.len(), 0, "Execute Action node should have no outputs (terminal)");
         assert_eq!(execute_node.category, "System");
         
         // Verify all inputs exist and are required
         let input_ids: Vec<&str> = execute_node.inputs.iter().map(|i| i.id.as_str()).collect();
-        assert!(input_ids.contains(&"device"));
         assert!(input_ids.contains(&"temperature"));
         assert!(input_ids.contains(&"mode"));
         assert!(input_ids.contains(&"fan_speed"));
         assert!(input_ids.contains(&"is_powerful"));
         assert!(input_ids.contains(&"cause_reason"));
+        
+        // Verify no device input (device is inferred from context)
+        assert!(!input_ids.contains(&"device"), "Execute Action should not have device input (inferred from context)");
         
         for input in &execute_node.inputs {
             assert!(input.required, "All Execute Action inputs should be required");
@@ -297,20 +299,14 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let do_nothing_node = definitions.iter().find(|d| d.node_type == "flow_do_nothing").unwrap();
         
-        assert_eq!(do_nothing_node.inputs.len(), 2, "Do Nothing node should have 2 inputs (device and cause_reason)");
+        assert_eq!(do_nothing_node.inputs.len(), 2, "Do Nothing node should have 2 inputs (trigger and cause_reason)");
         assert_eq!(do_nothing_node.outputs.len(), 0, "Do Nothing node should have no outputs (terminal)");
         assert_eq!(do_nothing_node.category, "System");
         
-        // Verify device input
-        let device_input = do_nothing_node.inputs.iter().find(|i| i.id == "device").unwrap();
-        match &device_input.value_type {
-            nodes::ValueType::Enum(values) => {
-                assert!(values.contains(&"LivingRoom".to_string()));
-                assert!(values.contains(&"Veranda".to_string()));
-            }
-            _ => panic!("Expected Enum type for device input"),
-        }
-        assert!(device_input.required);
+        // Verify trigger input (Any type - accepts any signal)
+        let trigger_input = do_nothing_node.inputs.iter().find(|i| i.id == "trigger").unwrap();
+        assert_eq!(trigger_input.value_type, nodes::ValueType::Any, "Trigger should be Any type to accept any signal");
+        assert!(trigger_input.required);
         
         // Verify cause_reason input
         let cause_input = do_nothing_node.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
@@ -319,6 +315,10 @@ mod integration_tests {
             _ => panic!("Expected Enum type for cause_reason input"),
         }
         assert!(cause_input.required);
+        
+        // Verify no device input (device is inferred from context)
+        assert!(do_nothing_node.inputs.iter().find(|i| i.id == "device").is_none(), 
+            "Do Nothing should not have device input (inferred from context)");
     }
     
     // -------------------------------------------------------------------------
@@ -462,9 +462,9 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         
         // Device enum should have consistent values across all nodes that use it
+        // Note: Execute Action no longer has device input (inferred from context)
         let device_node = definitions.iter().find(|d| d.node_type == "device").unwrap();
         let start_node = definitions.iter().find(|d| d.node_type == "flow_start").unwrap();
-        let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
         let pir_node = definitions.iter().find(|d| d.node_type == "pir_detection").unwrap();
         
         // Extract device enum values from each node
@@ -478,11 +478,6 @@ mod integration_tests {
             _ => panic!("Start node device output should be Enum"),
         };
         
-        let execute_device_values = match &execute_node.inputs.iter().find(|i| i.id == "device").unwrap().value_type {
-            nodes::ValueType::Enum(v) => v.clone(),
-            _ => panic!("Execute node device input should be Enum"),
-        };
-        
         let pir_device_values = match &pir_node.inputs.iter().find(|i| i.id == "device").unwrap().value_type {
             nodes::ValueType::Enum(v) => v.clone(),
             _ => panic!("PIR node device input should be Enum"),
@@ -492,10 +487,6 @@ mod integration_tests {
         assert_eq!(
             device_output_values, start_device_values,
             "Device node and Start node device outputs should have matching enum values"
-        );
-        assert_eq!(
-            device_output_values, execute_device_values,
-            "Device node output and Execute node device input should have matching enum values"
         );
         assert_eq!(
             device_output_values, pir_device_values,
