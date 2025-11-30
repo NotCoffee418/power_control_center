@@ -335,11 +335,11 @@ mod integration_tests {
         assert_eq!(exec_input.value_type, nodes::ValueType::Execution, "exec_in should be Execution type");
         assert!(exec_input.required);
         
-        // Verify cause_reason input
+        // Verify cause_reason input (CauseReason type with options loaded from database at runtime)
         let cause_input = do_nothing_node.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
         match &cause_input.value_type {
-            nodes::ValueType::Enum(_) => {} // Values loaded from database at runtime
-            _ => panic!("Expected Enum type for cause_reason input"),
+            nodes::ValueType::CauseReason(_) => {} // Options loaded from database at runtime
+            _ => panic!("Expected CauseReason type for cause_reason input"),
         }
         assert!(cause_input.required);
         

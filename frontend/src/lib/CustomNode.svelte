@@ -36,8 +36,10 @@
   function getDefaultEnumValue() {
     if (isEnumNode && outputs.length > 0) {
       const enumOutput = outputs[0];
-      if (enumOutput?.value_type?.type === 'EnumWithIds' && enumOutput?.value_type?.value?.length > 0) {
-        // For EnumWithIds, return the first ID
+      // CauseReason type has the same structure as EnumWithIds
+      if ((enumOutput?.value_type?.type === 'EnumWithIds' || enumOutput?.value_type?.type === 'CauseReason') && 
+          enumOutput?.value_type?.value?.length > 0) {
+        // For EnumWithIds and CauseReason, return the first ID
         return enumOutput.value_type.value[0].id;
       }
       if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value?.length > 0) {
@@ -176,22 +178,26 @@
     event.target.style.height = event.target.scrollHeight + 'px';
   }
 
-  // Check if this is an EnumWithIds type (for ID-based tracking)
+  // Check if this is an EnumWithIds or CauseReason type (for ID-based tracking)
   function isEnumWithIds() {
     if (outputs.length > 0) {
       const enumOutput = outputs[0];
-      return enumOutput?.value_type?.type === 'EnumWithIds';
+      // CauseReason type behaves like EnumWithIds for dropdown purposes
+      return enumOutput?.value_type?.type === 'EnumWithIds' || 
+             enumOutput?.value_type?.type === 'CauseReason';
     }
     return false;
   }
 
   // Get enum options for dropdown
-  // For EnumWithIds, returns array of {id, label} objects
+  // For EnumWithIds and CauseReason, returns array of {id, label} objects
   // For Enum, returns array of strings (for backwards compatibility)
   function getEnumOptions() {
     if (outputs.length > 0) {
       const enumOutput = outputs[0];
-      if (enumOutput?.value_type?.type === 'EnumWithIds' && enumOutput?.value_type?.value) {
+      // CauseReason type has the same structure as EnumWithIds
+      if ((enumOutput?.value_type?.type === 'EnumWithIds' || enumOutput?.value_type?.type === 'CauseReason') && 
+          enumOutput?.value_type?.value) {
         return enumOutput.value_type.value; // Array of {id, label}
       }
       if (enumOutput?.value_type?.type === 'Enum' && enumOutput?.value_type?.value) {
