@@ -538,14 +538,9 @@ async fn get_outdoor_temp() -> Result<f64, ()> {
 /// Get average outdoor temperature for the next 24 hours
 async fn get_avg_next_24h_outdoor_temp() -> Result<f64, ()> {
     let cfg = config::get_config();
-    // Use the cached current temperature and trend to compute the average 24h temp
-    let current = device_requests::weather::get_current_outdoor_temp_cached(cfg.latitude, cfg.longitude)
+    device_requests::weather::get_avg_next_24h_outdoor_temp_cached(cfg.latitude, cfg.longitude)
         .await
-        .map_err(|_| ())?;
-    let trend = device_requests::weather::compute_temperature_trend_cached(cfg.latitude, cfg.longitude)
-        .await
-        .map_err(|_| ())?;
-    Ok(current + trend)
+        .map_err(|_| ())
 }
 
 /// Get minutes since the last AC command for a specific device

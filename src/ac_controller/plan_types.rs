@@ -391,25 +391,13 @@ async fn get_current_outdoor_temp() -> f64 {
     }
 }
 
-/// Get average outdoor temperature for next 24 hours
-/// Note: This uses the non-cached version as trend needs both current and forecast,
-/// and compute_temperature_trend_cached already handles caching with stale fallback
+/// Get average outdoor temperature for next 24 hours with caching
 async fn get_avg_next_24h_outdoor_temp() -> f64 {
     let cfg = config::get_config();
-    // Use current temp from cache since we just fetched it
-    match device_requests::weather::get_current_outdoor_temp_cached(cfg.latitude, cfg.longitude).await {
-        Ok(current) => {
-            // Try to get the trend (which is cached with stale fallback)
-            match device_requests::weather::compute_temperature_trend_cached(cfg.latitude, cfg.longitude).await {
-                Ok(trend) => current + trend,
-                Err(e) => {
-                    log::error!("Failed to get temperature trend: {}. Using current as forecast.", e);
-                    current // Use current temp as forecast if trend unavailable
-                }
-            }
-        }
+    match device_requests::weather::get_avg_next_24h_outdoor_temp_cached(cfg.latitude, cfg.longitude).await {
+        Ok(avg) => avg,
         Err(e) => {
-            log::error!("Failed to get outdoor temperature for forecast: {}. Using default.", e);
+            log::error!("Failed to get 24h average outdoor temperature: {}. Using default.", e);
             20.0 // Default to 20°C on error (only if no stale cache exists)
         }
     }

@@ -134,6 +134,7 @@ pub async fn compute_temperature_trend(latitude: f64, longitude: f64) -> Result<
 // 14 minutes ensures we don't query more than once per loop cycle (5 minute intervals)
 static WEATHER_TEMP_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
 static WEATHER_TREND_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
+static WEATHER_AVG_24H_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
 
 fn get_weather_temp_cache() -> &'static DataCache<f64> {
     WEATHER_TEMP_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
@@ -141,6 +142,10 @@ fn get_weather_temp_cache() -> &'static DataCache<f64> {
 
 fn get_weather_trend_cache() -> &'static DataCache<f64> {
     WEATHER_TREND_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
+}
+
+fn get_weather_avg_24h_cache() -> &'static DataCache<f64> {
+    WEATHER_AVG_24H_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
 }
 
 /// Get current outdoor temperature with caching (14 minute TTL)
@@ -164,6 +169,18 @@ pub async fn compute_temperature_trend_cached(latitude: f64, longitude: f64) -> 
     
     cache.get_or_fetch_with_stale_fallback(&cache_key, || async {
         compute_temperature_trend(latitude, longitude).await
+    }).await
+}
+
+/// Get average outdoor temperature for next 24 hours with caching (14 minute TTL)
+/// Recommended for dashboard use to reduce API calls
+/// Falls back to stale cache if API request fails
+pub async fn get_avg_next_24h_outdoor_temp_cached(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
+    let cache = get_weather_avg_24h_cache();
+    let cache_key = format!("avg24h_{}_{}", latitude, longitude);
+    
+    cache.get_or_fetch_with_stale_fallback(&cache_key, || async {
+        get_avg_next_24h_outdoor_temp(latitude, longitude).await
     }).await
 }
 
