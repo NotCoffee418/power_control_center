@@ -697,19 +697,30 @@
     return sortedSource.every((val, idx) => val === sortedTarget[idx]);
   }
 
+  // Node types that have bidirectional type constraints between inputs and outputs
+  // These nodes require that all Any-typed pins (both input and output) share the same type
+  const BIDIRECTIONAL_CONSTRAINT_NODES = ['logic_branch'];
+
   /**
    * Get the constrained type for a node's "Any" type inputs based on existing connections.
    * When one input with "Any" type is already connected, other "Any" type inputs on the same
    * node should be constrained to match that type.
    * 
+   * For nodes with bidirectional constraints (like Branch), this also checks outgoing
+   * connections from Any-type outputs to determine the constraint.
+   * 
    * @param nodeId - The node ID to check
    * @param excludeHandle - The handle ID to exclude (the one we're connecting to)
    * @param allowedTypes - Optional array of types that are valid for this constraint (e.g., ['Float', 'Integer'] for numeric nodes)
-   * @returns The constrained type from other connected inputs, or null if no constraint exists
+   * @param checkOutputs - Whether to also check outgoing connections from outputs (default: true for bidirectional constraint nodes like Branch)
+   * @returns The constrained type from other connected inputs/outputs, or null if no constraint exists
    */
-  function getConstrainedTypeFromConnectedInputs(nodeId, excludeHandle, allowedTypes = null) {
+  function getConstrainedTypeFromConnectedInputs(nodeId, excludeHandle, allowedTypes = null, checkOutputs = true) {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return null;
+
+    const nodeType = node.data.definition?.node_type;
+    const hasBidirectionalConstraint = BIDIRECTIONAL_CONSTRAINT_NODES.includes(nodeType);
 
     // Get all inputs for this node that have "Any" type
     const anyTypeInputs = (node.data.definition?.inputs || [])
@@ -731,7 +742,19 @@
             o => o.id === existingEdge.sourceHandle
           );
           if (sourceOutput?.value_type) {
-            const constrainedType = sourceOutput.value_type;
+            let constrainedType = sourceOutput.value_type;
+            
+            // If source is also Any type, need to resolve its constraint
+            if (constrainedType.type === 'Any') {
+              // Try to get the constraint from the source node
+              const sourceConstraint = getConstrainedOutputType(existingEdge.source, existingEdge.sourceHandle);
+              if (sourceConstraint) {
+                constrainedType = sourceConstraint;
+              } else {
+                // Skip this connection if we can't resolve the type
+                continue;
+              }
+            }
             
             // If allowedTypes is specified, verify the constraint is valid
             if (allowedTypes && !allowedTypes.includes(constrainedType.type)) {
@@ -748,14 +771,87 @@
       }
     }
 
-    return null; // No constraint from other inputs
+    // For nodes with bidirectional constraints (like Branch), also check outgoing output connections
+    if (hasBidirectionalConstraint && checkOutputs) {
+      const outputConstraint = getConstrainedTypeFromConnectedOutputs(nodeId);
+      if (outputConstraint) {
+        // If allowedTypes is specified, verify the constraint is valid
+        if (allowedTypes && !allowedTypes.includes(outputConstraint.type)) {
+          console.warn(`Type constraint violation from output: ${outputConstraint.type} is not in allowed types [${allowedTypes.join(', ')}]`);
+          return null;
+        }
+        return outputConstraint;
+      }
+    }
+
+    return null; // No constraint from other inputs or outputs
+  }
+
+  /**
+   * Get the constrained type from connected outputs (outgoing connections from an output pin).
+   * For nodes like Branch where inputs and outputs are all constrained together,
+   * we need to check outgoing connections from the output to determine the constraint.
+   * 
+   * @param nodeId - The node ID to check
+   * @returns The constrained type from outgoing connections, or null if no constraint exists
+   */
+  function getConstrainedTypeFromConnectedOutputs(nodeId) {
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return null;
+
+    // Get all outputs for this node that have "Any" type
+    const anyTypeOutputs = (node.data.definition?.outputs || [])
+      .filter(output => output.value_type?.type === 'Any');
+
+    // Find existing outgoing connections from Any-type outputs on this node
+    for (const output of anyTypeOutputs) {
+      const existingEdge = edges.find(
+        e => e.source === nodeId && e.sourceHandle === output.id
+      );
+
+      if (existingEdge) {
+        // Found an outgoing connection, get the target type
+        const targetNode = nodes.find(n => n.id === existingEdge.target);
+        if (targetNode) {
+          const targetInput = targetNode.data.definition?.inputs?.find(
+            i => i.id === existingEdge.targetHandle
+          );
+          if (targetInput?.value_type) {
+            // If target is also "Any", we need to look at what it's constrained to
+            if (targetInput.value_type.type === 'Any') {
+              // Check if the target node has constraints from its other connections.
+              // Pass checkOutputs=false to prevent infinite recursion. Without this:
+              // getConstrainedTypeFromConnectedOutputs(BranchNode) ->
+              //   getConstrainedTypeFromConnectedInputs(TargetNode, checkOutputs=true) ->
+              //     getConstrainedTypeFromConnectedOutputs(TargetNode) ->
+              //       ... potentially back to BranchNode (infinite loop)
+              const targetConstraint = getConstrainedTypeFromConnectedInputs(
+                existingEdge.target,
+                existingEdge.targetHandle,
+                null,
+                false  // Don't check outputs to avoid infinite recursion
+              );
+              if (targetConstraint) {
+                return targetConstraint;
+              }
+              // We don't recursively check target's outputs - the constraint should come from concrete types
+            } else {
+              // Target has a concrete type
+              return targetInput.value_type;
+            }
+          }
+        }
+      }
+    }
+
+    return null; // No constraint from outgoing connections
   }
 
   /**
    * Get the constrained type for a node's "Any" type output based on connected inputs.
    * For nodes like Branch where the output type depends on the input types,
    * this returns the type that the output should be constrained to.
-   * 
+   *
    * @param nodeId - The node ID to check
    * @param outputHandle - The output handle ID
    * @returns The constrained type from connected inputs, or null if no constraint exists
@@ -766,8 +862,8 @@
 
     const nodeType = node.data.definition?.node_type;
     
-    // Only certain node types have constrained outputs based on inputs
-    if (nodeType !== 'logic_branch') {
+    // Only nodes with bidirectional constraints have constrained outputs based on inputs
+    if (!BIDIRECTIONAL_CONSTRAINT_NODES.includes(nodeType)) {
       return null;
     }
 
@@ -777,9 +873,11 @@
       return null;
     }
 
-    // For Branch node, the output type is constrained by the True or False inputs
-    // Check if either true_value or false_value has a connection
-    return getConstrainedTypeFromConnectedInputs(nodeId, null, null);
+    // For bidirectional constraint nodes (like Branch), the output type is constrained by the inputs.
+    // Pass checkOutputs=false to prevent infinite recursion:
+    // Without this flag, we would have: getConstrainedOutputType -> getConstrainedTypeFromConnectedInputs
+    // -> (if checkOutputs=true) getConstrainedTypeFromConnectedOutputs -> getConstrainedOutputType (infinite loop)
+    return getConstrainedTypeFromConnectedInputs(nodeId, null, null, false);
   }
 
   /**
