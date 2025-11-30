@@ -6,7 +6,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     db,
@@ -142,14 +142,16 @@ fn remove_orphaned_edges(edges: Vec<serde_json::Value>, removed_node_ids: &[Stri
         return edges;
     }
     
+    // Use HashSet for O(1) lookups
+    let removed_set: HashSet<&str> = removed_node_ids.iter().map(|s| s.as_str()).collect();
+    
     edges
         .into_iter()
         .filter(|edge| {
             let source = edge.get("source").and_then(|s| s.as_str()).unwrap_or("");
             let target = edge.get("target").and_then(|t| t.as_str()).unwrap_or("");
             
-            !removed_node_ids.contains(&source.to_string()) && 
-            !removed_node_ids.contains(&target.to_string())
+            !removed_set.contains(source) && !removed_set.contains(target)
         })
         .collect()
 }
