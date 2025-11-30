@@ -280,6 +280,19 @@ async fn get_active_nodeset_id(pool: &sqlx::SqlitePool) -> Result<i64, sqlx::Err
     }
 }
 
+/// Handle reset_active_command flag if set in the execution result
+/// This resets the device state to undefined (as on startup)
+fn handle_reset_active_command_if_needed(device: &AcDevices, result: &ExecutionResult) {
+    if result.reset_active_command {
+        let device_name = device.as_str();
+        log::info!(
+            "Reset Active Command triggered for device '{}'. Resetting state to undefined.",
+            device_name
+        );
+        super::ac_executor::reset_device_state(device);
+    }
+}
+
 /// Convert execution result to actual AC commands
 async fn execute_result_to_commands(device: &AcDevices, result: ExecutionResult) -> NodeExecutionResult {
     let device_name = device.as_str();
@@ -289,6 +302,9 @@ async fn execute_result_to_commands(device: &AcDevices, result: ExecutionResult)
         log::error!("Nodeset execution error for {}: {}", device_name, error);
         return NodeExecutionResult::Error(error);
     }
+
+    // Handle reset_active_command flag - reset the device state to undefined
+    handle_reset_active_command_if_needed(device, &result);
 
     // Handle different terminal types
     match result.terminal_type.as_deref() {
@@ -580,6 +596,9 @@ async fn execute_result_to_commands_forced(device: &AcDevices, result: Execution
         log::error!("Nodeset execution error for {}: {}", device_name, error);
         return NodeExecutionResult::Error(error);
     }
+
+    // Handle reset_active_command flag - reset the device state to undefined
+    handle_reset_active_command_if_needed(device, &result);
 
     // Handle different terminal types
     match result.terminal_type.as_deref() {

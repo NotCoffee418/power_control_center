@@ -13,7 +13,7 @@ pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, 
 pub use primitive_nodes::{FloatNode, IntegerNode, BooleanNode};
 pub use enum_nodes::{DeviceNode, IntensityNode, CauseReasonNode, RequestModeNode, FanSpeedNode};
 pub use sensor_nodes::PirDetectionNode;
-pub use flow_nodes::{StartNode, ExecuteActionNode, DoNothingNode, ActiveCommandNode};
+pub use flow_nodes::{StartNode, ExecuteActionNode, DoNothingNode, ActiveCommandNode, ResetActiveCommandNode};
 pub use execution::{NodesetExecutor, ExecutionInputs, ExecutionResult, ActionResult, DoNothingResult, RuntimeValue, ActiveCommandData, validate_nodeset_for_execution};
 
 /// Get all available node definitions for the frontend
@@ -24,6 +24,7 @@ pub fn get_all_node_definitions() -> Vec<NodeDefinition> {
         ExecuteActionNode::definition(),
         DoNothingNode::definition(),
         ActiveCommandNode::definition(),
+        ResetActiveCommandNode::definition(),
         // Sensor nodes
         PirDetectionNode::definition(),
         // Logic nodes
