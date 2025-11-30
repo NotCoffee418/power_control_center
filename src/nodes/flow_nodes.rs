@@ -263,7 +263,7 @@ impl Node for DoNothingNode {
                     "cause_reason",
                     "Cause Reason",
                     "The reason for not taking action (for debugging and simulation display)",
-                    // Deprecated: These values are replaced with database values at runtime
+                    // Note: Empty enum values - actual options are populated from the database at runtime
                     ValueType::Enum(vec![]),
                     true,
                 ),
