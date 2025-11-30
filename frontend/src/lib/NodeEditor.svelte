@@ -38,7 +38,48 @@
   
   // Simulator drawer state
   let simulatorOpen = $state(false);
-  let nodeIdCounter = 100;
+  
+  // Constants for node spawn positioning
+  const NODE_WIDTH = 220; // Approximate width of a node
+  const NODE_SPAWN_MARGIN = 50; // Margin between spawned nodes
+  
+  // Generate a unique node ID using timestamp and random suffix
+  function generateUniqueNodeId(nodeType) {
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    return `${nodeType}-${timestamp}-${randomSuffix}`;
+  }
+  
+  // Calculate spawn position for new nodes
+  // Spawns to the right of the rightmost existing node
+  function calculateSpawnPosition() {
+    if (nodes.length === 0) {
+      // No existing nodes, spawn at a reasonable default position
+      return { x: 250, y: 200 };
+    }
+    
+    // Find the highest X position among existing nodes
+    let maxX = 0;
+    let avgY = 0;
+    
+    for (const node of nodes) {
+      const nodeX = node.position?.x ?? 0;
+      const nodeY = node.position?.y ?? 0;
+      if (nodeX > maxX) {
+        maxX = nodeX;
+      }
+      avgY += nodeY;
+    }
+    
+    // Calculate average Y position for consistent vertical placement
+    avgY = avgY / nodes.length;
+    
+    // Spawn to the right of the rightmost node with margin
+    return {
+      x: maxX + NODE_WIDTH + NODE_SPAWN_MARGIN,
+      y: avgY
+    };
+  }
   
   // Context menu state
   let contextMenu = $state({ visible: false, x: 0, y: 0, nodeId: null, edgeId: null, type: null });
@@ -452,14 +493,13 @@
 
   // Add new node from definition
   function addNodeFromDefinition(definition) {
-    nodeIdCounter++;
+    const uniqueId = generateUniqueNodeId(definition.node_type);
+    const spawnPosition = calculateSpawnPosition();
+    
     const newNode = createNodeFromDefinition(
       definition,
-      `${definition.node_type}-${nodeIdCounter}`,
-      { 
-        x: Math.random() * 400 + 200, 
-        y: Math.random() * 300 + 200 
-      },
+      uniqueId,
+      spawnPosition,
       false
     );
     
