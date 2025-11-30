@@ -8,6 +8,7 @@
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import CustomNode from './CustomNode.svelte';
+  import CommentAreaNode from './CommentAreaNode.svelte';
   import ReconnectableEdge from './ReconnectableEdge.svelte';
   import SimulatorDrawer from './SimulatorDrawer.svelte';
   import CauseReasonsPanel from './CauseReasonsPanel.svelte';
@@ -46,6 +47,10 @@
 
   // Helper functions
   function getNodeDisplayName(node) {
+    // Handle comment area nodes
+    if (node?.type === 'commentArea') {
+      return node?.data?.label || 'Comment Area';
+    }
     return node?.data?.definition?.name || node?.id || 'Unknown';
   }
 
@@ -55,7 +60,8 @@
 
   // Custom node types
   const nodeTypes = {
-    custom: CustomNode
+    custom: CustomNode,
+    commentArea: CommentAreaNode
   };
 
   // Custom edge types with reconnect anchors
@@ -461,6 +467,31 @@
       },
       false
     );
+    
+    nodes = [...nodes, newNode];
+    hasUnsavedChanges = true;
+  }
+
+  // Add a new comment area node
+  function addCommentArea() {
+    nodeIdCounter++;
+    const newNode = {
+      id: `comment-area-${nodeIdCounter}`,
+      type: 'commentArea',
+      position: { 
+        x: Math.random() * 400 + 100, 
+        y: Math.random() * 300 + 100 
+      },
+      data: {
+        label: 'Comment',
+        description: '',
+        color: '#4a5568'
+      },
+      // Make the comment area expandable with default size
+      style: 'width: 300px; height: 200px;',
+      // Ensure comment areas render behind regular nodes
+      zIndex: -1
+    };
     
     nodes = [...nodes, newNode];
     hasUnsavedChanges = true;
@@ -1252,6 +1283,19 @@
   <div class="main-content">
     <div class="sidebar">
       <h3>Available Nodes</h3>
+      
+      <!-- Comment Area section -->
+      <div class="utility-section">
+        <button 
+          onclick={addCommentArea}
+          class="comment-area-btn"
+          title="Add a comment area to group and annotate nodes"
+        >
+          <span class="comment-area-icon">📝</span>
+          <span class="comment-area-text">Add Comment Area</span>
+        </button>
+      </div>
+      
       <input 
         type="text" 
         placeholder="Search nodes..." 
