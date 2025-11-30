@@ -71,6 +71,12 @@ impl Node for StartNode {
                     "Temperature trend in Celsius (positive = getting warmer, negative = getting colder)",
                     ValueType::Float,
                 ),
+                NodeOutput::new(
+                    "active_command",
+                    "Active Command",
+                    "The active command struct containing the last command sent to the device",
+                    ValueType::Object,
+                ),
             ],
         )
     }
@@ -137,6 +143,80 @@ impl Node for ExecuteActionNode {
                 ),
             ],
             vec![], // No outputs - this is a terminal node
+        )
+    }
+}
+
+/// Active Command Node - Provides information about the previously sent command to a device
+/// This node outputs the properties of the last command sent to the AC device.
+/// The active command may not exist if no command has been sent yet, so the "Is Defined" 
+/// output must be checked before using other output values.
+pub struct ActiveCommandNode;
+
+impl Node for ActiveCommandNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "flow_active_command",
+            "Active Command",
+            "Provides the properties of the last command sent to the AC device. The 'Is Defined' output must be handled to check if a command has been previously sent.",
+            "System",
+            vec![
+                NodeInput::new(
+                    "active_command",
+                    "Active Command",
+                    "The active command struct from the Start node",
+                    ValueType::Object,
+                    true,
+                ),
+            ],
+            vec![
+                NodeOutput::new(
+                    "is_defined",
+                    "Is Defined",
+                    "True if an active command exists (a command was previously sent to this device)",
+                    ValueType::Boolean,
+                ),
+                NodeOutput::new(
+                    "is_on",
+                    "Is On",
+                    "True if the AC is currently on (based on last command)",
+                    ValueType::Boolean,
+                ),
+                NodeOutput::new(
+                    "temperature",
+                    "Temperature",
+                    "Target temperature in Celsius from the last command",
+                    ValueType::Float,
+                ),
+                NodeOutput::new(
+                    "mode",
+                    "Mode",
+                    "AC operating mode from the last command: Heat, Cool, or Off",
+                    ValueType::Enum(vec![
+                        "Heat".to_string(),
+                        "Cool".to_string(),
+                        "Off".to_string(),
+                    ]),
+                ),
+                NodeOutput::new(
+                    "fan_speed",
+                    "Fan Speed",
+                    "Fan speed setting from the last command (0-5, where 0 is auto)",
+                    ValueType::Integer,
+                ),
+                NodeOutput::new(
+                    "swing",
+                    "Swing",
+                    "Swing setting from the last command (0 = off, 1 = on)",
+                    ValueType::Integer,
+                ),
+                NodeOutput::new(
+                    "is_powerful",
+                    "Is Powerful",
+                    "True if powerful/turbo mode was enabled in the last command",
+                    ValueType::Boolean,
+                ),
+            ],
         )
     }
 }
@@ -303,6 +383,7 @@ mod tests {
             StartNode::definition(),
             ExecuteActionNode::definition(),
             DoNothingNode::definition(),
+            ActiveCommandNode::definition(),
         ];
         
         for def in definitions {
@@ -328,5 +409,69 @@ mod tests {
         
         let do_nothing_def = DoNothingNode::definition();
         assert_eq!(do_nothing_def.outputs.len(), 0, "Do Nothing should have no outputs (terminal)");
+    }
+
+    #[test]
+    fn test_active_command_node_definition() {
+        let def = ActiveCommandNode::definition();
+        
+        assert_eq!(def.node_type, "flow_active_command");
+        assert_eq!(def.name, "Active Command");
+        assert_eq!(def.category, "System");
+        assert_eq!(def.inputs.len(), 1); // active_command input
+        assert_eq!(def.outputs.len(), 7); // is_defined, is_on, temperature, mode, fan_speed, swing, is_powerful
+        
+        // Verify input
+        let input = &def.inputs[0];
+        assert_eq!(input.id, "active_command");
+        assert_eq!(input.value_type, ValueType::Object);
+        assert!(input.required);
+        
+        // Verify is_defined output
+        let is_defined_output = def.outputs.iter().find(|o| o.id == "is_defined").unwrap();
+        assert_eq!(is_defined_output.value_type, ValueType::Boolean);
+        
+        // Verify is_on output
+        let is_on_output = def.outputs.iter().find(|o| o.id == "is_on").unwrap();
+        assert_eq!(is_on_output.value_type, ValueType::Boolean);
+        
+        // Verify temperature output
+        let temp_output = def.outputs.iter().find(|o| o.id == "temperature").unwrap();
+        assert_eq!(temp_output.value_type, ValueType::Float);
+        
+        // Verify mode output
+        let mode_output = def.outputs.iter().find(|o| o.id == "mode").unwrap();
+        match &mode_output.value_type {
+            ValueType::Enum(values) => {
+                assert_eq!(values.len(), 3);
+                assert!(values.contains(&"Heat".to_string()));
+                assert!(values.contains(&"Cool".to_string()));
+                assert!(values.contains(&"Off".to_string()));
+            }
+            _ => panic!("Expected Enum type for mode output"),
+        }
+        
+        // Verify fan_speed output
+        let fan_speed_output = def.outputs.iter().find(|o| o.id == "fan_speed").unwrap();
+        assert_eq!(fan_speed_output.value_type, ValueType::Integer);
+        
+        // Verify swing output
+        let swing_output = def.outputs.iter().find(|o| o.id == "swing").unwrap();
+        assert_eq!(swing_output.value_type, ValueType::Integer);
+        
+        // Verify is_powerful output
+        let is_powerful_output = def.outputs.iter().find(|o| o.id == "is_powerful").unwrap();
+        assert_eq!(is_powerful_output.value_type, ValueType::Boolean);
+    }
+
+    #[test]
+    fn test_active_command_node_serializable() {
+        let def = ActiveCommandNode::definition();
+        let json = serde_json::to_string(&def).unwrap();
+        let deserialized: NodeDefinition = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(def.node_type, deserialized.node_type);
+        assert_eq!(def.inputs.len(), deserialized.inputs.len());
+        assert_eq!(def.outputs.len(), deserialized.outputs.len());
     }
 }

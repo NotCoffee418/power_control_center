@@ -11,6 +11,7 @@ use std::collections::HashMap;
 pub const NODE_TYPE_START: &str = "flow_start";
 pub const NODE_TYPE_EXECUTE_ACTION: &str = "flow_execute_action";
 pub const NODE_TYPE_DO_NOTHING: &str = "flow_do_nothing";
+pub const NODE_TYPE_ACTIVE_COMMAND: &str = "flow_active_command";
 pub const NODE_TYPE_LOGIC_AND: &str = "logic_and";
 pub const NODE_TYPE_LOGIC_OR: &str = "logic_or";
 pub const NODE_TYPE_LOGIC_NAND: &str = "logic_nand";
@@ -41,6 +42,41 @@ pub enum RuntimeValue {
     Integer(i64),
     Boolean(bool),
     String(String),
+    /// Represents an Active Command object (the last command sent to a device)
+    ActiveCommand(ActiveCommandData),
+}
+
+/// Data for the Active Command - represents the last command sent to a device
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ActiveCommandData {
+    /// Whether an active command exists (a command was previously sent)
+    pub is_defined: bool,
+    /// Whether the AC is currently on (based on last command)
+    pub is_on: bool,
+    /// Target temperature in Celsius from the last command
+    pub temperature: f64,
+    /// AC mode: 1 = Heat, 4 = Cool, 0 = Off
+    pub mode: i32,
+    /// Fan speed setting (0-5, where 0 is auto)
+    pub fan_speed: i32,
+    /// Swing setting (0 = off, 1 = on)
+    pub swing: i32,
+    /// Whether powerful/turbo mode was enabled
+    pub is_powerful: bool,
+}
+
+impl Default for ActiveCommandData {
+    fn default() -> Self {
+        Self {
+            is_defined: false,
+            is_on: false,
+            temperature: 0.0,
+            mode: 0,
+            fan_speed: 0,
+            swing: 0,
+            is_powerful: false,
+        }
+    }
 }
 
 impl RuntimeValue {
