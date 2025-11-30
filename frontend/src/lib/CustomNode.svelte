@@ -410,7 +410,7 @@
     <div class="comment-section">
       <textarea
         bind:this={commentTextarea}
-        class="comment-input"
+        class="comment-input nodrag"
         value={comment}
         oninput={handleCommentChange}
         placeholder="Add comment..."
