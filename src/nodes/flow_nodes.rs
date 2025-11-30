@@ -235,8 +235,10 @@ impl Node for ActiveCommandNode {
 }
 
 /// Do Nothing Node - Terminates the flow without executing any action
-/// Takes any input and produces no output, similar to RequestMode::NoChange
+/// Takes device and cause_reason inputs for debugging and simulation purposes
 /// Use this when the evaluation determines no action should be taken
+/// NOTE: The device and cause_reason are not stored in the database (unlike Execute Action)
+/// but they are useful for debugging simulations and understanding why no action was taken.
 pub struct DoNothingNode;
 
 impl Node for DoNothingNode {
@@ -244,14 +246,25 @@ impl Node for DoNothingNode {
         NodeDefinition::new(
             "flow_do_nothing",
             "Do Nothing",
-            "Terminates the evaluation flow without executing any AC action. Use this when conditions determine that no change to the AC state is needed.",
+            "Terminates the evaluation flow without executing any AC action. Use this when conditions determine that no change to the AC state is needed. The device and cause reason inputs help debug simulations.",
             "System",
             vec![
                 NodeInput::new(
-                    "input",
-                    "Input",
-                    "Any value that triggers this node. The value itself is discarded.",
-                    ValueType::Any,
+                    "device",
+                    "Device",
+                    "The AC device being evaluated (for debugging/simulation purposes)",
+                    ValueType::Enum(vec![
+                        "LivingRoom".to_string(),
+                        "Veranda".to_string(),
+                    ]),
+                    true,
+                ),
+                NodeInput::new(
+                    "cause_reason",
+                    "Cause Reason",
+                    "The reason for not taking action (for debugging and simulation display)",
+                    // Deprecated: These values are replaced with database values at runtime
+                    ValueType::Enum(vec![]),
                     true,
                 ),
             ],
@@ -395,14 +408,29 @@ mod tests {
         assert_eq!(def.node_type, "flow_do_nothing");
         assert_eq!(def.name, "Do Nothing");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 1); // Single Any input
+        assert_eq!(def.inputs.len(), 2); // device and cause_reason inputs
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
         
-        // Verify input is Any type
-        let input = &def.inputs[0];
-        assert_eq!(input.id, "input");
-        assert_eq!(input.value_type, ValueType::Any);
-        assert!(input.required);
+        // Verify device input
+        let device_input = def.inputs.iter().find(|i| i.id == "device").unwrap();
+        match &device_input.value_type {
+            ValueType::Enum(values) => {
+                assert!(values.contains(&"LivingRoom".to_string()));
+                assert!(values.contains(&"Veranda".to_string()));
+            }
+            _ => panic!("Expected Enum type for device input"),
+        }
+        assert!(device_input.required);
+        
+        // Verify cause_reason input (actual values loaded from database at runtime)
+        let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
+        match &cause_input.value_type {
+            ValueType::Enum(values) => {
+                assert_eq!(values.len(), 0, "Cause reason values should be empty (loaded from database at runtime)");
+            }
+            _ => panic!("Expected Enum type for cause_reason input"),
+        }
+        assert!(cause_input.required);
     }
 
     #[test]

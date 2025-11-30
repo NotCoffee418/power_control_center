@@ -14,7 +14,7 @@ pub use primitive_nodes::{FloatNode, IntegerNode, BooleanNode};
 pub use enum_nodes::{DeviceNode, IntensityNode, CauseReasonNode, RequestModeNode, FanSpeedNode};
 pub use sensor_nodes::PirDetectionNode;
 pub use flow_nodes::{StartNode, ExecuteActionNode, DoNothingNode, ActiveCommandNode};
-pub use execution::{NodesetExecutor, ExecutionInputs, ExecutionResult, ActionResult, RuntimeValue, ActiveCommandData, validate_nodeset_for_execution};
+pub use execution::{NodesetExecutor, ExecutionInputs, ExecutionResult, ActionResult, DoNothingResult, RuntimeValue, ActiveCommandData, validate_nodeset_for_execution};
 
 /// Get all available node definitions for the frontend
 pub fn get_all_node_definitions() -> Vec<NodeDefinition> {

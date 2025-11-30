@@ -392,13 +392,22 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     // Check terminal type and build appropriate response
     match execution_result.terminal_type.as_deref() {
         Some("Do Nothing") => {
+            // Get cause_reason from do_nothing result if available
+            let (cause_label, cause_description) = if let Some(do_nothing) = &execution_result.do_nothing {
+                let label = get_cause_reason_label(&do_nothing.cause_reason).await;
+                let description = format!("Do Nothing node reached for device '{}' - no AC action will be taken.", do_nothing.device);
+                (label, description)
+            } else {
+                ("Node Workflow".to_string(), "Do Nothing node reached - no AC action will be taken.".to_string())
+            };
+            
             let result = SimulatorResult {
                 success: true,
                 plan: Some(SimulatorPlanResult {
                     mode: "NoChange".to_string(),
                     intensity: "Low".to_string(),
-                    cause_label: "Node Workflow".to_string(),
-                    cause_description: "Do Nothing node reached - no AC action will be taken.".to_string(),
+                    cause_label,
+                    cause_description,
                 }),
                 ac_state: None,
                 error: None,
