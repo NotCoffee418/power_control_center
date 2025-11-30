@@ -31,6 +31,9 @@ pub const NODE_TYPE_PIR_DETECTION: &str = "pir_detection";
 /// Sentinel value indicating no PIR detection has ever occurred
 pub const PIR_NEVER_DETECTED: i64 = -1;
 
+/// Tolerance for floating-point comparisons (suitable for temperature values in AC control)
+const FLOAT_TOLERANCE: f64 = 0.0001;
+
 /// A runtime value that can flow through nodes
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RuntimeValue {
@@ -628,8 +631,6 @@ impl NodesetExecutor {
                 let b = self.get_input_value(&node.id, "input_b")?;
                 
                 // Compare values - both must be same type and equal
-                // Use a practical tolerance for floating-point comparisons (suitable for temperature values)
-                const FLOAT_TOLERANCE: f64 = 0.0001;
                 let is_equal = match (&a, &b) {
                     (RuntimeValue::Float(av), RuntimeValue::Float(bv)) => (av - bv).abs() < FLOAT_TOLERANCE,
                     (RuntimeValue::Integer(av), RuntimeValue::Integer(bv)) => av == bv,
@@ -664,8 +665,6 @@ impl NodesetExecutor {
                     .and_then(|v| v.as_str())
                     .unwrap_or(">");
                 
-                // Use a practical tolerance for floating-point comparisons (suitable for temperature values)
-                const FLOAT_TOLERANCE: f64 = 0.0001;
                 let result = match operator {
                     ">" => a_num > b_num,
                     ">=" => a_num >= b_num,
