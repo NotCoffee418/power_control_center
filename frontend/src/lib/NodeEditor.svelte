@@ -17,6 +17,18 @@
   const NEW_NODESET_ID = -1;
   const DEFAULT_NODESET_ID = 0;
 
+  // Default dimensions for nodes and comment areas
+  const DEFAULT_NODE_WIDTH = 100;
+  const DEFAULT_NODE_HEIGHT = 50;
+  const DEFAULT_COMMENT_AREA_WIDTH = 300;
+  const DEFAULT_COMMENT_AREA_HEIGHT = 200;
+  const NEW_NODE_SPAWN_X_RANGE = 400;
+  const NEW_NODE_SPAWN_Y_RANGE = 300;
+  const NEW_NODE_SPAWN_X_OFFSET = 200;
+  const NEW_NODE_SPAWN_Y_OFFSET = 200;
+  const NEW_COMMENT_SPAWN_X_OFFSET = 100;
+  const NEW_COMMENT_SPAWN_Y_OFFSET = 100;
+
   // Node and edge state - using $state.raw for proper SvelteFlow integration
   // $state.raw prevents deep reactivity, allowing SvelteFlow to manage internal state
   let nodes = $state.raw([]);
@@ -462,8 +474,8 @@
       definition,
       `${definition.node_type}-${nodeIdCounter}`,
       { 
-        x: Math.random() * 400 + 200, 
-        y: Math.random() * 300 + 200 
+        x: Math.random() * NEW_NODE_SPAWN_X_RANGE + NEW_NODE_SPAWN_X_OFFSET, 
+        y: Math.random() * NEW_NODE_SPAWN_Y_RANGE + NEW_NODE_SPAWN_Y_OFFSET 
       },
       false
     );
@@ -479,8 +491,8 @@
       id: `comment-area-${nodeIdCounter}`,
       type: 'commentArea',
       position: { 
-        x: Math.random() * 400 + 100, 
-        y: Math.random() * 300 + 100 
+        x: Math.random() * NEW_NODE_SPAWN_X_RANGE + NEW_COMMENT_SPAWN_X_OFFSET, 
+        y: Math.random() * NEW_NODE_SPAWN_Y_RANGE + NEW_COMMENT_SPAWN_Y_OFFSET 
       },
       data: {
         label: 'Comment',
@@ -488,7 +500,7 @@
         color: '#4a5568'
       },
       // Make the comment area expandable with default size
-      style: 'width: 300px; height: 200px;',
+      style: `width: ${DEFAULT_COMMENT_AREA_WIDTH}px; height: ${DEFAULT_COMMENT_AREA_HEIGHT}px;`,
       // Ensure comment areas render behind regular nodes
       zIndex: -1
     };
@@ -674,12 +686,12 @@
     const commentX = commentArea.position?.x || 0;
     const commentY = commentArea.position?.y || 0;
     // Parse dimensions from style or use defaults
-    const commentWidth = commentArea.measured?.width || commentArea.width || 300;
-    const commentHeight = commentArea.measured?.height || commentArea.height || 200;
+    const commentWidth = commentArea.measured?.width || commentArea.width || DEFAULT_COMMENT_AREA_WIDTH;
+    const commentHeight = commentArea.measured?.height || commentArea.height || DEFAULT_COMMENT_AREA_HEIGHT;
     
     // Check if the node's center is within the comment area bounds
-    const nodeCenterX = nodePosition.x + (nodeWidth || 100) / 2;
-    const nodeCenterY = nodePosition.y + (nodeHeight || 50) / 2;
+    const nodeCenterX = nodePosition.x + (nodeWidth || DEFAULT_NODE_WIDTH) / 2;
+    const nodeCenterY = nodePosition.y + (nodeHeight || DEFAULT_NODE_HEIGHT) / 2;
     
     return nodeCenterX >= commentX && 
            nodeCenterX <= commentX + commentWidth &&
@@ -691,8 +703,8 @@
   function findContainingCommentArea(node) {
     if (node.type === 'commentArea') return null; // Comment areas can't be inside other comment areas
     
-    const nodeWidth = node.measured?.width || node.width || 100;
-    const nodeHeight = node.measured?.height || node.height || 50;
+    const nodeWidth = node.measured?.width || node.width || DEFAULT_NODE_WIDTH;
+    const nodeHeight = node.measured?.height || node.height || DEFAULT_NODE_HEIGHT;
     
     const commentAreas = nodes.filter(n => n.type === 'commentArea');
     
