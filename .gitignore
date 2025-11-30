@@ -30,3 +30,4 @@ target
 config.json
 tmp-screenshots/
 *.backup
+test.db
