@@ -1161,7 +1161,7 @@ mod tests {
                 }
             }),
             create_enum_node("mode-1", "request_mode", "Heat"),
-            create_enum_node("fan-speed-1", "fan_speed", "Level3"),
+            create_enum_node("fan-speed-1", "fan_speed", "Medium"),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_boolean_node("powerful", false),
             create_execute_action_node(),
@@ -1213,7 +1213,7 @@ mod tests {
                 }
             }),
             create_enum_node("mode-1", "request_mode", "Cool"),
-            create_enum_node("fan-speed-1", "fan_speed", "Level5"),
+            create_enum_node("fan-speed-1", "fan_speed", "High"),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_boolean_node("powerful", false),
             create_execute_action_node(),

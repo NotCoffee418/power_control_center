@@ -112,7 +112,7 @@ impl Node for RequestModeNode {
 }
 
 /// FanSpeed node - represents a fan speed selection for AC operation
-/// This node provides a dropdown for selecting fan speed (Auto, Level1-5)
+/// This node provides a dropdown for selecting fan speed (Auto, High, Medium, Low, Quiet)
 pub struct FanSpeedNode;
 
 impl Node for FanSpeedNode {
@@ -130,11 +130,10 @@ impl Node for FanSpeedNode {
                     "The selected fan speed",
                     ValueType::Enum(vec![
                         "Auto".to_string(),
-                        "Level1".to_string(),
-                        "Level2".to_string(),
-                        "Level3".to_string(),
-                        "Level4".to_string(),
-                        "Level5".to_string(),
+                        "High".to_string(),
+                        "Medium".to_string(),
+                        "Low".to_string(),
+                        "Quiet".to_string(),
                     ]),
                 ),
             ],
@@ -258,16 +257,15 @@ mod tests {
         assert_eq!(def.inputs.len(), 0); // Source node has no inputs
         assert_eq!(def.outputs.len(), 1); // One output: fan_speed
         
-        // Verify output is an enum with fan speed values
+        // Verify output is an enum with fan speed values (0: Auto, 1: High, 2: Medium, 3: Low, 4: Quiet)
         match &def.outputs[0].value_type {
             ValueType::Enum(values) => {
-                assert_eq!(values.len(), 6);
+                assert_eq!(values.len(), 5);
                 assert!(values.contains(&"Auto".to_string()));
-                assert!(values.contains(&"Level1".to_string()));
-                assert!(values.contains(&"Level2".to_string()));
-                assert!(values.contains(&"Level3".to_string()));
-                assert!(values.contains(&"Level4".to_string()));
-                assert!(values.contains(&"Level5".to_string()));
+                assert!(values.contains(&"High".to_string()));
+                assert!(values.contains(&"Medium".to_string()));
+                assert!(values.contains(&"Low".to_string()));
+                assert!(values.contains(&"Quiet".to_string()));
             }
             _ => panic!("Expected Enum type for fan_speed output"),
         }

@@ -123,14 +123,13 @@ impl Node for ExecuteActionNode {
                 NodeInput::new(
                     "fan_speed",
                     "Fan Speed",
-                    "Fan speed setting: Auto (0) or Level 1-5",
+                    "Fan speed setting: 0=Auto, 1=High, 2=Medium, 3=Low, 4=Quiet",
                     ValueType::Enum(vec![
                         "Auto".to_string(),
-                        "Level1".to_string(),
-                        "Level2".to_string(),
-                        "Level3".to_string(),
-                        "Level4".to_string(),
-                        "Level5".to_string(),
+                        "High".to_string(),
+                        "Medium".to_string(),
+                        "Low".to_string(),
+                        "Quiet".to_string(),
                     ]),
                     true,
                 ),
@@ -278,17 +277,16 @@ mod tests {
         }
         assert!(mode_input.required);
         
-        // Verify fan_speed input
+        // Verify fan_speed input (0=Auto, 1=High, 2=Medium, 3=Low, 4=Quiet)
         let fan_speed_input = def.inputs.iter().find(|i| i.id == "fan_speed").unwrap();
         match &fan_speed_input.value_type {
             ValueType::Enum(values) => {
-                assert_eq!(values.len(), 6);
+                assert_eq!(values.len(), 5);
                 assert!(values.contains(&"Auto".to_string()));
-                assert!(values.contains(&"Level1".to_string()));
-                assert!(values.contains(&"Level2".to_string()));
-                assert!(values.contains(&"Level3".to_string()));
-                assert!(values.contains(&"Level4".to_string()));
-                assert!(values.contains(&"Level5".to_string()));
+                assert!(values.contains(&"High".to_string()));
+                assert!(values.contains(&"Medium".to_string()));
+                assert!(values.contains(&"Low".to_string()));
+                assert!(values.contains(&"Quiet".to_string()));
             }
             _ => panic!("Expected Enum type for fan_speed input"),
         }

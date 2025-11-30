@@ -651,14 +651,13 @@ fn action_to_simulator_state(action: &crate::nodes::ActionResult) -> SimulatorAc
     
     let is_on = action.mode != "Off";
     
-    // Convert fan_speed string to i32 (Auto=0, Level1=1, etc.)
+    // Convert fan_speed string to i32 (0=Auto, 1=High, 2=Medium, 3=Low, 4=Quiet)
     let fan_speed = match action.fan_speed.as_str() {
         "Auto" => 0,
-        "Level1" => 1,
-        "Level2" => 2,
-        "Level3" => 3,
-        "Level4" => 4,
-        "Level5" => 5,
+        "High" => 1,
+        "Medium" => 2,
+        "Low" => 3,
+        "Quiet" => 4,
         _ => 0, // Default to Auto if unknown
     };
     
