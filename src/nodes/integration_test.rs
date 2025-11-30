@@ -8,18 +8,13 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 20 node definitions:
-        // System: 3 (flow_start, flow_execute_action, flow_do_nothing)
-        // Sensors: 1 (pir_detection)
-        // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
-        // Primitives: 3 (float, integer, boolean)
-        // Enums: 5 (device, intensity, cause_reason, request_mode, fan_speed)
+        // Verify we have 21 node definitions:
         // System: 4 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command)
         // Sensors: 1 (pir_detection)
         // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
         // Primitives: 3 (float, integer, boolean)
-        // Enums: 4 (device, intensity, cause_reason, request_mode)
-        assert_eq!(definitions.len(), 20);
+        // Enums: 5 (device, intensity, cause_reason, request_mode, fan_speed)
+        assert_eq!(definitions.len(), 21);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
@@ -222,9 +217,14 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let start_node = definitions.iter().find(|d| d.node_type == "flow_start").unwrap();
         
-        assert_eq!(start_node.inputs.len(), 0, "Start node should have no inputs");
+        assert_eq!(start_node.inputs.len(), 1, "Start node should have 1 input (evaluate_every_minutes)");
         assert_eq!(start_node.outputs.len(), 10, "Start node should have 10 outputs");
         assert_eq!(start_node.category, "System");
+        
+        // Verify evaluate_every_minutes input
+        let eval_input = start_node.inputs.iter().find(|i| i.id == "evaluate_every_minutes").unwrap();
+        assert_eq!(eval_input.value_type, nodes::ValueType::Integer);
+        assert!(eval_input.required);
         
         // Verify device output
         let device_output = start_node.outputs.iter().find(|o| o.id == "device").unwrap();

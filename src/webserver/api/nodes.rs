@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     db,
-    nodes,
+    nodes::{self, flow_nodes::MAX_EVALUATE_EVERY_MINUTES},
     types::ApiResponse,
 };
 
@@ -33,11 +33,13 @@ pub struct NodesetValidationResult {
     pub errors: Vec<String>,
 }
 
-/// Validates that a nodeset has exactly one Start node and exactly one Execute Action node
+/// Validates that a nodeset has exactly one Start node and exactly one Execute Action node.
+/// Also validates the evaluate_every_minutes value on the Start node.
 /// Returns a validation result with counts and any errors
 pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult {
     let mut start_count = 0;
     let mut execute_count = 0;
+    let mut errors = Vec::new();
 
     for node in nodes {
         // Node type is stored in data.definition.node_type
@@ -48,14 +50,32 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
             .and_then(|nt| nt.as_str())
         {
             match node_type {
-                NODE_TYPE_START => start_count += 1,
+                NODE_TYPE_START => {
+                    start_count += 1;
+                    // Validate evaluate_every_minutes value
+                    if let Some(data) = node.get("data") {
+                        if let Some(value) = data.get("primitiveValue") {
+                            if let Some(minutes) = value.as_i64() {
+                                if minutes < 1 {
+                                    errors.push(format!(
+                                        "Evaluate Every Minutes must be at least 1 (found {})",
+                                        minutes
+                                    ));
+                                } else if minutes > MAX_EVALUATE_EVERY_MINUTES as i64 {
+                                    errors.push(format!(
+                                        "Evaluate Every Minutes cannot exceed {} (24 hours), found {}",
+                                        MAX_EVALUATE_EVERY_MINUTES, minutes
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
                 NODE_TYPE_EXECUTE_ACTION => execute_count += 1,
                 _ => {}
             }
         }
     }
-
-    let mut errors = Vec::new();
     
     if start_count == 0 {
         errors.push("Profile must have exactly one Start node (found 0)".to_string());
@@ -70,7 +90,7 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
     }
 
     NodesetValidationResult {
-        is_valid: start_count == 1 && execute_count == 1,
+        is_valid: start_count == 1 && execute_count == 1 && errors.is_empty(),
         start_count,
         execute_count,
         errors,
@@ -1206,5 +1226,90 @@ mod tests {
         // Dynamic inputs should be preserved
         let dynamic_inputs = data.get("dynamicInputs").and_then(|i| i.as_array()).expect("Should have dynamicInputs");
         assert_eq!(dynamic_inputs.len(), 4);
+    }
+
+    // -------------------------------------------------------------------------
+    // Tests for evaluate_every_minutes validation
+    // -------------------------------------------------------------------------
+
+    fn create_start_node_with_evaluate_minutes(minutes: i64) -> serde_json::Value {
+        json!({
+            "id": "flow_start-1",
+            "type": "custom",
+            "position": { "x": 0, "y": 0 },
+            "data": {
+                "label": "Start",
+                "primitiveValue": minutes,
+                "definition": {
+                    "node_type": "flow_start",
+                    "name": "Start",
+                    "description": "Test node",
+                    "category": "System",
+                    "inputs": [],
+                    "outputs": [],
+                    "color": "#000000"
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_validate_nodeset_evaluate_minutes_valid() {
+        let nodes = vec![
+            create_start_node_with_evaluate_minutes(5),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_evaluate_minutes_at_max() {
+        let nodes = vec![
+            create_start_node_with_evaluate_minutes(MAX_EVALUATE_EVERY_MINUTES as i64),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_evaluate_minutes_exceeds_max() {
+        let nodes = vec![
+            create_start_node_with_evaluate_minutes(1441), // 1 more than max
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|e| e.contains("cannot exceed 1440")));
+    }
+
+    #[test]
+    fn test_validate_nodeset_evaluate_minutes_zero() {
+        let nodes = vec![
+            create_start_node_with_evaluate_minutes(0),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|e| e.contains("must be at least 1")));
+    }
+
+    #[test]
+    fn test_validate_nodeset_evaluate_minutes_negative() {
+        let nodes = vec![
+            create_start_node_with_evaluate_minutes(-5),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|e| e.contains("must be at least 1")));
     }
 }
