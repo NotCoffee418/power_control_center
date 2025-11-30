@@ -30,6 +30,11 @@ pub enum ValueType {
     /// Execution flow - controls the order of operations between nodes
     /// This is a special type that represents control flow rather than data
     Execution,
+    /// Cause reason type - a special type for cause reason IDs
+    /// This type is compatible only with itself (CauseReason → CauseReason)
+    /// Contains optional dropdown options that are populated from the database at runtime
+    /// The wire value is always an integer ID
+    CauseReason(Vec<EnumOption>),
 }
 
 impl ValueType {
@@ -45,6 +50,7 @@ impl ValueType {
             ValueType::Object => "#FFD93D",     // Yellow for complex objects
             ValueType::Any => "#AAAAAA",        // Gray for any type (dynamic matching)
             ValueType::Execution => "#FFFFFF",  // White for execution flow pins
+            ValueType::CauseReason(_) => "#F06292", // Pink for cause reason (distinct from other enums)
         }
     }
 }

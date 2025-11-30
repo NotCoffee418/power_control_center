@@ -111,9 +111,7 @@ impl Node for StartNode {
 /// Takes raw AC control values: temperature, mode (Heat/Cool/Off), fan_speed, and isPowerful
 /// This node represents the final action in the evaluation flow
 /// NOTE: The device is inferred from the evaluation context (Start node) at runtime.
-/// NOTE: The cause_reason input's hardcoded enum values are deprecated.
-/// The actual cause reasons are loaded from the database at runtime
-/// via the get_node_definitions API endpoint.
+/// NOTE: The cause_reason input accepts a CauseReason type (connect from a Cause Reason node).
 /// 
 /// Requires an execution flow input to trigger - execution must be connected from
 /// Start through If/Sequence nodes to reach this terminal.
@@ -175,9 +173,8 @@ impl Node for ExecuteActionNode {
                 NodeInput::new(
                     "cause_reason",
                     "Cause Reason",
-                    "The reason for this action (for logging and debugging)",
-                    // Deprecated: These values are replaced with database values at runtime
-                    ValueType::Enum(vec![]),
+                    "The reason for this action (for logging and debugging). Connect from a Cause Reason node.",
+                    ValueType::CauseReason(vec![]),
                     true,
                 ),
             ],
@@ -265,7 +262,7 @@ impl Node for ActiveCommandNode {
 /// Start through If/Sequence nodes to reach this terminal.
 /// Use this when the evaluation determines no action should be taken
 /// NOTE: The device is inferred from the evaluation context (Start node) at runtime.
-/// The cause_reason input is useful for debugging simulations and understanding why no action was taken.
+/// NOTE: The cause_reason input accepts a CauseReason type (connect from a Cause Reason node).
 pub struct DoNothingNode;
 
 impl Node for DoNothingNode {
@@ -286,9 +283,8 @@ impl Node for DoNothingNode {
                 NodeInput::new(
                     "cause_reason",
                     "Cause Reason",
-                    "The reason for not taking action (for debugging and simulation display)",
-                    // Note: Empty enum values - actual options are populated from the database at runtime
-                    ValueType::Enum(vec![]),
+                    "The reason for not taking action (for debugging and simulation display). Connect from a Cause Reason node.",
+                    ValueType::CauseReason(vec![]),
                     true,
                 ),
             ],
@@ -459,13 +455,13 @@ mod tests {
         assert_eq!(powerful_input.value_type, ValueType::Boolean);
         assert!(powerful_input.required);
         
-        // Verify cause_reason input (actual values loaded from database at runtime)
+        // Verify cause_reason input (CauseReason type with empty options - populated from database at runtime)
         let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
         match &cause_input.value_type {
-            ValueType::Enum(values) => {
-                assert_eq!(values.len(), 0, "Cause reason values should be empty (loaded from database at runtime)");
+            ValueType::CauseReason(options) => {
+                assert_eq!(options.len(), 0, "Cause reason options should be empty (loaded from database at runtime)");
             }
-            _ => panic!("Expected Enum type for cause_reason input"),
+            _ => panic!("Expected CauseReason type for cause_reason input"),
         }
         assert!(cause_input.required);
         
@@ -488,13 +484,13 @@ mod tests {
         assert_eq!(exec_input.value_type, ValueType::Execution);
         assert!(exec_input.required);
         
-        // Verify cause_reason input (actual values loaded from database at runtime)
+        // Verify cause_reason input (CauseReason type with empty options - populated from database at runtime)
         let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
         match &cause_input.value_type {
-            ValueType::Enum(values) => {
-                assert_eq!(values.len(), 0, "Cause reason values should be empty (loaded from database at runtime)");
+            ValueType::CauseReason(options) => {
+                assert_eq!(options.len(), 0, "Cause reason options should be empty (loaded from database at runtime)");
             }
-            _ => panic!("Expected Enum type for cause_reason input"),
+            _ => panic!("Expected CauseReason type for cause_reason input"),
         }
         assert!(cause_input.required);
         

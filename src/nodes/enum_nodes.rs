@@ -56,10 +56,9 @@ impl Node for IntensityNode {
 }
 
 /// CauseReason node - represents a cause/reason for AC action
-/// This node provides a dropdown for selecting cause reason
-/// NOTE: The hardcoded enum values below are deprecated defaults.
-/// The actual cause reasons are loaded from the database at runtime
-/// via the get_node_definitions API endpoint.
+/// This node provides a dropdown for selecting cause reason.
+/// The output type is CauseReason which is compatible only with CauseReason inputs.
+/// The dropdown options are populated from the database at runtime via the API.
 pub struct CauseReasonNode;
 
 impl Node for CauseReasonNode {
@@ -67,16 +66,16 @@ impl Node for CauseReasonNode {
         NodeDefinition::new(
             "cause_reason",
             "Cause Reason",
-            "Select a cause/reason for an AC action or decision.",
+            "Select a cause/reason for an AC action or decision. Connect to Execute Action or Do Nothing nodes.",
             "Enums",
             vec![], // No inputs - this is a source node with enum selection
             vec![
                 NodeOutput::new(
                     "cause_reason",
                     "Cause Reason",
-                    "The selected cause reason",
-                    // Deprecated: These values are replaced with database values at runtime
-                    ValueType::Enum(vec![]),
+                    "The selected cause reason ID",
+                    // Empty options - populated from database at runtime via API
+                    ValueType::CauseReason(vec![]),
                 ),
             ],
         )
@@ -216,12 +215,12 @@ mod tests {
         assert_eq!(def.inputs.len(), 0); // Source node has no inputs
         assert_eq!(def.outputs.len(), 1); // One output: cause_reason
         
-        // Verify output is an empty enum (actual values are loaded from database at runtime)
+        // Verify output is CauseReason type with empty options (populated from database at runtime)
         match &def.outputs[0].value_type {
-            ValueType::Enum(values) => {
-                assert_eq!(values.len(), 0, "Cause reason values should be empty (loaded from database at runtime)");
+            ValueType::CauseReason(options) => {
+                assert_eq!(options.len(), 0, "Cause reason options should be empty (loaded from database at runtime)");
             }
-            _ => panic!("Expected Enum type for cause_reason output"),
+            _ => panic!("Expected CauseReason type for cause_reason output"),
         }
     }
 

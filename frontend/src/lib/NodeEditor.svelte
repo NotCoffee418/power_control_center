@@ -103,8 +103,9 @@
     let availableIds = [];
     let defaultId = '0'; // ID for "Undefined"
     
-    if (enumOutput?.value_type?.type === 'EnumWithIds') {
-      // New format with ID-label pairs
+    // CauseReason type has the same structure as EnumWithIds
+    if (enumOutput?.value_type?.type === 'CauseReason' || enumOutput?.value_type?.type === 'EnumWithIds') {
+      // Format with ID-label pairs
       availableIds = enumOutput.value_type.value.map(opt => opt.id);
       if (enumOutput.value_type.value.length > 0) {
         defaultId = enumOutput.value_type.value[0].id;
@@ -924,6 +925,12 @@
       return sourceType === 'Execution' && targetType === 'Execution';
     }
 
+    // CauseReason type must match exactly - can only connect CauseReason to CauseReason
+    // This avoids the need for enum value matching since CauseReason is its own distinct type
+    if (sourceType === 'CauseReason' || targetType === 'CauseReason') {
+      return sourceType === 'CauseReason' && targetType === 'CauseReason';
+    }
+
     // Handle "Any" target type with potential constraints
     if (targetType === 'Any') {
       // If there's a constraint from other connected inputs, source must match it
@@ -959,7 +966,7 @@
         return allowedTypes.includes(sourceType);
       }
       
-      // No constraint - accept anything (except Execution which is handled above)
+      // No constraint - accept anything (except Execution and CauseReason which are handled above)
       return true;
     }
 

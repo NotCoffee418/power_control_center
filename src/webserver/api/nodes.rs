@@ -764,26 +764,26 @@ async fn get_node_definitions() -> Response {
                     label: cr.label.clone(),
                 }
             }).collect();
-            let enum_with_ids = crate::nodes::ValueType::EnumWithIds(options);
+            let cause_reason_type = crate::nodes::ValueType::CauseReason(options);
             
             // Update the cause_reason node output
             if let Some(cause_reason_def) = definitions.iter_mut().find(|d| d.node_type == "cause_reason") {
                 if let Some(output) = cause_reason_def.outputs.first_mut() {
-                    output.value_type = enum_with_ids.clone();
+                    output.value_type = cause_reason_type.clone();
                 }
             }
             
             // Update the flow_execute_action node's cause_reason input
             if let Some(execute_action_def) = definitions.iter_mut().find(|d| d.node_type == "flow_execute_action") {
                 if let Some(cause_input) = execute_action_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
-                    cause_input.value_type = enum_with_ids.clone();
+                    cause_input.value_type = cause_reason_type.clone();
                 }
             }
             
             // Update the flow_do_nothing node's cause_reason input
             if let Some(do_nothing_def) = definitions.iter_mut().find(|d| d.node_type == "flow_do_nothing") {
                 if let Some(cause_input) = do_nothing_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
-                    cause_input.value_type = enum_with_ids;
+                    cause_input.value_type = cause_reason_type;
                 }
             }
         }
