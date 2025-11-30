@@ -8,13 +8,13 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 21 node definitions:
+        // Verify we have 22 node definitions:
         // System: 4 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command)
         // Sensors: 1 (pir_detection)
-        // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
+        // Logic: 9 (and, or, nand, if, not, equals, evaluate_number, branch, sequence)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 5 (device, intensity, cause_reason, request_mode, fan_speed)
-        assert_eq!(definitions.len(), 21);
+        assert_eq!(definitions.len(), 22);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
@@ -35,6 +35,7 @@ mod integration_tests {
         assert!(node_types.contains(&"logic_equals"));
         assert!(node_types.contains(&"logic_evaluate_number"));
         assert!(node_types.contains(&"logic_branch"));
+        assert!(node_types.contains(&"logic_sequence"));
         
         // Verify primitive node types
         assert!(node_types.contains(&"primitive_float"));
@@ -77,7 +78,7 @@ mod integration_tests {
                 "pir_detection" => {
                     assert_eq!(def.category, "Sensors", "Sensor nodes should be in 'Sensors' category");
                 }
-                "logic_and" | "logic_or" | "logic_nand" | "logic_if" | "logic_not" | "logic_equals" | "logic_evaluate_number" | "logic_branch" => {
+                "logic_and" | "logic_or" | "logic_nand" | "logic_if" | "logic_not" | "logic_equals" | "logic_evaluate_number" | "logic_branch" | "logic_sequence" => {
                     assert_eq!(def.category, "Logic", "Logic nodes should be in 'Logic' category");
                 }
                 "primitive_float" | "primitive_integer" | "primitive_boolean" => {
@@ -109,13 +110,19 @@ mod integration_tests {
             assert_eq!(node.outputs[0].value_type, nodes::ValueType::Boolean);
         }
         
-        // If node should have 1 boolean input and 2 boolean outputs
+        // If node should have 2 inputs (exec_in and condition) and 2 execution outputs
         let if_node = definitions.iter().find(|d| d.node_type == "logic_if").unwrap();
-        assert_eq!(if_node.inputs.len(), 1);
+        assert_eq!(if_node.inputs.len(), 2);
         assert_eq!(if_node.outputs.len(), 2);
-        assert_eq!(if_node.inputs[0].value_type, nodes::ValueType::Boolean);
+        // Check exec_in is Execution type
+        let exec_input = if_node.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, nodes::ValueType::Execution);
+        // Check condition is Boolean type
+        let condition_input = if_node.inputs.iter().find(|i| i.id == "condition").unwrap();
+        assert_eq!(condition_input.value_type, nodes::ValueType::Boolean);
+        // Check outputs are Execution type
         for output in &if_node.outputs {
-            assert_eq!(output.value_type, nodes::ValueType::Boolean);
+            assert_eq!(output.value_type, nodes::ValueType::Execution);
         }
         
         // NOT node should have 1 boolean input and 1 boolean output
@@ -133,6 +140,15 @@ mod integration_tests {
             assert_eq!(input.value_type, nodes::ValueType::Any);
         }
         assert_eq!(equals_node.outputs[0].value_type, nodes::ValueType::Boolean);
+        
+        // Sequence node should have 1 execution input and 2+ execution outputs
+        let seq_node = definitions.iter().find(|d| d.node_type == "logic_sequence").unwrap();
+        assert_eq!(seq_node.inputs.len(), 1);
+        assert!(seq_node.outputs.len() >= 2);
+        assert_eq!(seq_node.inputs[0].value_type, nodes::ValueType::Execution);
+        for output in &seq_node.outputs {
+            assert_eq!(output.value_type, nodes::ValueType::Execution);
+        }
     }
     
     #[test]
@@ -218,13 +234,17 @@ mod integration_tests {
         let start_node = definitions.iter().find(|d| d.node_type == "flow_start").unwrap();
         
         assert_eq!(start_node.inputs.len(), 1, "Start node should have 1 input (evaluate_every_minutes)");
-        assert_eq!(start_node.outputs.len(), 10, "Start node should have 10 outputs");
+        assert_eq!(start_node.outputs.len(), 11, "Start node should have 11 outputs (including exec_out)");
         assert_eq!(start_node.category, "System");
         
         // Verify evaluate_every_minutes input
         let eval_input = start_node.inputs.iter().find(|i| i.id == "evaluate_every_minutes").unwrap();
         assert_eq!(eval_input.value_type, nodes::ValueType::Integer);
         assert!(eval_input.required);
+        
+        // Verify exec_out output
+        let exec_output = start_node.outputs.iter().find(|o| o.id == "exec_out").unwrap();
+        assert_eq!(exec_output.value_type, nodes::ValueType::Execution);
         
         // Verify device output
         let device_output = start_node.outputs.iter().find(|o| o.id == "device").unwrap();
@@ -274,12 +294,18 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
         
-        assert_eq!(execute_node.inputs.len(), 5, "Execute Action node should have 5 inputs (device is inferred from context)");
+        assert_eq!(execute_node.inputs.len(), 6, "Execute Action node should have 6 inputs (exec_in + 5 data inputs)");
         assert_eq!(execute_node.outputs.len(), 0, "Execute Action node should have no outputs (terminal)");
         assert_eq!(execute_node.category, "System");
         
+        // Verify exec_in input
+        let exec_input = execute_node.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, nodes::ValueType::Execution);
+        assert!(exec_input.required);
+        
         // Verify all inputs exist and are required
         let input_ids: Vec<&str> = execute_node.inputs.iter().map(|i| i.id.as_str()).collect();
+        assert!(input_ids.contains(&"exec_in"));
         assert!(input_ids.contains(&"temperature"));
         assert!(input_ids.contains(&"mode"));
         assert!(input_ids.contains(&"fan_speed"));
@@ -299,14 +325,14 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let do_nothing_node = definitions.iter().find(|d| d.node_type == "flow_do_nothing").unwrap();
         
-        assert_eq!(do_nothing_node.inputs.len(), 2, "Do Nothing node should have 2 inputs (trigger and cause_reason)");
+        assert_eq!(do_nothing_node.inputs.len(), 2, "Do Nothing node should have 2 inputs (exec_in and cause_reason)");
         assert_eq!(do_nothing_node.outputs.len(), 0, "Do Nothing node should have no outputs (terminal)");
         assert_eq!(do_nothing_node.category, "System");
         
-        // Verify trigger input (Any type - accepts any signal)
-        let trigger_input = do_nothing_node.inputs.iter().find(|i| i.id == "trigger").unwrap();
-        assert_eq!(trigger_input.value_type, nodes::ValueType::Any, "Trigger should be Any type to accept any signal");
-        assert!(trigger_input.required);
+        // Verify exec_in input (Execution type)
+        let exec_input = do_nothing_node.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, nodes::ValueType::Execution, "exec_in should be Execution type");
+        assert!(exec_input.required);
         
         // Verify cause_reason input
         let cause_input = do_nothing_node.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
@@ -329,16 +355,17 @@ mod integration_tests {
     // backend must provide the correct type definitions for proper validation.
     // -------------------------------------------------------------------------
     
-    /// Boolean logic nodes (AND, OR, NAND, If, Not) must use explicit Boolean type
+    /// Boolean logic nodes (AND, OR, NAND, Not) must use explicit Boolean type
     /// to ensure only Boolean connections are accepted - they should not use Any type.
+    /// Note: If node now uses Execution for control flow, so it's not included here.
     #[test]
     fn test_boolean_logic_nodes_only_accept_boolean() {
         let definitions = nodes::get_all_node_definitions();
         
         // These node types should ONLY have Boolean type inputs/outputs
         // They should NOT use Any type - this ensures strict type checking
-        // NOTE: If new boolean logic nodes are added, they should be added here
-        let boolean_only_nodes = ["logic_and", "logic_or", "logic_nand", "logic_if", "logic_not"];
+        // NOTE: If and Sequence nodes use Execution type, so they're excluded
+        let boolean_only_nodes = ["logic_and", "logic_or", "logic_nand", "logic_not"];
         
         for node_type in &boolean_only_nodes {
             let node = definitions.iter().find(|d| d.node_type == *node_type).unwrap();

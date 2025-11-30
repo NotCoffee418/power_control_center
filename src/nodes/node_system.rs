@@ -27,6 +27,9 @@ pub enum ValueType {
     Object,
     /// Any type - used for dynamic type matching (e.g., Equals node, Evaluate Number node)
     Any,
+    /// Execution flow - controls the order of operations between nodes
+    /// This is a special type that represents control flow rather than data
+    Execution,
 }
 
 impl ValueType {
@@ -41,6 +44,7 @@ impl ValueType {
             ValueType::EnumWithIds(_) => "#C7A5E0", // Purple for enums with IDs
             ValueType::Object => "#FFD93D",     // Yellow for complex objects
             ValueType::Any => "#AAAAAA",        // Gray for any type (dynamic matching)
+            ValueType::Execution => "#FFFFFF",  // White for execution flow pins
         }
     }
 }

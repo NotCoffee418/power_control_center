@@ -9,7 +9,7 @@ pub mod execution;
 mod integration_test;
 
 pub use node_system::{Node, NodeInput, NodeOutput, NodeDefinition, ValueType, EnumOption};
-pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, EvaluateNumberNode, BranchNode};
+pub use logical_nodes::{AndNode, OrNode, NandNode, IfNode, NotNode, EqualsNode, EvaluateNumberNode, BranchNode, SequenceNode};
 pub use primitive_nodes::{FloatNode, IntegerNode, BooleanNode};
 pub use enum_nodes::{DeviceNode, IntensityNode, CauseReasonNode, RequestModeNode, FanSpeedNode};
 pub use sensor_nodes::PirDetectionNode;
@@ -35,6 +35,7 @@ pub fn get_all_node_definitions() -> Vec<NodeDefinition> {
         EqualsNode::definition(),
         EvaluateNumberNode::definition(),
         BranchNode::definition(),
+        SequenceNode::definition(),
         // Primitive nodes
         FloatNode::definition(),
         IntegerNode::definition(),

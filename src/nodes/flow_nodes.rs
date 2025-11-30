@@ -11,6 +11,9 @@ pub const MAX_EVALUATE_EVERY_MINUTES: i32 = 1440;
 /// This value determines the interval in minutes between each evaluation cycle.
 /// For example, if set to 5, the node logic runs every 5 minutes.
 /// In the simulator, this value has no effect but is still reported.
+/// 
+/// The execution flow pin (▶) starts the evaluation and must be connected to control
+/// when downstream nodes execute.
 pub struct StartNode;
 
 impl Node for StartNode {
@@ -30,6 +33,12 @@ impl Node for StartNode {
                 ),
             ],
             vec![
+                NodeOutput::new(
+                    "exec_out",
+                    "▶",
+                    "Execution flow output - connect to nodes that control the flow",
+                    ValueType::Execution,
+                ),
                 NodeOutput::new(
                     "device",
                     "Device",
@@ -105,6 +114,9 @@ impl Node for StartNode {
 /// NOTE: The cause_reason input's hardcoded enum values are deprecated.
 /// The actual cause reasons are loaded from the database at runtime
 /// via the get_node_definitions API endpoint.
+/// 
+/// Requires an execution flow input to trigger - execution must be connected from
+/// Start through If/Sequence nodes to reach this terminal.
 pub struct ExecuteActionNode;
 
 impl Node for ExecuteActionNode {
@@ -115,6 +127,13 @@ impl Node for ExecuteActionNode {
             "Executes the AC command and stores the action to the database. This is the end point of an evaluation flow that results in an AC action. The device is inferred from the evaluation context.",
             "System",
             vec![
+                NodeInput::new(
+                    "exec_in",
+                    "▶",
+                    "Execution flow input - triggers this action to execute",
+                    ValueType::Execution,
+                    true,
+                ),
                 NodeInput::new(
                     "temperature",
                     "Temperature",
@@ -242,7 +261,8 @@ impl Node for ActiveCommandNode {
 }
 
 /// Do Nothing Node - Terminates the flow without executing any action
-/// The trigger input accepts any signal type and terminates the evaluation.
+/// Requires an execution flow input to trigger - execution must be connected from
+/// Start through If/Sequence nodes to reach this terminal.
 /// Use this when the evaluation determines no action should be taken
 /// NOTE: The device is inferred from the evaluation context (Start node) at runtime.
 /// The cause_reason input is useful for debugging simulations and understanding why no action was taken.
@@ -253,14 +273,14 @@ impl Node for DoNothingNode {
         NodeDefinition::new(
             "flow_do_nothing",
             "Do Nothing",
-            "Terminates the evaluation flow without executing any AC action. When any signal is received on the trigger input, the flow ends for the current device. The device is inferred from the evaluation context.",
+            "Terminates the evaluation flow without executing any AC action. When execution reaches this node, the flow ends for the current device. The device is inferred from the evaluation context.",
             "System",
             vec![
                 NodeInput::new(
-                    "trigger",
-                    "Trigger",
-                    "Accepts any data type from upstream nodes. When this input receives a value (Boolean, Float, Integer, String, or any other type), the evaluation ends without taking action.",
-                    ValueType::Any,
+                    "exec_in",
+                    "▶",
+                    "Execution flow input - triggers this node to end the evaluation",
+                    ValueType::Execution,
                     true,
                 ),
                 NodeInput::new(
@@ -289,13 +309,17 @@ mod tests {
         assert_eq!(def.name, "Start");
         assert_eq!(def.category, "System");
         assert_eq!(def.inputs.len(), 1); // evaluate_every_minutes input
-        assert_eq!(def.outputs.len(), 10); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, outside_temperature_trend, active_command
+        assert_eq!(def.outputs.len(), 11); // exec_out, device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, avg_next_24h_outdoor_temp, active_command
         
         // Verify evaluate_every_minutes input
         let eval_input = def.inputs.iter().find(|i| i.id == "evaluate_every_minutes").unwrap();
         assert_eq!(eval_input.value_type, ValueType::Integer);
         assert!(eval_input.required);
         assert_eq!(eval_input.label, "Evaluate Every Minutes");
+        
+        // Verify exec_out output (execution flow)
+        let exec_output = def.outputs.iter().find(|o| o.id == "exec_out").unwrap();
+        assert_eq!(exec_output.value_type, ValueType::Execution);
         
         // Verify device output is an enum with device values
         let device_output = def.outputs.iter().find(|o| o.id == "device").unwrap();
@@ -354,8 +378,13 @@ mod tests {
         assert_eq!(def.node_type, "flow_execute_action");
         assert_eq!(def.name, "Execute Action");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 5); // temperature, mode, fan_speed, is_powerful, cause_reason (device is inferred from context)
+        assert_eq!(def.inputs.len(), 6); // exec_in, temperature, mode, fan_speed, is_powerful, cause_reason (device is inferred from context)
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
+        
+        // Verify exec_in input (execution flow)
+        let exec_input = def.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, ValueType::Execution);
+        assert!(exec_input.required);
         
         // Verify temperature input
         let temp_input = def.inputs.iter().find(|i| i.id == "temperature").unwrap();
@@ -416,13 +445,13 @@ mod tests {
         assert_eq!(def.node_type, "flow_do_nothing");
         assert_eq!(def.name, "Do Nothing");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 2); // trigger and cause_reason inputs
+        assert_eq!(def.inputs.len(), 2); // exec_in and cause_reason inputs
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
         
-        // Verify trigger input (Any type - accepts any signal)
-        let trigger_input = def.inputs.iter().find(|i| i.id == "trigger").unwrap();
-        assert_eq!(trigger_input.value_type, ValueType::Any);
-        assert!(trigger_input.required);
+        // Verify exec_in input (execution flow)
+        let exec_input = def.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, ValueType::Execution);
+        assert!(exec_input.required);
         
         // Verify cause_reason input (actual values loaded from database at runtime)
         let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();

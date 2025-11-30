@@ -118,7 +118,9 @@ impl Node for NandNode {
 }
 
 /// If node - routes execution based on boolean condition
-/// Input: one boolean, Output: two execution paths (true/false)
+/// Input: one execution flow and one boolean condition
+/// Output: two execution paths (true/false)
+/// The execution flows to either the True or False output based on the condition
 pub struct IfNode;
 
 impl Node for IfNode {
@@ -126,9 +128,16 @@ impl Node for IfNode {
         NodeDefinition::new(
             "logic_if",
             "If",
-            "Routes based on boolean condition. One output fires for true, the other for false.",
+            "Routes execution based on boolean condition. When triggered, evaluates the condition and fires either the True or False execution output.",
             "Logic",
             vec![
+                NodeInput::new(
+                    "exec_in",
+                    "▶",
+                    "Execution flow input - triggers this node to evaluate",
+                    ValueType::Execution,
+                    true,
+                ),
                 NodeInput::new(
                     "condition",
                     "Condition",
@@ -139,16 +148,16 @@ impl Node for IfNode {
             ],
             vec![
                 NodeOutput::new(
-                    "true",
-                    "True",
-                    "Output when condition is true",
-                    ValueType::Boolean,
+                    "exec_true",
+                    "True ▶",
+                    "Execution output when condition is true",
+                    ValueType::Execution,
                 ),
                 NodeOutput::new(
-                    "false",
-                    "False",
-                    "Output when condition is false",
-                    ValueType::Boolean,
+                    "exec_false",
+                    "False ▶",
+                    "Execution output when condition is false",
+                    ValueType::Execution,
                 ),
             ],
         )
@@ -329,6 +338,47 @@ impl Node for BranchNode {
     }
 }
 
+/// Sequence node - executes outputs in order until one path completes
+/// Has dynamic number of execution output pins (minimum 2)
+/// When triggered, it evaluates each output path in order (Then 0, Then 1, etc.)
+/// If a path leads to Execute Action or Do Nothing, the sequence stops there.
+/// Otherwise, it continues to the next output.
+pub struct SequenceNode;
+
+impl Node for SequenceNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "logic_sequence",
+            "Sequence",
+            "Executes outputs in order. When triggered, evaluates each 'Then' output in sequence. If a path leads to Execute Action or Do Nothing, the sequence stops. Otherwise continues to the next output.",
+            "Logic",
+            vec![
+                NodeInput::new(
+                    "exec_in",
+                    "▶",
+                    "Execution flow input - triggers the sequence to start",
+                    ValueType::Execution,
+                    true,
+                ),
+            ],
+            vec![
+                NodeOutput::new(
+                    "then_0",
+                    "Then 0 ▶",
+                    "First execution path to try",
+                    ValueType::Execution,
+                ),
+                NodeOutput::new(
+                    "then_1",
+                    "Then 1 ▶",
+                    "Second execution path to try",
+                    ValueType::Execution,
+                ),
+            ],
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,21 +453,26 @@ mod tests {
         assert_eq!(def.node_type, "logic_if");
         assert_eq!(def.name, "If");
         assert_eq!(def.category, "Logic");
-        assert_eq!(def.inputs.len(), 1); // Single boolean input
-        assert_eq!(def.outputs.len(), 2); // Two outputs: true and false
+        assert_eq!(def.inputs.len(), 2); // exec_in and condition
+        assert_eq!(def.outputs.len(), 2); // Two execution outputs: exec_true and exec_false
         
-        // Verify input
-        assert_eq!(def.inputs[0].id, "condition");
-        assert_eq!(def.inputs[0].value_type, ValueType::Boolean);
-        assert!(def.inputs[0].required);
+        // Verify exec_in input
+        let exec_input = def.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, ValueType::Execution);
+        assert!(exec_input.required);
         
-        // Verify outputs
+        // Verify condition input
+        let condition_input = def.inputs.iter().find(|i| i.id == "condition").unwrap();
+        assert_eq!(condition_input.value_type, ValueType::Boolean);
+        assert!(condition_input.required);
+        
+        // Verify execution outputs
         let output_ids: Vec<&str> = def.outputs.iter().map(|o| o.id.as_str()).collect();
-        assert!(output_ids.contains(&"true"));
-        assert!(output_ids.contains(&"false"));
+        assert!(output_ids.contains(&"exec_true"));
+        assert!(output_ids.contains(&"exec_false"));
         
         for output in &def.outputs {
-            assert_eq!(output.value_type, ValueType::Boolean);
+            assert_eq!(output.value_type, ValueType::Execution);
         }
     }
 
@@ -519,6 +574,31 @@ mod tests {
     }
 
     #[test]
+    fn test_sequence_node_definition() {
+        let def = SequenceNode::definition();
+        
+        assert_eq!(def.node_type, "logic_sequence");
+        assert_eq!(def.name, "Sequence");
+        assert_eq!(def.category, "Logic");
+        assert_eq!(def.inputs.len(), 1); // exec_in
+        assert_eq!(def.outputs.len(), 2); // Minimum 2 outputs: then_0, then_1
+        
+        // Verify exec_in input
+        let exec_input = def.inputs.iter().find(|i| i.id == "exec_in").unwrap();
+        assert_eq!(exec_input.value_type, ValueType::Execution);
+        assert!(exec_input.required);
+        
+        // Verify outputs are execution type
+        let output_ids: Vec<&str> = def.outputs.iter().map(|o| o.id.as_str()).collect();
+        assert!(output_ids.contains(&"then_0"));
+        assert!(output_ids.contains(&"then_1"));
+        
+        for output in &def.outputs {
+            assert_eq!(output.value_type, ValueType::Execution);
+        }
+    }
+
+    #[test]
     fn test_logical_nodes_serializable() {
         let definitions = vec![
             AndNode::definition(),
@@ -529,6 +609,7 @@ mod tests {
             EqualsNode::definition(),
             EvaluateNumberNode::definition(),
             BranchNode::definition(),
+            SequenceNode::definition(),
         ];
         
         for def in definitions {
