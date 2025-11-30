@@ -663,9 +663,15 @@
     const sourceOutput = sourceNode.data.definition.outputs.find(
       o => o.id === connection.sourceHandle
     );
-    const targetInput = targetNode.data.definition.inputs.find(
+    // For dynamic logic nodes (AND, OR, NAND), also check dynamicInputs for added pins
+    let targetInput = targetNode.data.definition.inputs.find(
       i => i.id === connection.targetHandle
     );
+    if (!targetInput && targetNode.data.dynamicInputs) {
+      targetInput = targetNode.data.dynamicInputs.find(
+        i => i.id === connection.targetHandle
+      );
+    }
 
     if (!sourceOutput || !targetInput) {
       return null;
