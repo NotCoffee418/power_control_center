@@ -10,17 +10,17 @@
   let loading = $state(false);
   let evaluating = $state(false);
 
-  // Input values
+  // Input values (stored as strings for text inputs to allow validation)
   let selectedDevice = $state('');
-  let temperature = $state(22.0);
+  let temperatureStr = $state('22.0');
   let isAutoMode = $state(true);
-  let solarProduction = $state(0);
-  let outdoorTemp = $state(20.0);
-  let avgNext12hOutdoorTemp = $state(20.0);
+  let solarProductionStr = $state('0');
+  let outdoorTempStr = $state('20.0');
+  let avgNext12hOutdoorTempStr = $state('20.0');
   let userIsHome = $state(true);
   let pirDetected = $state(false);
-  let pirMinutesAgo = $state(0);
-  let lastChangeMinutes = $state(60);
+  let pirMinutesAgoStr = $state('0');
+  let lastChangeMinutesStr = $state('60');
 
   // Available devices
   let devices = $state([]);
@@ -28,6 +28,61 @@
   // Simulation result
   let simulationResult = $state(null);
   let errorMessage = $state('');
+
+  // Helper function to round a float to 1 decimal place
+  function roundToOneDecimal(value) {
+    return Math.round(value * 10) / 10;
+  }
+
+  // Validation helpers - return true if the value is valid
+  // Uses regex to ensure only standard numeric formats are accepted (no scientific notation)
+  function isValidFloat(str) {
+    if (str === '' || str === null || str === undefined) return false;
+    const trimmed = String(str).trim();
+    // Only allow standard decimal format: optional minus, digits, optional decimal point with digits
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return false;
+    const parsed = parseFloat(trimmed);
+    return !isNaN(parsed) && isFinite(parsed);
+  }
+
+  function isValidInteger(str) {
+    if (str === '' || str === null || str === undefined) return false;
+    const trimmed = String(str).trim();
+    // Only allow integers: optional minus, digits only (no decimal point, no scientific notation)
+    if (!/^-?\d+$/.test(trimmed)) return false;
+    const parsed = parseInt(trimmed, 10);
+    return !isNaN(parsed) && isFinite(parsed);
+  }
+
+  // Get parsed numeric values (or default if invalid)
+  function getTemperature() {
+    return isValidFloat(temperatureStr) ? parseFloat(temperatureStr) : 0;
+  }
+  function getSolarProduction() {
+    return isValidInteger(solarProductionStr) ? parseInt(solarProductionStr, 10) : 0;
+  }
+  function getOutdoorTemp() {
+    return isValidFloat(outdoorTempStr) ? parseFloat(outdoorTempStr) : 0;
+  }
+  function getAvgNext12hOutdoorTemp() {
+    return isValidFloat(avgNext12hOutdoorTempStr) ? parseFloat(avgNext12hOutdoorTempStr) : 0;
+  }
+  function getPirMinutesAgo() {
+    return isValidInteger(pirMinutesAgoStr) ? parseInt(pirMinutesAgoStr, 10) : 0;
+  }
+  function getLastChangeMinutes() {
+    return isValidInteger(lastChangeMinutesStr) ? parseInt(lastChangeMinutesStr, 10) : 0;
+  }
+
+  // Check if all inputs are valid
+  function areAllInputsValid() {
+    return isValidFloat(temperatureStr) &&
+           isValidInteger(solarProductionStr) &&
+           isValidFloat(outdoorTempStr) &&
+           isValidFloat(avgNext12hOutdoorTempStr) &&
+           isValidInteger(pirMinutesAgoStr) &&
+           isValidInteger(lastChangeMinutesStr);
+  }
 
   // Load live inputs from backend
   async function loadLiveInputs() {
@@ -52,23 +107,23 @@
         const deviceData = data.devices.find(d => d.name === selectedDevice);
         if (deviceData) {
           if (deviceData.temperature !== null) {
-            temperature = deviceData.temperature;
+            temperatureStr = String(roundToOneDecimal(deviceData.temperature));
           }
           isAutoMode = deviceData.is_auto_mode;
           pirDetected = deviceData.pir_recently_triggered;
-          pirMinutesAgo = deviceData.pir_minutes_ago ?? 0;
-          lastChangeMinutes = deviceData.last_change_minutes ?? 60;
+          pirMinutesAgoStr = String(deviceData.pir_minutes_ago ?? 0);
+          lastChangeMinutesStr = String(deviceData.last_change_minutes ?? 60);
         }
         
-        // Update environmental values
+        // Update environmental values (round floats to 1 decimal)
         if (data.solar_production !== null) {
-          solarProduction = data.solar_production;
+          solarProductionStr = String(data.solar_production);
         }
         if (data.outdoor_temp !== null) {
-          outdoorTemp = data.outdoor_temp;
+          outdoorTempStr = String(roundToOneDecimal(data.outdoor_temp));
         }
         if (data.avg_next_12h_outdoor_temp !== null) {
-          avgNext12hOutdoorTemp = data.avg_next_12h_outdoor_temp;
+          avgNext12hOutdoorTempStr = String(roundToOneDecimal(data.avg_next_12h_outdoor_temp));
         }
         userIsHome = data.user_is_home;
       } else {
@@ -84,6 +139,12 @@
 
   // Evaluate the workflow with current inputs
   async function evaluate() {
+    // Validate all inputs before evaluating
+    if (!areAllInputsValid()) {
+      errorMessage = 'Please fix invalid input values (highlighted in red)';
+      return;
+    }
+    
     evaluating = true;
     errorMessage = '';
     simulationResult = null;
@@ -96,15 +157,15 @@
         },
         body: JSON.stringify({
           device: selectedDevice,
-          temperature: temperature,
+          temperature: getTemperature(),
           is_auto_mode: isAutoMode,
-          solar_production: solarProduction,
-          outdoor_temp: outdoorTemp,
-          avg_next_12h_outdoor_temp: avgNext12hOutdoorTemp,
+          solar_production: getSolarProduction(),
+          outdoor_temp: getOutdoorTemp(),
+          avg_next_12h_outdoor_temp: getAvgNext12hOutdoorTemp(),
           user_is_home: userIsHome,
           pir_detected: pirDetected,
-          pir_minutes_ago: pirMinutesAgo,
-          last_change_minutes: lastChangeMinutes,
+          pir_minutes_ago: getPirMinutesAgo(),
+          last_change_minutes: getLastChangeMinutes(),
         }),
       });
       
@@ -263,16 +324,15 @@
             </select>
           </div>
           
-          <!-- Indoor Temperature -->
+          <!-- Indoor Temperature (float) -->
           <div class="input-group">
             <label for="temperature">Indoor Temp (°C)</label>
             <input 
-              type="number" 
+              type="text" 
               id="temperature" 
-              bind:value={temperature}
-              step="0.5"
-              min="-10"
-              max="50"
+              bind:value={temperatureStr}
+              class:invalid={!isValidFloat(temperatureStr)}
+              placeholder="e.g. 22.5"
             />
           </div>
           
@@ -288,42 +348,39 @@
             </label>
           </div>
           
-          <!-- Solar Production -->
+          <!-- Solar Production (integer) -->
           <div class="input-group">
             <label for="solar">Solar (W)</label>
             <input 
-              type="number" 
+              type="text" 
               id="solar" 
-              bind:value={solarProduction}
-              step="100"
-              min="0"
-              max="10000"
+              bind:value={solarProductionStr}
+              class:invalid={!isValidInteger(solarProductionStr)}
+              placeholder="e.g. 1000"
             />
           </div>
           
-          <!-- Outdoor Temperature -->
+          <!-- Outdoor Temperature (float) -->
           <div class="input-group">
             <label for="outdoorTemp">Outdoor Temp (°C)</label>
             <input 
-              type="number" 
+              type="text" 
               id="outdoorTemp" 
-              bind:value={outdoorTemp}
-              step="0.5"
-              min="-30"
-              max="50"
+              bind:value={outdoorTempStr}
+              class:invalid={!isValidFloat(outdoorTempStr)}
+              placeholder="e.g. 20.0"
             />
           </div>
           
-          <!-- Avg Next 12h Outdoor Temp -->
+          <!-- Avg Next 12h Outdoor Temp (float) -->
           <div class="input-group">
             <label for="avgOutdoor">Avg Next 12h (°C)</label>
             <input 
-              type="number" 
+              type="text" 
               id="avgOutdoor" 
-              bind:value={avgNext12hOutdoorTemp}
-              step="0.5"
-              min="-30"
-              max="50"
+              bind:value={avgNext12hOutdoorTempStr}
+              class:invalid={!isValidFloat(avgNext12hOutdoorTempStr)}
+              placeholder="e.g. 20.0"
             />
           </div>
           
@@ -351,31 +408,29 @@
             </label>
           </div>
           
-          <!-- PIR Minutes Ago -->
+          <!-- PIR Minutes Ago (integer) -->
           {#if pirDetected}
             <div class="input-group">
               <label for="pirMinutes">PIR Minutes Ago</label>
               <input 
-                type="number" 
+                type="text" 
                 id="pirMinutes" 
-                bind:value={pirMinutesAgo}
-                step="1"
-                min="0"
-                max="120"
+                bind:value={pirMinutesAgoStr}
+                class:invalid={!isValidInteger(pirMinutesAgoStr)}
+                placeholder="e.g. 5"
               />
             </div>
           {/if}
           
-          <!-- Last Change Minutes -->
+          <!-- Last Change Minutes (integer) -->
           <div class="input-group">
             <label for="lastChange">Last Change (min)</label>
             <input 
-              type="number" 
+              type="text" 
               id="lastChange" 
-              bind:value={lastChangeMinutes}
-              step="1"
-              min="0"
-              max="2147483647"
+              bind:value={lastChangeMinutesStr}
+              class:invalid={!isValidInteger(lastChangeMinutesStr)}
+              placeholder="e.g. 60"
             />
           </div>
         </div>
@@ -601,7 +656,7 @@
     font-weight: 500;
   }
 
-  .input-group input[type="number"],
+  .input-group input[type="text"],
   .input-group select {
     padding: 0.375rem 0.5rem;
     border: 1px solid #404040;
@@ -611,10 +666,21 @@
     font-size: 0.875rem;
   }
 
-  .input-group input[type="number"]:focus,
+  .input-group input[type="text"]:focus,
   .input-group select:focus {
     outline: none;
     border-color: #00BCD4;
+  }
+
+  /* Invalid input styling - red border for validation errors */
+  .input-group input.invalid {
+    border-color: #F44336;
+    background: rgba(244, 67, 54, 0.1);
+  }
+
+  .input-group input.invalid:focus {
+    border-color: #F44336;
+    box-shadow: 0 0 0 1px rgba(244, 67, 54, 0.3);
   }
 
   .checkbox-group label {
