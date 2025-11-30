@@ -10,12 +10,12 @@ use std::collections::HashMap;
 use crate::{
     ac_controller::{
         AcDevices,
-        ac_executor::{AC_MODE_HEAT, AC_MODE_COOL},
+        ac_executor::{AC_MODE_HEAT, AC_MODE_COOL, get_state_manager},
     },
     config,
     db,
     device_requests,
-    nodes::{ExecutionInputs, NodesetExecutor, validate_nodeset_for_execution},
+    nodes::{ExecutionInputs, NodesetExecutor, validate_nodeset_for_execution, ActiveCommandData},
     types::ApiResponse,
 };
 
@@ -319,6 +319,30 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     let mut pir_state = HashMap::new();
     pir_state.insert(inputs.device.clone(), (pir_detected, pir_minutes_ago));
     
+    // Get active command from the AC state manager
+    // The state manager tracks the last known state of each device.
+    // A command is considered "defined" if we have any meaningful state tracked.
+    // Note: The state manager's is_device_initialized() is private, but we can infer
+    // initialization from whether mode or other optional fields have values.
+    let state_manager = get_state_manager();
+    let ac_state = state_manager.get_state(&inputs.device);
+    
+    // Determine if an active command exists:
+    // - If device is currently on, we definitely have an active command
+    // - If mode has a value, we've sent a command at some point
+    // This aligns with how AcState tracks device state (mode is Some only after sending a command)
+    let is_defined = ac_state.is_on || ac_state.mode.is_some();
+    
+    let active_command = ActiveCommandData {
+        is_defined,
+        is_on: ac_state.is_on,
+        temperature: ac_state.temperature.unwrap_or(0.0),
+        mode: ac_state.mode.unwrap_or(0),
+        fan_speed: ac_state.fan_speed.unwrap_or(0),
+        swing: ac_state.swing.unwrap_or(0),
+        is_powerful: ac_state.powerful_mode,
+    };
+    
     // Build execution inputs
     let execution_inputs = ExecutionInputs {
         device: inputs.device.clone(),
@@ -331,6 +355,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         raw_solar_watt: solar_production as i64,
         outside_temperature_trend: temperature_trend,
         pir_state,
+        active_command,
     };
     
     // Create and execute the nodeset

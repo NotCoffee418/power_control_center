@@ -259,7 +259,7 @@ mod tests {
         assert_eq!(def.name, "Start");
         assert_eq!(def.category, "System");
         assert_eq!(def.inputs.len(), 0); // Source node has no inputs
-        assert_eq!(def.outputs.len(), 9); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, outside_temperature_trend
+        assert_eq!(def.outputs.len(), 10); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, outside_temperature_trend, active_command
         
         // Verify device output is an enum with device values
         let device_output = def.outputs.iter().find(|o| o.id == "device").unwrap();
