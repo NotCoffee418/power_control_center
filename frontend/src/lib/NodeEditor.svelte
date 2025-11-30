@@ -4,13 +4,17 @@
     SvelteFlow, 
     Controls, 
     Background, 
-    MiniMap
+    MiniMap,
+    useConnection
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import CustomNode from './CustomNode.svelte';
   import ReconnectableEdge from './ReconnectableEdge.svelte';
   import SimulatorDrawer from './SimulatorDrawer.svelte';
   import CauseReasonsPanel from './CauseReasonsPanel.svelte';
+  
+  // Get connection state for click-connect feature
+  const connection = useConnection();
 
   // Constants for nodeset IDs
   const NEW_NODESET_ID = -1;
@@ -610,6 +614,30 @@
       hasUnsavedChanges = true;
     }
     
+    resetContextMenu();
+  }
+
+  // Check if there's an active click-connect in progress
+  function hasActiveConnection() {
+    return connection.current?.inProgress;
+  }
+
+  // Handle pane context menu - cancel pending connection on right-click
+  // When clickConnect is enabled, clicking a pin starts a connection that follows the cursor.
+  // The connection is completed by clicking another compatible pin, or cancelled by:
+  // 1. Clicking on the pane (empty space) - SvelteFlow handles this automatically
+  // 2. Right-clicking anywhere - we prevent the context menu and let the click cancel the connection
+  // 3. Pressing Escape - SvelteFlow handles this automatically
+  function handlePaneContextMenu({ event }) {
+    // If there's a pending connection (click-connect in progress), cancel it
+    // by preventing the default context menu - the click event itself cancels the connection
+    if (hasActiveConnection()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    
+    // Otherwise, close any existing context menu
     resetContextMenu();
   }
 
@@ -1408,8 +1436,12 @@
           isValidConnection={isValidConnection}
           onnodecontextmenu={handleNodeContextMenu}
           onedgecontextmenu={handleEdgeContextMenu}
+          onpanecontextmenu={handlePaneContextMenu}
           deleteKeyCode="Delete"
           fitView
+          selectionKey="Control"
+          selectionMode="partial"
+          clickConnect={true}
         >
           <Controls />
           <Background />
@@ -1807,14 +1839,46 @@
     font-family: inherit;
   }
 
+  /* Ensure edges render behind nodes */
+  :global(.svelte-flow__edges) {
+    z-index: 0 !important;
+  }
+
+  :global(.svelte-flow__nodes) {
+    z-index: 1 !important;
+  }
+
   :global(.svelte-flow__edge-path) {
     stroke: #b1b1b7;
     stroke-width: 2;
   }
 
+  /* Selected edge styling - more prominent highlight */
+  :global(.svelte-flow__edge.selected .svelte-flow__edge-path) {
+    stroke-width: 4 !important;
+    filter: drop-shadow(0 0 6px currentColor) drop-shadow(0 0 12px currentColor);
+  }
+
+  /* Hover effect for edges */
+  :global(.svelte-flow__edge:hover .svelte-flow__edge-path) {
+    stroke-width: 3;
+    filter: drop-shadow(0 0 4px currentColor);
+  }
+
   :global(.svelte-flow__edge.animated path) {
     stroke-dasharray: 5;
     animation: dashdraw 0.5s linear infinite;
+  }
+
+  /* Selection box styling - make it only select nodes visually */
+  :global(.svelte-flow__selection) {
+    background: rgba(0, 188, 212, 0.1) !important;
+    border: 1px dashed rgba(0, 188, 212, 0.6) !important;
+  }
+
+  :global(.svelte-flow__nodesselection-rect) {
+    background: rgba(0, 188, 212, 0.15) !important;
+    border: 2px solid rgba(0, 188, 212, 0.8) !important;
   }
 
   /* Style for invalid connection lines being drawn */
