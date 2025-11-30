@@ -19,6 +19,12 @@
   const isPrimitiveNode = $derived(['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType));
   const isEnumNode = $derived(['device', 'intensity', 'cause_reason', 'request_mode', 'fan_speed'].includes(nodeType));
   const isEvaluateNumberNode = $derived(nodeType === 'logic_evaluate_number');
+  const isSequenceNode = $derived(nodeType === 'logic_sequence');
+
+  // Check if a pin is an execution flow pin
+  function isExecutionPin(pin) {
+    return pin?.value_type?.type === 'Execution';
+  }
 
   // Get default value based on primitive type
   function getDefaultPrimitiveValue() {
@@ -43,6 +49,13 @@
 
   // Initialize state variables after functions are defined
   let dynamicInputs = $state(data?.dynamicInputs || definition?.inputs || []);
+  // For Sequence node: use dynamicOutputs if available, otherwise use definition outputs for initial state
+  // Only Sequence nodes should use dynamicOutputs, others always use static definition outputs
+  let dynamicOutputs = $state(
+    data?.dynamicOutputs || 
+    (nodeType === 'logic_sequence' ? definition?.outputs : []) || 
+    []
+  );
   let primitiveValue = $state(data?.primitiveValue ?? getDefaultPrimitiveValue());
   let enumValue = $state(data?.enumValue ?? getDefaultEnumValue());
   let operatorValue = $state(data?.operatorValue ?? '>'); // For Evaluate Number node
@@ -53,6 +66,9 @@
   $effect(() => {
     if (isDynamicLogicNode && data) {
       data.dynamicInputs = dynamicInputs;
+    }
+    if (isSequenceNode && data) {
+      data.dynamicOutputs = dynamicOutputs;
     }
     if (isPrimitiveNode && data) {
       data.primitiveValue = primitiveValue;
@@ -87,6 +103,26 @@
   function removeInput() {
     if (dynamicInputs.length > 2) {
       dynamicInputs = dynamicInputs.slice(0, -1);
+    }
+  }
+
+  // Add a new output pin for Sequence node
+  function addSequenceOutput() {
+    const nextIndex = dynamicOutputs.length;
+    const newOutput = {
+      id: `then_${nextIndex}`,
+      label: `Then ${nextIndex} ▶`,
+      description: `Execution path ${nextIndex + 1}`,
+      value_type: { type: 'Execution' },
+      color: '#FFFFFF' // Execution color
+    };
+    dynamicOutputs = [...dynamicOutputs, newOutput];
+  }
+
+  // Remove the last output pin from Sequence node (minimum 2)
+  function removeSequenceOutput() {
+    if (dynamicOutputs.length > 2) {
+      dynamicOutputs = dynamicOutputs.slice(0, -1);
     }
   }
 
@@ -166,6 +202,14 @@
     }
     return inputs;
   }
+
+  // Get the outputs to display (for Sequence node, use dynamicOutputs)
+  function getDisplayOutputs() {
+    if (isSequenceNode) {
+      return dynamicOutputs;
+    }
+    return outputs;
+  }
 </script>
 
 <div 
@@ -191,6 +235,21 @@
           class="pin-btn" 
           onclick={addInput}
           title="Add input pin"
+        >+</button>
+      </div>
+    {/if}
+    {#if isSequenceNode}
+      <div class="pin-controls">
+        <button 
+          class="pin-btn" 
+          onclick={removeSequenceOutput} 
+          disabled={dynamicOutputs.length <= 2}
+          title="Remove output pin"
+        >−</button>
+        <button 
+          class="pin-btn" 
+          onclick={addSequenceOutput}
+          title="Add output pin"
         >+</button>
       </div>
     {/if}
@@ -263,8 +322,8 @@
             position={Position.Left}
             id={input.id}
             style="background: {input.color}; border-color: {input.color};"
-            class="custom-handle"
-            title="{input.label} ({input.value_type.type})"
+            class="custom-handle {isExecutionPin(input) ? 'execution-handle' : ''}"
+            title="{input.label} ({input.value_type?.type || 'Unknown'})"
           />
           <div class="port-label" title={input.description}>
             {input.label}
@@ -300,8 +359,8 @@
             position={Position.Left}
             id={input.id}
             style="background: {input.color}; border-color: {input.color};"
-            class="custom-handle"
-            title="{input.label} ({input.value_type.type})"
+            class="custom-handle {isExecutionPin(input) ? 'execution-handle' : ''}"
+            title="{input.label} ({input.value_type?.type || 'Unknown'})"
           />
           <div class="port-label" title={input.description}>
             {input.label}
@@ -314,7 +373,7 @@
     {/if}
 
     <!-- Output handles on the right -->
-    {#each outputs as output, i}
+    {#each getDisplayOutputs() as output, i}
       <div class="port-row output-port">
         <div class="port-label" title={output.description}>
           {output.label}
@@ -324,14 +383,14 @@
           position={Position.Right}
           id={output.id}
           style="background: {output.color}; border-color: {output.color};"
-          class="custom-handle"
-          title="{output.label} ({output.value_type.type})"
+          class="custom-handle {isExecutionPin(output) ? 'execution-handle' : ''}"
+          title="{output.label} ({output.value_type?.type || 'Unknown'})"
         />
       </div>
     {/each}
 
     <!-- If no inputs or outputs, show a message (for non-primitive/non-enum nodes) -->
-    {#if !isPrimitiveNode && !isEnumNode && getDisplayInputs().length === 0 && outputs.length === 0}
+    {#if !isPrimitiveNode && !isEnumNode && getDisplayInputs().length === 0 && getDisplayOutputs().length === 0}
       <div class="no-ports">No ports</div>
     {/if}
 
@@ -632,5 +691,29 @@
     transform: translateY(-50%);
     top: 50%;
     position: absolute;
+  }
+
+  /* Execution flow handles - triangular/arrow shape to distinguish from data pins */
+  :global(.custom-handle.execution-handle) {
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+  }
+
+  :global(.custom-handle.execution-handle.target) {
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-right: 10px solid #FFFFFF;
+    border-left: none;
+    left: -8px;
+  }
+
+  :global(.custom-handle.execution-handle.source) {
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 10px solid #FFFFFF;
+    border-right: none;
+    right: -8px;
   }
 </style>
