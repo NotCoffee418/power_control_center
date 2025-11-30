@@ -1364,7 +1364,12 @@
   </div>
   
   <!-- Simulator Drawer -->
-  <SimulatorDrawer bind:isOpen={simulatorOpen} />
+  <SimulatorDrawer 
+    bind:isOpen={simulatorOpen} 
+    currentNodesetId={currentNodesetId}
+    nodes={nodes}
+    edges={edges}
+  />
 </div>
 
 <style>

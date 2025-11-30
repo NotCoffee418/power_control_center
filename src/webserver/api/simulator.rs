@@ -5,16 +5,18 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
 
 use crate::{
     ac_controller::{
-        AcDevices, RequestMode, Intensity, PlanInput, get_plan,
-        ac_executor::{plan_to_state, AcState, AC_MODE_HEAT, AC_MODE_COOL},
+        AcDevices,
+        ac_executor::{AC_MODE_HEAT, AC_MODE_COOL},
     },
     config,
     db,
     device_requests,
-    types::{ApiResponse, CauseReason},
+    nodes::{ExecutionInputs, NodesetExecutor, validate_nodeset_for_execution},
+    types::ApiResponse,
 };
 
 use super::nodes::{validate_nodeset, NodeConfiguration, get_active_nodeset_id, DEFAULT_NODESET_ID};
@@ -50,6 +52,17 @@ pub struct SimulatorInputs {
     pub pir_minutes_ago: Option<u32>,
     /// Minutes since last AC command (optional, defaults to 60)
     pub last_change_minutes: Option<i32>,
+    /// Net power in watts (optional, positive = consuming, negative = exporting)
+    pub net_power_watt: Option<i32>,
+    /// Outside temperature trend (optional, positive = warming, negative = cooling)
+    pub outside_temperature_trend: Option<f64>,
+    /// Nodeset ID to evaluate (optional, uses active nodeset if not provided)
+    /// Use -1 for new unsaved nodesets
+    pub nodeset_id: Option<i64>,
+    /// Nodes configuration for unsaved/new nodesets (when nodeset_id is -1)
+    pub nodes: Option<Vec<serde_json::Value>>,
+    /// Edges configuration for unsaved/new nodesets (when nodeset_id is -1)
+    pub edges: Option<Vec<serde_json::Value>>,
 }
 
 /// Result of simulating a workflow
@@ -109,6 +122,8 @@ pub struct SimulatorInputsUsed {
     pub user_is_home: bool,
     pub pir_detected: bool,
     pub last_change_minutes: i32,
+    pub net_power_watt: i32,
+    pub outside_temperature_trend: f64,
 }
 
 impl SimulatorInputsUsed {
@@ -124,6 +139,8 @@ impl SimulatorInputsUsed {
             user_is_home: inputs.user_is_home.unwrap_or(false),
             pir_detected: inputs.pir_detected.unwrap_or(false),
             last_change_minutes: inputs.last_change_minutes.unwrap_or(60),
+            net_power_watt: inputs.net_power_watt.unwrap_or(0),
+            outside_temperature_trend: inputs.outside_temperature_trend.unwrap_or(0.0),
         }
     }
 }
@@ -161,22 +178,7 @@ pub struct LiveDeviceInput {
 /// POST /api/simulator/evaluate
 /// Evaluates the workflow with the provided inputs without executing any actions
 async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
-    let cfg = config::get_config();
-    
-    // Validate the active nodeset before simulation
     let pool = db::get_pool().await;
-    let active_nodeset_validation = validate_active_nodeset(pool).await;
-    if let Err(validation_error) = active_nodeset_validation {
-        let error_result = SimulatorResult {
-            success: false,
-            plan: None,
-            ac_state: None,
-            error: Some(validation_error),
-            inputs_used: SimulatorInputsUsed::from_inputs_with_defaults(&inputs),
-        };
-        let response = ApiResponse::success(error_result);
-        return (StatusCode::OK, Json(response)).into_response();
-    }
     
     // Validate device
     let _device = match AcDevices::from_str(&inputs.device) {
@@ -224,13 +226,14 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         None => get_outdoor_temp().await.unwrap_or(20.0),
     };
     
+    let temperature_trend = match inputs.outside_temperature_trend {
+        Some(t) => t,
+        None => get_temperature_trend().await.unwrap_or(0.0),
+    };
+    
     let avg_next_12h_outdoor_temp = match inputs.avg_next_12h_outdoor_temp {
         Some(t) => t,
-        None => {
-            // Calculate from outdoor temp and trend
-            let trend = get_temperature_trend().await.unwrap_or(0.0);
-            outdoor_temp + trend
-        },
+        None => outdoor_temp + temperature_trend,
     };
     
     let user_is_home = inputs.user_is_home.unwrap_or_else(|| {
@@ -238,8 +241,20 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     });
     
     let pir_detected = inputs.pir_detected.unwrap_or(false);
-    let pir_minutes_ago = inputs.pir_minutes_ago.unwrap_or(0);
+    let pir_minutes_ago = inputs.pir_minutes_ago.unwrap_or(0) as i64;
     let last_change_minutes = inputs.last_change_minutes.unwrap_or(60);
+    
+    let net_power_watt = match inputs.net_power_watt {
+        Some(n) => n,
+        None => {
+            match device_requests::meter::get_latest_reading_cached().await {
+                Ok(reading) => {
+                    ((reading.current_consumption_kw - reading.current_production_kw) * KW_TO_W_MULTIPLIER) as i32
+                }
+                Err(_) => 0,
+            }
+        }
+    };
     
     // Build inputs used struct
     let inputs_used = SimulatorInputsUsed {
@@ -252,65 +267,157 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         user_is_home,
         pir_detected,
         last_change_minutes,
+        net_power_watt,
+        outside_temperature_trend: temperature_trend,
     };
     
-    // Check for PIR detection first
-    if pir_detected && pir_minutes_ago < cfg.pir_timeout_minutes {
-        let plan_result = SimulatorPlanResult {
-            mode: "Off".to_string(),
-            intensity: "Low".to_string(),
-            cause_label: CauseReason::PirDetection.label().to_string(),
-            cause_description: CauseReason::PirDetection.description().to_string(),
-        };
-        
-        let ac_state = ac_state_to_simulator_state(&AcState::new_off());
-        
-        let result = SimulatorResult {
-            success: true,
-            plan: Some(plan_result),
-            ac_state: Some(ac_state),
-            error: None,
+    // Get the nodeset to evaluate
+    let (nodes, edges) = match get_nodeset_to_evaluate(&inputs, pool).await {
+        Ok((n, e)) => (n, e),
+        Err(error_msg) => {
+            let error_result = SimulatorResult {
+                success: false,
+                plan: None,
+                ac_state: None,
+                error: Some(error_msg),
+                inputs_used,
+            };
+            let response = ApiResponse::success(error_result);
+            return (StatusCode::OK, Json(response)).into_response();
+        }
+    };
+    
+    // Validate the nodeset before execution
+    let validation_errors = validate_nodeset_for_execution(&nodes, &edges);
+    if !validation_errors.is_empty() {
+        let error_result = SimulatorResult {
+            success: false,
+            plan: None,
+            ac_state: None,
+            error: Some(format!("Nodeset validation failed: {}", validation_errors.join("; "))),
             inputs_used,
         };
-        let response = ApiResponse::success(result);
+        let response = ApiResponse::success(error_result);
         return (StatusCode::OK, Json(response)).into_response();
     }
     
-    // Build the plan input
-    let plan_input = PlanInput {
-        current_indoor_temp: inputs.temperature,
-        solar_production,
-        user_is_home,
-        current_outdoor_temp: outdoor_temp,
-        avg_next_12h_outdoor_temp,
-        current_ac_mode: None, // Simulation doesn't know current AC mode
+    // Also run the basic structural validation
+    let structural_validation = validate_nodeset(&nodes);
+    if !structural_validation.is_valid {
+        let error_result = SimulatorResult {
+            success: false,
+            plan: None,
+            ac_state: None,
+            error: Some(format!("Profile structure invalid: {}", structural_validation.errors.join("; "))),
+            inputs_used,
+        };
+        let response = ApiResponse::success(error_result);
+        return (StatusCode::OK, Json(response)).into_response();
+    }
+    
+    // Build PIR state for the execution context
+    let mut pir_state = HashMap::new();
+    pir_state.insert(inputs.device.clone(), (pir_detected, pir_minutes_ago));
+    
+    // Build execution inputs
+    let execution_inputs = ExecutionInputs {
+        device: inputs.device.clone(),
+        device_sensor_temperature: inputs.temperature,
+        is_auto_mode: inputs.is_auto_mode,
+        last_change_minutes: last_change_minutes as i64,
+        outdoor_temperature: outdoor_temp,
+        is_user_home: user_is_home,
+        net_power_watt: net_power_watt as i64,
+        raw_solar_watt: solar_production as i64,
+        outside_temperature_trend: temperature_trend,
+        pir_state,
     };
     
-    // Get the plan using the pure function
-    let plan = get_plan(&plan_input);
-    
-    // Convert plan to AC state
-    let ac_state = plan_to_state(&plan.mode, &plan.intensity, &inputs.device);
-    
-    // Build result
-    let plan_result = SimulatorPlanResult {
-        mode: request_mode_to_string(&plan.mode),
-        intensity: intensity_to_string(&plan.intensity),
-        cause_label: plan.cause.label().to_string(),
-        cause_description: plan.cause.description().to_string(),
+    // Create and execute the nodeset
+    let mut executor = match NodesetExecutor::new(&nodes, &edges, execution_inputs) {
+        Ok(e) => e,
+        Err(e) => {
+            let error_result = SimulatorResult {
+                success: false,
+                plan: None,
+                ac_state: None,
+                error: Some(format!("Failed to create executor: {}", e)),
+                inputs_used,
+            };
+            let response = ApiResponse::success(error_result);
+            return (StatusCode::OK, Json(response)).into_response();
+        }
     };
     
-    let simulator_ac_state = ac_state_to_simulator_state(&ac_state);
+    let execution_result = executor.execute();
     
-    let result = SimulatorResult {
-        success: true,
-        plan: Some(plan_result),
-        ac_state: Some(simulator_ac_state),
-        error: None,
+    // Convert execution result to simulator result
+    if let Some(error) = execution_result.error {
+        let error_result = SimulatorResult {
+            success: false,
+            plan: None,
+            ac_state: None,
+            error: Some(error),
+            inputs_used,
+        };
+        let response = ApiResponse::success(error_result);
+        return (StatusCode::OK, Json(response)).into_response();
+    }
+    
+    // Check terminal type and build appropriate response
+    match execution_result.terminal_type.as_deref() {
+        Some("Do Nothing") => {
+            let result = SimulatorResult {
+                success: true,
+                plan: Some(SimulatorPlanResult {
+                    mode: "NoChange".to_string(),
+                    intensity: "Low".to_string(),
+                    cause_label: "Node Workflow".to_string(),
+                    cause_description: "Do Nothing node reached - no AC action will be taken.".to_string(),
+                }),
+                ac_state: None,
+                error: None,
+                inputs_used,
+            };
+            let response = ApiResponse::success(result);
+            return (StatusCode::OK, Json(response)).into_response();
+        }
+        Some("Execute Action") => {
+            if let Some(action) = execution_result.action {
+                // Build the plan result from the action
+                let plan_result = SimulatorPlanResult {
+                    mode: action.mode.clone(),
+                    intensity: if action.is_powerful { "High".to_string() } else { "Medium".to_string() },
+                    cause_label: get_cause_reason_label(&action.cause_reason).await,
+                    cause_description: format!("Action from nodeset: {} mode at {}°C", action.mode, action.temperature),
+                };
+                
+                // Build AC state from action
+                let ac_state = action_to_simulator_state(&action);
+                
+                let result = SimulatorResult {
+                    success: true,
+                    plan: Some(plan_result),
+                    ac_state: Some(ac_state),
+                    error: None,
+                    inputs_used,
+                };
+                let response = ApiResponse::success(result);
+                return (StatusCode::OK, Json(response)).into_response();
+            }
+        }
+        _ => {}
+    }
+    
+    // No valid terminal reached
+    let error_result = SimulatorResult {
+        success: false,
+        plan: None,
+        ac_state: None,
+        error: Some("Workflow did not reach a valid terminal node".to_string()),
         inputs_used,
     };
-    
-    let response = ApiResponse::success(result);
+    let response = ApiResponse::success(error_result);
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -427,40 +534,6 @@ async fn get_temperature_trend() -> Result<f64, ()> {
         .map_err(|_| ())
 }
 
-fn request_mode_to_string(mode: &RequestMode) -> String {
-    match mode {
-        RequestMode::Colder => "Colder".to_string(),
-        RequestMode::Warmer => "Warmer".to_string(),
-        RequestMode::Off => "Off".to_string(),
-        RequestMode::NoChange => "NoChange".to_string(),
-    }
-}
-
-fn intensity_to_string(intensity: &Intensity) -> String {
-    match intensity {
-        Intensity::Low => "Low".to_string(),
-        Intensity::Medium => "Medium".to_string(),
-        Intensity::High => "High".to_string(),
-    }
-}
-
-fn ac_state_to_simulator_state(state: &AcState) -> SimulatorAcState {
-    let mode = state.mode.map(|m| match m {
-        AC_MODE_HEAT => "Heat".to_string(),
-        AC_MODE_COOL => "Cool".to_string(),
-        _ => format!("Unknown ({})", m),
-    });
-    
-    SimulatorAcState {
-        is_on: state.is_on,
-        mode,
-        fan_speed: state.fan_speed,
-        temperature: state.temperature,
-        swing: state.swing,
-        powerful_mode: state.powerful_mode,
-    }
-}
-
 /// Get minutes since the last AC command for a specific device
 /// Returns i32::MAX if no actions have been recorded
 async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
@@ -482,56 +555,108 @@ async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
     }
 }
 
-/// Validate the active nodeset configuration
-/// Returns Ok(()) if valid, Err(error_message) if invalid
-async fn validate_active_nodeset(pool: &sqlx::SqlitePool) -> Result<(), String> {
-    // Get the active nodeset id using shared helper
+/// Get the nodeset to evaluate based on input parameters
+/// If nodeset_id is provided and is -1, uses the nodes/edges from input
+/// If nodeset_id is provided and >= 0, fetches from database
+/// Otherwise uses the active nodeset
+async fn get_nodeset_to_evaluate(
+    inputs: &SimulatorInputs,
+    pool: &sqlx::SqlitePool,
+) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
+    // Check if we should use the provided nodes/edges (for new/unsaved nodesets)
+    if let Some(nodeset_id) = inputs.nodeset_id {
+        if nodeset_id == -1 {
+            // Use nodes/edges from input (new unsaved nodeset)
+            let nodes = inputs.nodes.clone().unwrap_or_default();
+            let edges = inputs.edges.clone().unwrap_or_default();
+            return Ok((nodes, edges));
+        }
+        
+        // Fetch specific nodeset from database
+        let result = sqlx::query_as::<_, (String,)>(
+            "SELECT node_json FROM nodesets WHERE id = ?"
+        )
+        .bind(nodeset_id)
+        .fetch_optional(pool)
+        .await;
+        
+        return match result {
+            Ok(Some((node_json,))) => {
+                match serde_json::from_str::<NodeConfiguration>(&node_json) {
+                    Ok(config) => Ok((config.nodes, config.edges)),
+                    Err(e) => Err(format!("Failed to parse nodeset configuration: {}", e)),
+                }
+            }
+            Ok(None) => Err(format!("Nodeset with id {} not found", nodeset_id)),
+            Err(e) => Err(format!("Failed to fetch nodeset: {}", e)),
+        };
+    }
+    
+    // Use active nodeset
     let active_id = match get_active_nodeset_id(pool).await {
         Ok(id) => id,
-        Err(e) => {
-            log::error!("Failed to get active nodeset id: {}", e);
-            return Err("Failed to get active nodeset".to_string());
-        }
+        Err(e) => return Err(format!("Failed to get active nodeset: {}", e)),
     };
-
-    // Fetch the nodeset
+    
     let result = sqlx::query_as::<_, (String,)>(
         "SELECT node_json FROM nodesets WHERE id = ?"
     )
     .bind(active_id)
     .fetch_optional(pool)
     .await;
-
+    
     match result {
         Ok(Some((node_json,))) => {
             match serde_json::from_str::<NodeConfiguration>(&node_json) {
-                Ok(config) => {
-                    let validation = validate_nodeset(&config.nodes);
-                    if validation.is_valid {
-                        Ok(())
-                    } else {
-                        let error_message = validation.errors.join("; ");
-                        Err(format!("Invalid active profile: {}", error_message))
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to parse nodeset configuration: {}", e);
-                    Err("Failed to parse active profile configuration".to_string())
-                }
+                Ok(config) => Ok((config.nodes, config.edges)),
+                Err(e) => Err(format!("Failed to parse active nodeset configuration: {}", e)),
             }
         }
         Ok(None) => {
-            // No nodeset found - could be default or missing
-            // For default nodeset (id 0), we skip validation as it may be empty
             if active_id == DEFAULT_NODESET_ID {
-                Ok(()) // Default nodeset is allowed to be empty
+                // Default nodeset can be empty
+                Ok((vec![], vec![]))
             } else {
-                Err("Active profile not found".to_string())
+                Err("Active nodeset not found".to_string())
             }
         }
-        Err(e) => {
-            log::error!("Failed to fetch active nodeset: {}", e);
-            Err("Failed to fetch active profile".to_string())
+        Err(e) => Err(format!("Failed to fetch active nodeset: {}", e)),
+    }
+}
+
+/// Get the cause reason label from an ID
+/// Looks up the cause reason in the database
+async fn get_cause_reason_label(cause_id: &str) -> String {
+    // Try to parse as i32 for database lookup
+    if let Ok(id) = cause_id.parse::<i32>() {
+        if let Ok(cause_reasons) = db::cause_reasons::get_all(false).await {
+            if let Some(cr) = cause_reasons.iter().find(|cr| cr.id == id) {
+                return cr.label.clone();
+            }
         }
+    }
+    
+    // Fallback to the raw ID
+    cause_id.to_string()
+}
+
+/// Convert an ActionResult to a SimulatorAcState
+fn action_to_simulator_state(action: &crate::nodes::ActionResult) -> SimulatorAcState {
+    let mode_str = match action.mode.as_str() {
+        "Heat" => Some("Heat".to_string()),
+        "Cool" => Some("Cool".to_string()),
+        "Off" => None,
+        _ => Some(action.mode.clone()),
+    };
+    
+    let is_on = action.mode != "Off";
+    
+    SimulatorAcState {
+        is_on,
+        mode: mode_str,
+        fan_speed: Some(0), // Auto fan
+        temperature: Some(action.temperature),
+        swing: Some(0), // Swing off
+        powerful_mode: action.is_powerful,
     }
 }

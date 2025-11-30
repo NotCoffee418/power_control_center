@@ -1,8 +1,12 @@
 <script>
   import { onMount } from 'svelte';
 
+  // Constants
+  /** ID used for new unsaved nodesets that haven't been saved to the database yet */
+  const NEW_NODESET_ID = -1;
+
   // Props
-  let { isOpen = $bindable(true) } = $props();
+  let { isOpen = $bindable(true), currentNodesetId = $bindable(null), nodes = $bindable([]), edges = $bindable([]) } = $props();
 
   // State
   let drawerHeight = $state(300);
@@ -21,6 +25,8 @@
   let pirDetected = $state(false);
   let pirMinutesAgoStr = $state('0');
   let lastChangeMinutesStr = $state('60');
+  let netPowerWattStr = $state('0');
+  let outsideTempTrendStr = $state('0.0');
 
   // Available devices
   let devices = $state([]);
@@ -73,6 +79,12 @@
   function getLastChangeMinutes() {
     return isValidInteger(lastChangeMinutesStr) ? parseInt(lastChangeMinutesStr, 10) : 0;
   }
+  function getNetPowerWatt() {
+    return isValidInteger(netPowerWattStr) ? parseInt(netPowerWattStr, 10) : 0;
+  }
+  function getOutsideTempTrend() {
+    return isValidFloat(outsideTempTrendStr) ? parseFloat(outsideTempTrendStr) : 0;
+  }
 
   // Check if all inputs are valid
   function areAllInputsValid() {
@@ -81,7 +93,9 @@
            isValidFloat(outdoorTempStr) &&
            isValidFloat(avgNext12hOutdoorTempStr) &&
            isValidInteger(pirMinutesAgoStr) &&
-           isValidInteger(lastChangeMinutesStr);
+           isValidInteger(lastChangeMinutesStr) &&
+           isValidInteger(netPowerWattStr) &&
+           isValidFloat(outsideTempTrendStr);
   }
 
   // Load live inputs from backend
@@ -125,6 +139,12 @@
         if (data.avg_next_12h_outdoor_temp !== null) {
           avgNext12hOutdoorTempStr = String(roundToOneDecimal(data.avg_next_12h_outdoor_temp));
         }
+        if (data.net_power_watt !== null) {
+          netPowerWattStr = String(data.net_power_watt);
+        }
+        if (data.outside_temperature_trend !== null) {
+          outsideTempTrendStr = String(roundToOneDecimal(data.outside_temperature_trend));
+        }
         userIsHome = data.user_is_home;
       } else {
         errorMessage = result.error || 'Failed to load live inputs';
@@ -150,23 +170,35 @@
     simulationResult = null;
     
     try {
+      // Build the request payload
+      // Always use the currently displayed nodes/edges from the editor (what the user sees)
+      // This ensures the simulator runs on the current state, not a saved version
+      const payload = {
+        device: selectedDevice,
+        temperature: getTemperature(),
+        is_auto_mode: isAutoMode,
+        solar_production: getSolarProduction(),
+        outdoor_temp: getOutdoorTemp(),
+        avg_next_12h_outdoor_temp: getAvgNext12hOutdoorTemp(),
+        user_is_home: userIsHome,
+        pir_detected: pirDetected,
+        pir_minutes_ago: getPirMinutesAgo(),
+        last_change_minutes: getLastChangeMinutes(),
+        net_power_watt: getNetPowerWatt(),
+        outside_temperature_trend: getOutsideTempTrend(),
+        // Always pass -1 to indicate we're using inline nodes/edges
+        nodeset_id: NEW_NODESET_ID,
+        // Always include the current nodes and edges from the editor
+        nodes: nodes || [],
+        edges: edges || [],
+      };
+      
       const response = await fetch('/api/simulator/evaluate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          device: selectedDevice,
-          temperature: getTemperature(),
-          is_auto_mode: isAutoMode,
-          solar_production: getSolarProduction(),
-          outdoor_temp: getOutdoorTemp(),
-          avg_next_12h_outdoor_temp: getAvgNext12hOutdoorTemp(),
-          user_is_home: userIsHome,
-          pir_detected: pirDetected,
-          pir_minutes_ago: getPirMinutesAgo(),
-          last_change_minutes: getLastChangeMinutes(),
-        }),
+        body: JSON.stringify(payload),
       });
       
       const result = await response.json();
@@ -233,16 +265,6 @@
       default: return mode;
     }
   }
-
-  // Get intensity display string
-  function getIntensityDisplay(intensity) {
-    switch (intensity) {
-      case 'Low': return '🔋 Low';
-      case 'Medium': return '⚡ Medium';
-      case 'High': return '⚡⚡ High (Powerful)';
-      default: return intensity;
-    }
-  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -300,10 +322,6 @@
       <!-- Inputs Panel -->
       <div class="inputs-panel">
         <h4>Simulation Inputs</h4>
-        
-        {#if errorMessage}
-          <div class="error-message">{errorMessage}</div>
-        {/if}
         
         <div class="input-grid">
           <!-- Device Selection -->
@@ -433,12 +451,28 @@
               placeholder="e.g. 60"
             />
           </div>
+          
+          <!-- Net Power (integer, positive = consuming, negative = producing) -->
+          <div class="input-group">
+            <label for="netPower">Net Power (W)</label>
+            <input 
+              type="text" 
+              id="netPower" 
+              bind:value={netPowerWattStr}
+              class:invalid={!isValidInteger(netPowerWattStr)}
+              placeholder="e.g. -500"
+            />
+          </div>
         </div>
       </div>
       
       <!-- Results Panel -->
       <div class="results-panel">
         <h4>Simulation Result</h4>
+        
+        {#if errorMessage}
+          <div class="error-message">{errorMessage}</div>
+        {/if}
         
         {#if simulationResult}
           {#if simulationResult.success && simulationResult.plan}
@@ -449,12 +483,6 @@
                   <span class="result-label">Mode:</span>
                   <span class="result-value mode-{simulationResult.plan.mode.toLowerCase()}">
                     {getModeDisplay(simulationResult.plan.mode)}
-                  </span>
-                </div>
-                <div class="result-row">
-                  <span class="result-label">Intensity:</span>
-                  <span class="result-value">
-                    {getIntensityDisplay(simulationResult.plan.intensity)}
                   </span>
                 </div>
                 <div class="result-row">
