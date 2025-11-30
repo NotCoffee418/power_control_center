@@ -37,6 +37,11 @@ pub struct NodesetValidationResult {
     pub errors: Vec<String>,
 }
 
+/// Check if a node type is a terminal node (Execute Action, Do Nothing, or Turn Off)
+fn is_terminal_node(node_type: &str) -> bool {
+    matches!(node_type, NODE_TYPE_EXECUTE_ACTION | NODE_TYPE_DO_NOTHING | NODE_TYPE_TURN_OFF)
+}
+
 /// Validates that a nodeset has exactly one Start node and at least one terminal node
 /// (Execute Action, Do Nothing, or Turn Off).
 /// Also validates the evaluate_every_minutes value on the Start node.
@@ -54,32 +59,28 @@ pub fn validate_nodeset(nodes: &[serde_json::Value], edges: &[serde_json::Value]
             .and_then(|def| def.get("node_type"))
             .and_then(|nt| nt.as_str())
         {
-            match node_type {
-                NODE_TYPE_START => {
-                    start_count += 1;
-                    // Validate evaluate_every_minutes value
-                    if let Some(data) = node.get("data") {
-                        if let Some(value) = data.get("primitiveValue") {
-                            if let Some(minutes) = value.as_i64() {
-                                if minutes < 1 {
-                                    errors.push(format!(
-                                        "Evaluate Every Minutes must be at least 1 (found {})",
-                                        minutes
-                                    ));
-                                } else if minutes > MAX_EVALUATE_EVERY_MINUTES as i64 {
-                                    errors.push(format!(
-                                        "Evaluate Every Minutes cannot exceed {} (24 hours), found {}",
-                                        MAX_EVALUATE_EVERY_MINUTES, minutes
-                                    ));
-                                }
+            if node_type == NODE_TYPE_START {
+                start_count += 1;
+                // Validate evaluate_every_minutes value
+                if let Some(data) = node.get("data") {
+                    if let Some(value) = data.get("primitiveValue") {
+                        if let Some(minutes) = value.as_i64() {
+                            if minutes < 1 {
+                                errors.push(format!(
+                                    "Evaluate Every Minutes must be at least 1 (found {})",
+                                    minutes
+                                ));
+                            } else if minutes > MAX_EVALUATE_EVERY_MINUTES as i64 {
+                                errors.push(format!(
+                                    "Evaluate Every Minutes cannot exceed {} (24 hours), found {}",
+                                    MAX_EVALUATE_EVERY_MINUTES, minutes
+                                ));
                             }
                         }
                     }
                 }
-                NODE_TYPE_EXECUTE_ACTION | NODE_TYPE_DO_NOTHING | NODE_TYPE_TURN_OFF => {
-                    terminal_count += 1;
-                }
-                _ => {}
+            } else if is_terminal_node(node_type) {
+                terminal_count += 1;
             }
         }
     }
@@ -106,6 +107,16 @@ pub fn validate_nodeset(nodes: &[serde_json::Value], edges: &[serde_json::Value]
         terminal_count,
         errors,
     }
+}
+
+/// Check if an output is an execution type output
+fn is_execution_output(output: &serde_json::Value, output_id: &str) -> bool {
+    output.get("value_type")
+        .and_then(|vt| vt.as_str())
+        .map(|vt| vt == "Execution")
+        .unwrap_or(false)
+        || output_id == "exec_out"
+        || output_id.starts_with("then")
 }
 
 /// Find nodes with execution outputs that are not connected to anything.
@@ -145,7 +156,7 @@ fn find_loose_execution_nodes(nodes: &[serde_json::Value], edges: &[serde_json::
         };
         
         // Skip terminal nodes - they don't have execution outputs
-        if matches!(node_type, NODE_TYPE_EXECUTE_ACTION | NODE_TYPE_DO_NOTHING | NODE_TYPE_TURN_OFF) {
+        if is_terminal_node(node_type) {
             continue;
         }
         
@@ -166,15 +177,7 @@ fn find_loose_execution_nodes(nodes: &[serde_json::Value], edges: &[serde_json::
                     None => continue,
                 };
                 
-                // Check if this is an execution type output
-                let is_execution_output = output.get("value_type")
-                    .and_then(|vt| vt.as_str())
-                    .map(|vt| vt == "Execution")
-                    .unwrap_or(false)
-                    || output_id == "exec_out"
-                    || output_id.starts_with("then");
-                
-                if is_execution_output {
+                if is_execution_output(output, output_id) {
                     // Check if this output is connected
                     if !connected_outputs.contains(&(node_id.clone(), output_id.to_string())) {
                         let node_name = definition.get("name")
