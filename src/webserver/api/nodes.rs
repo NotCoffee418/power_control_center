@@ -33,7 +33,7 @@ pub struct NodesetValidationResult {
     pub errors: Vec<String>,
 }
 
-/// Validates that a nodeset has exactly one Start node and exactly one Execute Action node.
+/// Validates that a nodeset has exactly one Start node and at least one Execute Action node.
 /// Also validates the evaluate_every_minutes value on the Start node.
 /// Returns a validation result with counts and any errors
 pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult {
@@ -84,13 +84,11 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
     }
     
     if execute_count == 0 {
-        errors.push("Profile must have exactly one Execute Action node (found 0)".to_string());
-    } else if execute_count > 1 {
-        errors.push(format!("Profile must have exactly one Execute Action node (found {})", execute_count));
+        errors.push("Profile must have at least one Execute Action node".to_string());
     }
 
     NodesetValidationResult {
-        is_valid: start_count == 1 && execute_count == 1 && errors.is_empty(),
+        is_valid: start_count == 1 && execute_count >= 1 && errors.is_empty(),
         start_count,
         execute_count,
         errors,
@@ -897,6 +895,7 @@ mod tests {
 
     #[test]
     fn test_validate_nodeset_multiple_executes() {
+        // Multiple Execute Action nodes are now allowed for flow control support
         let nodes = vec![
             create_node(NODE_TYPE_START),
             create_node(NODE_TYPE_EXECUTE_ACTION),
@@ -904,11 +903,10 @@ mod tests {
         ];
         let result = validate_nodeset(&nodes);
         
-        assert!(!result.is_valid);
+        assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
         assert_eq!(result.execute_count, 2);
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("found 2"));
+        assert!(result.errors.is_empty());
     }
 
     #[test]
