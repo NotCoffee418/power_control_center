@@ -23,22 +23,27 @@ pub const DEFAULT_NODESET_ID: i64 = 0;
 const NODE_TYPE_START: &str = "flow_start";
 /// Node type for the Execute Action node
 const NODE_TYPE_EXECUTE_ACTION: &str = "flow_execute_action";
+/// Node type for the Do Nothing node
+const NODE_TYPE_DO_NOTHING: &str = "flow_do_nothing";
+/// Node type for the Turn Off node
+const NODE_TYPE_TURN_OFF: &str = "flow_turn_off";
 
 /// Result of nodeset validation
 #[derive(Debug)]
 pub struct NodesetValidationResult {
     pub is_valid: bool,
     pub start_count: usize,
-    pub execute_count: usize,
+    pub terminal_count: usize,
     pub errors: Vec<String>,
 }
 
-/// Validates that a nodeset has exactly one Start node and at least one Execute Action node.
+/// Validates that a nodeset has exactly one Start node and at least one terminal node
+/// (Execute Action, Do Nothing, or Turn Off).
 /// Also validates the evaluate_every_minutes value on the Start node.
 /// Returns a validation result with counts and any errors
-pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult {
+pub fn validate_nodeset(nodes: &[serde_json::Value], edges: &[serde_json::Value]) -> NodesetValidationResult {
     let mut start_count = 0;
-    let mut execute_count = 0;
+    let mut terminal_count = 0;
     let mut errors = Vec::new();
 
     for node in nodes {
@@ -71,7 +76,9 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
                         }
                     }
                 }
-                NODE_TYPE_EXECUTE_ACTION => execute_count += 1,
+                NODE_TYPE_EXECUTE_ACTION | NODE_TYPE_DO_NOTHING | NODE_TYPE_TURN_OFF => {
+                    terminal_count += 1;
+                }
                 _ => {}
             }
         }
@@ -83,16 +90,105 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
         errors.push(format!("Profile must have exactly one Start node (found {})", start_count));
     }
     
-    if execute_count == 0 {
-        errors.push("Profile must have at least one Execute Action node".to_string());
+    if terminal_count == 0 {
+        errors.push("Profile must have at least one terminal node (Execute Action, Do Nothing, or Turn Off)".to_string());
+    }
+
+    // Check for loose execution flow nodes (nodes with execution outputs that don't lead to terminal nodes)
+    let loose_nodes = find_loose_execution_nodes(nodes, edges);
+    for node_name in loose_nodes {
+        errors.push(format!("Node '{}' has an unconnected execution output that doesn't lead to a terminal node", node_name));
     }
 
     NodesetValidationResult {
-        is_valid: start_count == 1 && execute_count >= 1 && errors.is_empty(),
+        is_valid: start_count == 1 && terminal_count >= 1 && errors.is_empty(),
         start_count,
-        execute_count,
+        terminal_count,
         errors,
     }
+}
+
+/// Find nodes with execution outputs that are not connected to anything.
+/// Returns a list of node names/labels that have loose execution outputs.
+fn find_loose_execution_nodes(nodes: &[serde_json::Value], edges: &[serde_json::Value]) -> Vec<String> {
+    let mut loose_nodes = Vec::new();
+    
+    // Build a set of (source_node_id, source_handle) pairs that are connected
+    let connected_outputs: HashSet<(String, String)> = edges.iter()
+        .filter_map(|edge| {
+            let source = edge.get("source").and_then(|s| s.as_str())?.to_string();
+            let source_handle = edge.get("sourceHandle").and_then(|h| h.as_str())?.to_string();
+            Some((source, source_handle))
+        })
+        .collect();
+    
+    // Check each node for unconnected execution outputs
+    for node in nodes {
+        let node_id = match node.get("id").and_then(|id| id.as_str()) {
+            Some(id) => id.to_string(),
+            None => continue,
+        };
+        
+        let data = match node.get("data") {
+            Some(d) => d,
+            None => continue,
+        };
+        
+        let definition = match data.get("definition") {
+            Some(def) => def,
+            None => continue,
+        };
+        
+        let node_type = match definition.get("node_type").and_then(|nt| nt.as_str()) {
+            Some(nt) => nt,
+            None => continue,
+        };
+        
+        // Skip terminal nodes - they don't have execution outputs
+        if matches!(node_type, NODE_TYPE_EXECUTE_ACTION | NODE_TYPE_DO_NOTHING | NODE_TYPE_TURN_OFF) {
+            continue;
+        }
+        
+        // Get execution outputs from definition (or dynamicOutputs for Sequence nodes)
+        let outputs = if node_type == "logic_sequence" {
+            // For Sequence nodes, check dynamicOutputs first, then definition outputs
+            data.get("dynamicOutputs")
+                .or_else(|| definition.get("outputs"))
+        } else {
+            definition.get("outputs")
+        };
+        
+        if let Some(outputs) = outputs.and_then(|o| o.as_array()) {
+            for output in outputs {
+                // Check if this is an execution output
+                let output_id = match output.get("id").and_then(|id| id.as_str()) {
+                    Some(id) => id,
+                    None => continue,
+                };
+                
+                // Check if this is an execution type output
+                let is_execution_output = output.get("value_type")
+                    .and_then(|vt| vt.as_str())
+                    .map(|vt| vt == "Execution")
+                    .unwrap_or(false)
+                    || output_id == "exec_out"
+                    || output_id.starts_with("then");
+                
+                if is_execution_output {
+                    // Check if this output is connected
+                    if !connected_outputs.contains(&(node_id.clone(), output_id.to_string())) {
+                        let node_name = definition.get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("Unknown");
+                        loose_nodes.push(node_name.to_string());
+                        break; // Only report each node once
+                    }
+                }
+            }
+        }
+    }
+    
+    loose_nodes
 }
 
 /// Gets node definitions enriched with cause reasons from the database.
@@ -499,7 +595,7 @@ async fn update_nodeset(Path(id): Path<i64>, Json(request): Json<UpdateNodesetRe
     
     if id == active_id {
         // Validate the nodeset since it's the active one
-        let validation = validate_nodeset(&request.nodes);
+        let validation = validate_nodeset(&request.nodes, &request.edges);
         if !validation.is_valid {
             let error_message = validation.errors.join("; ");
             let response = ApiResponse::<()>::error(format!("Cannot save active profile with invalid configuration: {}", error_message));
@@ -727,7 +823,7 @@ async fn set_active_nodeset(Path(id): Path<i64>) -> Response {
                 // Parse and validate the nodeset
                 match serde_json::from_str::<NodeConfiguration>(&node_json) {
                     Ok(config) => {
-                        let validation = validate_nodeset(&config.nodes);
+                        let validation = validate_nodeset(&config.nodes, &config.edges);
                         if !validation.is_valid {
                             let error_message = validation.errors.join("; ");
                             let response = ApiResponse::<()>::error(format!("Invalid profile: {}", error_message));
@@ -822,17 +918,54 @@ mod tests {
         })
     }
 
+    fn create_node_with_id(node_type: &str, id: &str) -> serde_json::Value {
+        let outputs = if node_type == NODE_TYPE_START {
+            json!([{ "id": "exec_out", "label": "▶", "value_type": "Execution" }])
+        } else {
+            json!([])
+        };
+        
+        json!({
+            "id": id,
+            "type": "custom",
+            "position": { "x": 0, "y": 0 },
+            "data": {
+                "label": "Test Node",
+                "definition": {
+                    "node_type": node_type,
+                    "name": "Test",
+                    "description": "Test node",
+                    "category": "System",
+                    "inputs": [],
+                    "outputs": outputs,
+                    "color": "#000000"
+                }
+            }
+        })
+    }
+
+    fn create_execution_edge(source: &str, source_handle: &str, target: &str, target_handle: &str) -> serde_json::Value {
+        json!({
+            "id": format!("{}-{}-{}-{}", source, source_handle, target, target_handle),
+            "source": source,
+            "sourceHandle": source_handle,
+            "target": target,
+            "targetHandle": target_handle
+        })
+    }
+
     #[test]
     fn test_validate_nodeset_empty() {
         let nodes: Vec<serde_json::Value> = vec![];
-        let result = validate_nodeset(&nodes);
+        let edges: Vec<serde_json::Value> = vec![];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 0);
-        assert_eq!(result.execute_count, 0);
+        assert_eq!(result.terminal_count, 0);
         assert_eq!(result.errors.len(), 2);
         assert!(result.errors.iter().any(|e| e.contains("Start node")));
-        assert!(result.errors.iter().any(|e| e.contains("Execute Action node")));
+        assert!(result.errors.iter().any(|e| e.contains("terminal node")));
     }
 
     #[test]
@@ -841,11 +974,29 @@ mod tests {
             create_node(NODE_TYPE_START),
             create_node(NODE_TYPE_EXECUTE_ACTION),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges: Vec<serde_json::Value> = vec![];
+        let result = validate_nodeset(&nodes, &edges);
+        
+        // Invalid because Start node has unconnected exec_out
+        assert!(!result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.terminal_count, 1);
+    }
+
+    #[test]
+    fn test_validate_nodeset_valid_with_connection() {
+        let nodes = vec![
+            create_node_with_id(NODE_TYPE_START, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
+        ];
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.terminal_count, 1);
         assert!(result.errors.is_empty());
     }
 
@@ -854,27 +1005,28 @@ mod tests {
         let nodes = vec![
             create_node(NODE_TYPE_EXECUTE_ACTION),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges: Vec<serde_json::Value> = vec![];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 0);
-        assert_eq!(result.execute_count, 1);
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("Start node"));
+        assert_eq!(result.terminal_count, 1);
+        assert!(result.errors.iter().any(|e| e.contains("Start node")));
     }
 
     #[test]
-    fn test_validate_nodeset_missing_execute() {
+    fn test_validate_nodeset_missing_terminal() {
         let nodes = vec![
             create_node(NODE_TYPE_START),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges: Vec<serde_json::Value> = vec![];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 0);
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("Execute Action node"));
+        assert_eq!(result.terminal_count, 0);
+        // Check for errors about both terminal node and loose execution
+        assert!(result.errors.iter().any(|e| e.contains("terminal node")));
     }
 
     #[test]
@@ -884,28 +1036,68 @@ mod tests {
             create_node(NODE_TYPE_START),
             create_node(NODE_TYPE_EXECUTE_ACTION),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges: Vec<serde_json::Value> = vec![];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 2);
-        assert_eq!(result.execute_count, 1);
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("found 2"));
+        assert_eq!(result.terminal_count, 1);
+        assert!(result.errors.iter().any(|e| e.contains("found 2")));
     }
 
     #[test]
-    fn test_validate_nodeset_multiple_executes() {
-        // Multiple Execute Action nodes are now allowed for flow control support
+    fn test_validate_nodeset_multiple_terminals() {
+        // Multiple terminal nodes are now allowed for flow control support
         let nodes = vec![
-            create_node(NODE_TYPE_START),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_node_with_id(NODE_TYPE_START, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
+            create_node_with_id(NODE_TYPE_DO_NOTHING, "do-nothing-1"),
         ];
-        let result = validate_nodeset(&nodes);
+        // Connect start to execute action
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 2);
+        assert_eq!(result.terminal_count, 2);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_with_do_nothing() {
+        // Do Nothing should be a valid terminal node
+        let nodes = vec![
+            create_node_with_id(NODE_TYPE_START, "start-1"),
+            create_node_with_id(NODE_TYPE_DO_NOTHING, "do-nothing-1"),
+        ];
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.terminal_count, 1);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_with_turn_off() {
+        // Turn Off should be a valid terminal node
+        let nodes = vec![
+            create_node_with_id(NODE_TYPE_START, "start-1"),
+            create_node_with_id(NODE_TYPE_TURN_OFF, "turn-off-1"),
+        ];
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "turn-off-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.terminal_count, 1);
         assert!(result.errors.is_empty());
     }
 
@@ -913,17 +1105,20 @@ mod tests {
     fn test_validate_nodeset_with_other_nodes() {
         // Valid nodeset with additional nodes that should be ignored
         let nodes = vec![
-            create_node(NODE_TYPE_START),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_node_with_id(NODE_TYPE_START, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
             create_node("logic_and"),
             create_node("primitive_float"),
             create_node("device"),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.terminal_count, 1);
         assert!(result.errors.is_empty());
     }
 
@@ -934,14 +1129,32 @@ mod tests {
             json!({}),
             json!({ "data": {} }),
             json!({ "data": { "definition": {} } }),
-            create_node(NODE_TYPE_START),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_node_with_id(NODE_TYPE_START, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.terminal_count, 1);
+    }
+
+    #[test]
+    fn test_validate_nodeset_loose_execution_output() {
+        // Start node with unconnected exec_out should fail
+        let nodes = vec![
+            create_node_with_id(NODE_TYPE_START, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
+        ];
+        // No edges connecting them
+        let edges: Vec<serde_json::Value> = vec![];
+        let result = validate_nodeset(&nodes, &edges);
+        
+        assert!(!result.is_valid);
+        assert!(result.errors.iter().any(|e| e.contains("unconnected execution output")));
     }
 
     // -------------------------------------------------------------------------
@@ -1237,9 +1450,9 @@ mod tests {
     // Tests for evaluate_every_minutes validation
     // -------------------------------------------------------------------------
 
-    fn create_start_node_with_evaluate_minutes(minutes: i64) -> serde_json::Value {
+    fn create_start_node_with_evaluate_minutes(minutes: i64, id: &str) -> serde_json::Value {
         json!({
-            "id": "flow_start-1",
+            "id": id,
             "type": "custom",
             "position": { "x": 0, "y": 0 },
             "data": {
@@ -1251,7 +1464,7 @@ mod tests {
                     "description": "Test node",
                     "category": "System",
                     "inputs": [],
-                    "outputs": [],
+                    "outputs": [{ "id": "exec_out", "label": "▶", "value_type": "Execution" }],
                     "color": "#000000"
                 }
             }
@@ -1261,10 +1474,13 @@ mod tests {
     #[test]
     fn test_validate_nodeset_evaluate_minutes_valid() {
         let nodes = vec![
-            create_start_node_with_evaluate_minutes(5),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_start_node_with_evaluate_minutes(5, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(result.is_valid);
         assert!(result.errors.is_empty());
@@ -1273,10 +1489,13 @@ mod tests {
     #[test]
     fn test_validate_nodeset_evaluate_minutes_at_max() {
         let nodes = vec![
-            create_start_node_with_evaluate_minutes(MAX_EVALUATE_EVERY_MINUTES as i64),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_start_node_with_evaluate_minutes(MAX_EVALUATE_EVERY_MINUTES as i64, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(result.is_valid);
         assert!(result.errors.is_empty());
@@ -1285,10 +1504,13 @@ mod tests {
     #[test]
     fn test_validate_nodeset_evaluate_minutes_exceeds_max() {
         let nodes = vec![
-            create_start_node_with_evaluate_minutes(1441), // 1 more than max
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_start_node_with_evaluate_minutes(1441, "start-1"), // 1 more than max
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(!result.is_valid);
         assert!(result.errors.iter().any(|e| e.contains("cannot exceed 1440")));
@@ -1297,10 +1519,13 @@ mod tests {
     #[test]
     fn test_validate_nodeset_evaluate_minutes_zero() {
         let nodes = vec![
-            create_start_node_with_evaluate_minutes(0),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_start_node_with_evaluate_minutes(0, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(!result.is_valid);
         assert!(result.errors.iter().any(|e| e.contains("must be at least 1")));
@@ -1309,10 +1534,13 @@ mod tests {
     #[test]
     fn test_validate_nodeset_evaluate_minutes_negative() {
         let nodes = vec![
-            create_start_node_with_evaluate_minutes(-5),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_start_node_with_evaluate_minutes(-5, "start-1"),
+            create_node_with_id(NODE_TYPE_EXECUTE_ACTION, "execute-1"),
         ];
-        let result = validate_nodeset(&nodes);
+        let edges = vec![
+            create_execution_edge("start-1", "exec_out", "execute-1", "exec_in"),
+        ];
+        let result = validate_nodeset(&nodes, &edges);
         
         assert!(!result.is_valid);
         assert!(result.errors.iter().any(|e| e.contains("must be at least 1")));

@@ -324,7 +324,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     }
     
     // Also run the basic structural validation
-    let structural_validation = validate_nodeset(&nodes);
+    let structural_validation = validate_nodeset(&nodes, &edges);
     if !structural_validation.is_valid {
         let error_result = SimulatorResult {
             success: false,
