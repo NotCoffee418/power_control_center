@@ -101,6 +101,7 @@ impl Node for StartNode {
 /// Execute Action Node - End point that executes the command and stores to database
 /// Takes raw AC control values: temperature, mode (Heat/Cool/Off), fan_speed, and isPowerful
 /// This node represents the final action in the evaluation flow
+/// NOTE: The device is inferred from the evaluation context (Start node) at runtime.
 /// NOTE: The cause_reason input's hardcoded enum values are deprecated.
 /// The actual cause reasons are loaded from the database at runtime
 /// via the get_node_definitions API endpoint.
@@ -111,19 +112,9 @@ impl Node for ExecuteActionNode {
         NodeDefinition::new(
             "flow_execute_action",
             "Execute Action",
-            "Executes the AC command and stores the action to the database. This is the end point of an evaluation flow that results in an AC action. Accepts raw AC control values.",
+            "Executes the AC command and stores the action to the database. This is the end point of an evaluation flow that results in an AC action. The device is inferred from the evaluation context.",
             "System",
             vec![
-                NodeInput::new(
-                    "device",
-                    "Device",
-                    "The AC device to control",
-                    ValueType::Enum(vec![
-                        "LivingRoom".to_string(),
-                        "Veranda".to_string(),
-                    ]),
-                    true,
-                ),
                 NodeInput::new(
                     "temperature",
                     "Temperature",
@@ -251,10 +242,10 @@ impl Node for ActiveCommandNode {
 }
 
 /// Do Nothing Node - Terminates the flow without executing any action
-/// Takes device and cause_reason inputs for debugging and simulation purposes
+/// The trigger input accepts any signal type and terminates the evaluation.
 /// Use this when the evaluation determines no action should be taken
-/// NOTE: The device and cause_reason are not stored in the database (unlike Execute Action)
-/// but they are useful for debugging simulations and understanding why no action was taken.
+/// NOTE: The device is inferred from the evaluation context (Start node) at runtime.
+/// The cause_reason input is useful for debugging simulations and understanding why no action was taken.
 pub struct DoNothingNode;
 
 impl Node for DoNothingNode {
@@ -262,17 +253,14 @@ impl Node for DoNothingNode {
         NodeDefinition::new(
             "flow_do_nothing",
             "Do Nothing",
-            "Terminates the evaluation flow without executing any AC action. Use this when conditions determine that no change to the AC state is needed. The device and cause reason inputs help debug simulations.",
+            "Terminates the evaluation flow without executing any AC action. When any signal is received on the trigger input, the flow ends for the current device. The device is inferred from the evaluation context.",
             "System",
             vec![
                 NodeInput::new(
-                    "device",
-                    "Device",
-                    "The AC device being evaluated (for debugging/simulation purposes)",
-                    ValueType::Enum(vec![
-                        "LivingRoom".to_string(),
-                        "Veranda".to_string(),
-                    ]),
+                    "trigger",
+                    "Trigger",
+                    "Accepts any data type from upstream nodes. When this input receives a value (Boolean, Float, Integer, String, or any other type), the evaluation ends without taking action.",
+                    ValueType::Any,
                     true,
                 ),
                 NodeInput::new(
@@ -366,19 +354,8 @@ mod tests {
         assert_eq!(def.node_type, "flow_execute_action");
         assert_eq!(def.name, "Execute Action");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 6); // device, temperature, mode, fan_speed, is_powerful, cause_reason
+        assert_eq!(def.inputs.len(), 5); // temperature, mode, fan_speed, is_powerful, cause_reason (device is inferred from context)
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
-        
-        // Verify device input
-        let device_input = def.inputs.iter().find(|i| i.id == "device").unwrap();
-        match &device_input.value_type {
-            ValueType::Enum(values) => {
-                assert!(values.contains(&"LivingRoom".to_string()));
-                assert!(values.contains(&"Veranda".to_string()));
-            }
-            _ => panic!("Expected Enum type for device input"),
-        }
-        assert!(device_input.required);
         
         // Verify temperature input
         let temp_input = def.inputs.iter().find(|i| i.id == "temperature").unwrap();
@@ -427,6 +404,9 @@ mod tests {
             _ => panic!("Expected Enum type for cause_reason input"),
         }
         assert!(cause_input.required);
+        
+        // Verify no device input (device is inferred from context)
+        assert!(def.inputs.iter().find(|i| i.id == "device").is_none());
     }
 
     #[test]
@@ -436,19 +416,13 @@ mod tests {
         assert_eq!(def.node_type, "flow_do_nothing");
         assert_eq!(def.name, "Do Nothing");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 2); // device and cause_reason inputs
+        assert_eq!(def.inputs.len(), 2); // trigger and cause_reason inputs
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
         
-        // Verify device input
-        let device_input = def.inputs.iter().find(|i| i.id == "device").unwrap();
-        match &device_input.value_type {
-            ValueType::Enum(values) => {
-                assert!(values.contains(&"LivingRoom".to_string()));
-                assert!(values.contains(&"Veranda".to_string()));
-            }
-            _ => panic!("Expected Enum type for device input"),
-        }
-        assert!(device_input.required);
+        // Verify trigger input (Any type - accepts any signal)
+        let trigger_input = def.inputs.iter().find(|i| i.id == "trigger").unwrap();
+        assert_eq!(trigger_input.value_type, ValueType::Any);
+        assert!(trigger_input.required);
         
         // Verify cause_reason input (actual values loaded from database at runtime)
         let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
@@ -459,6 +433,9 @@ mod tests {
             _ => panic!("Expected Enum type for cause_reason input"),
         }
         assert!(cause_input.required);
+        
+        // Verify no device input (device is inferred from context)
+        assert!(def.inputs.iter().find(|i| i.id == "device").is_none());
     }
 
     #[test]
