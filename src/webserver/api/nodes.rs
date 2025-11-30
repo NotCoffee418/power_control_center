@@ -95,19 +95,59 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
     }
 }
 
+/// Gets node definitions enriched with cause reasons from the database.
+/// This ensures CauseReason nodes have their dropdown options populated.
+async fn get_enriched_node_definitions() -> Vec<nodes::NodeDefinition> {
+    let mut definitions = nodes::get_all_node_definitions();
+    
+    // Load cause reasons from database and inject them into node definitions
+    if let Ok(cause_reasons) = db::cause_reasons::get_all(false).await {
+        let options: Vec<nodes::EnumOption> = cause_reasons.iter().map(|cr| {
+            nodes::EnumOption {
+                id: cr.id.to_string(),
+                label: cr.label.clone(),
+            }
+        }).collect();
+        let cause_reason_type = nodes::ValueType::CauseReason(options);
+        
+        // Update the cause_reason node output
+        if let Some(cause_reason_def) = definitions.iter_mut().find(|d| d.node_type == "cause_reason") {
+            if let Some(output) = cause_reason_def.outputs.first_mut() {
+                output.value_type = cause_reason_type.clone();
+            }
+        }
+        
+        // Update the flow_execute_action node's cause_reason input
+        if let Some(execute_action_def) = definitions.iter_mut().find(|d| d.node_type == "flow_execute_action") {
+            if let Some(cause_input) = execute_action_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
+                cause_input.value_type = cause_reason_type.clone();
+            }
+        }
+        
+        // Update the flow_do_nothing node's cause_reason input
+        if let Some(do_nothing_def) = definitions.iter_mut().find(|d| d.node_type == "flow_do_nothing") {
+            if let Some(cause_input) = do_nothing_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
+                cause_input.value_type = cause_reason_type;
+            }
+        }
+    }
+    
+    definitions
+}
+
 /// Updates node definitions in a nodeset to match the current version.
 /// This ensures that when a profile is loaded, all nodes have their definitions
 /// updated to the latest version, preventing crashes due to outdated definitions.
 /// 
 /// The function:
 /// - Preserves user data (position, enumValue, primitiveValue, dynamicInputs, comment, etc.)
-/// - Updates the node definition to the current version
+/// - Updates the node definition to the current version (including enriched CauseReason options)
 /// - Removes nodes whose type no longer exists (returns list of removed node IDs)
 /// 
 /// Returns tuple of (updated_nodes, removed_node_ids)
-fn update_node_definitions(nodes: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, Vec<String>) {
-    // Build a map of current node definitions by node_type
-    let current_definitions: HashMap<String, serde_json::Value> = nodes::get_all_node_definitions()
+async fn update_node_definitions(nodes: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, Vec<String>) {
+    // Build a map of current node definitions by node_type (enriched with cause reasons)
+    let current_definitions: HashMap<String, serde_json::Value> = get_enriched_node_definitions().await
         .into_iter()
         .filter_map(|def| {
             serde_json::to_value(&def)
@@ -255,7 +295,7 @@ async fn get_node_configuration() -> Response {
             match serde_json::from_str::<NodeConfiguration>(&record.0) {
                 Ok(config) => {
                     // Update node definitions to current version
-                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes);
+                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes).await;
                     let updated_edges = remove_orphaned_edges(config.edges, &removed_node_ids);
                     
                     let updated_config = NodeConfiguration {
@@ -329,7 +369,7 @@ async fn get_nodeset(Path(id): Path<i64>) -> Response {
             match serde_json::from_str::<NodeConfiguration>(&node_json) {
                 Ok(config) => {
                     // Update node definitions to current version
-                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes);
+                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes).await;
                     let updated_edges = remove_orphaned_edges(config.edges, &removed_node_ids);
                     
                     let nodeset = Nodeset {
@@ -620,7 +660,7 @@ async fn get_active_nodeset() -> Response {
             match serde_json::from_str::<NodeConfiguration>(&node_json) {
                 Ok(config) => {
                     // Update node definitions to current version
-                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes);
+                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes).await;
                     let updated_edges = remove_orphaned_edges(config.edges, &removed_node_ids);
                     
                     let nodeset = Nodeset {
@@ -752,47 +792,7 @@ pub async fn get_active_nodeset_id(pool: &sqlx::SqlitePool) -> Result<i64, sqlx:
 /// GET /api/nodes/definitions
 /// Returns all available node type definitions
 async fn get_node_definitions() -> Response {
-    let mut definitions = crate::nodes::get_all_node_definitions();
-    
-    // Load cause reasons from database and inject them into node definitions
-    match db::cause_reasons::get_all(false).await {
-        Ok(cause_reasons) => {
-            // Create the enum options from database
-            let options: Vec<crate::nodes::EnumOption> = cause_reasons.iter().map(|cr| {
-                crate::nodes::EnumOption {
-                    id: cr.id.to_string(),
-                    label: cr.label.clone(),
-                }
-            }).collect();
-            let cause_reason_type = crate::nodes::ValueType::CauseReason(options);
-            
-            // Update the cause_reason node output
-            if let Some(cause_reason_def) = definitions.iter_mut().find(|d| d.node_type == "cause_reason") {
-                if let Some(output) = cause_reason_def.outputs.first_mut() {
-                    output.value_type = cause_reason_type.clone();
-                }
-            }
-            
-            // Update the flow_execute_action node's cause_reason input
-            if let Some(execute_action_def) = definitions.iter_mut().find(|d| d.node_type == "flow_execute_action") {
-                if let Some(cause_input) = execute_action_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
-                    cause_input.value_type = cause_reason_type.clone();
-                }
-            }
-            
-            // Update the flow_do_nothing node's cause_reason input
-            if let Some(do_nothing_def) = definitions.iter_mut().find(|d| d.node_type == "flow_do_nothing") {
-                if let Some(cause_input) = do_nothing_def.inputs.iter_mut().find(|i| i.id == "cause_reason") {
-                    cause_input.value_type = cause_reason_type;
-                }
-            }
-        }
-        Err(e) => {
-            log::warn!("Failed to load cause reasons from database, using defaults: {}", e);
-            // Continue with default values from the hardcoded definition
-        }
-    }
-    
+    let definitions = get_enriched_node_definitions().await;
     let response = ApiResponse::success(definitions);
     (StatusCode::OK, Json(response)).into_response()
 }
