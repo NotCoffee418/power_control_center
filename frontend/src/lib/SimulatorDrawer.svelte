@@ -570,7 +570,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 1rem;
+    padding: 0rem 1rem;
     background: #252525;
     border-bottom: 1px solid #404040;
     min-height: 40px;
