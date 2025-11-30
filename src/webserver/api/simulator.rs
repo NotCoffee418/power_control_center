@@ -759,6 +759,7 @@ fn action_to_ac_state(action: &crate::nodes::ActionResult) -> AcState {
                 "Quiet" => 4,
                 _ => 0,
             };
+            // Swing off (0) for heating - matches node_executor.rs behavior
             AcState::new_on(AC_MODE_HEAT, fan_speed, action.temperature, 0, action.is_powerful)
         }
         "Cool" => {
@@ -770,6 +771,7 @@ fn action_to_ac_state(action: &crate::nodes::ActionResult) -> AcState {
                 "Quiet" => 4,
                 _ => 0,
             };
+            // Swing on (1) for cooling - matches node_executor.rs behavior
             AcState::new_on(AC_MODE_COOL, fan_speed, action.temperature, 1, action.is_powerful)
         }
         _ => AcState::new_off(),
