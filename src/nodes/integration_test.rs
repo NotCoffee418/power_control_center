@@ -260,9 +260,9 @@ mod integration_tests {
         let solar_output = start_node.outputs.iter().find(|o| o.id == "raw_solar_watt").unwrap();
         assert_eq!(solar_output.value_type, nodes::ValueType::Integer);
         
-        // Verify outside_temperature_trend output
-        let trend_output = start_node.outputs.iter().find(|o| o.id == "outside_temperature_trend").unwrap();
-        assert_eq!(trend_output.value_type, nodes::ValueType::Float);
+        // Verify avg_next_24h_outdoor_temp output
+        let avg_temp_output = start_node.outputs.iter().find(|o| o.id == "avg_next_24h_outdoor_temp").unwrap();
+        assert_eq!(avg_temp_output.value_type, nodes::ValueType::Float);
         
         // Verify active_command output
         let active_command_output = start_node.outputs.iter().find(|o| o.id == "active_command").unwrap();
