@@ -61,6 +61,15 @@
   let operatorValue = $state(data?.operatorValue ?? '>'); // For Evaluate Number node
   let isValidInput = $state(true);
   let comment = $state(data?.comment || '');
+  let commentTextarea = $state();
+  
+  // Resize whenever comment changes
+  $effect(() => {
+    if (commentTextarea && comment) {
+      commentTextarea.style.height = 'auto';
+      commentTextarea.style.height = commentTextarea.scrollHeight + 'px';
+    }
+  });
 
   // Sync state changes back to node data for persistence
   $effect(() => {
@@ -162,6 +171,9 @@
   // Handle comment input change
   function handleCommentChange(event) {
     comment = event.target.value;
+    // Auto-resize textarea
+    event.target.style.height = 'auto';
+    event.target.style.height = event.target.scrollHeight + 'px';
   }
 
   // Check if this is an EnumWithIds type (for ID-based tracking)
@@ -396,15 +408,16 @@
 
     <!-- Optional comment field at the bottom -->
     <div class="comment-section">
-      <input
-        type="text"
+      <textarea
+        bind:this={commentTextarea}
         class="comment-input"
         value={comment}
         oninput={handleCommentChange}
         placeholder="Add comment..."
         title="Optional comment for this node"
         aria-label="Node comment"
-      />
+        rows="1"
+      ></textarea>
     </div>
   </div>
 </div>
@@ -656,6 +669,10 @@
     font-size: 11px;
     box-sizing: border-box;
     font-style: italic;
+    resize: vertical;
+    min-height: 28px;
+    overflow: hidden;
+    line-height: 1.4;
   }
 
   .comment-input::placeholder {
