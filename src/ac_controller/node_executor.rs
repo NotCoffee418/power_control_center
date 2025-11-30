@@ -35,10 +35,11 @@ pub enum NodeExecutionResult {
 
 /// Execute the active nodeset for a specific device
 /// This function:
-/// 1. Gathers all necessary input data for the execution context
-/// 2. Loads and executes the active nodeset
-/// 3. Converts the execution result to actual AC commands
-/// 4. Handles state management and logging
+/// 1. Checks if device is in automatic mode (skips if in manual mode)
+/// 2. Gathers all necessary input data for the execution context
+/// 3. Loads and executes the active nodeset
+/// 4. Converts the execution result to actual AC commands
+/// 5. Handles state management and logging
 pub async fn execute_nodeset_for_device(device: &AcDevices) -> NodeExecutionResult {
     let device_name = device.as_str();
     log::debug!("Executing nodeset for device: {}", device_name);
@@ -74,44 +75,16 @@ pub async fn execute_nodeset_for_device(device: &AcDevices) -> NodeExecutionResu
         return NodeExecutionResult::ManualMode;
     }
 
-    // Gather execution inputs
-    let inputs = match gather_execution_inputs(device).await {
-        Ok(inputs) => inputs,
-        Err(e) => {
-            log::error!("Failed to gather execution inputs for {}: {}", device_name, e);
-            return NodeExecutionResult::Error(format!("Failed to gather inputs: {}", e));
+    // Execute nodeset core logic
+    let result = execute_nodeset_core(device).await;
+    
+    match result {
+        Ok(execution_result) => {
+            // Convert execution result to AC commands
+            execute_result_to_commands(device, execution_result).await
         }
-    };
-
-    // Load the active nodeset
-    let (nodes, edges) = match load_active_nodeset().await {
-        Ok(data) => data,
-        Err(e) => {
-            log::error!("Failed to load active nodeset: {}", e);
-            return NodeExecutionResult::Error(format!("Failed to load nodeset: {}", e));
-        }
-    };
-
-    // Validate the nodeset
-    let validation_errors = crate::nodes::validate_nodeset_for_execution(&nodes, &edges);
-    if !validation_errors.is_empty() {
-        log::error!("Nodeset validation failed: {}", validation_errors.join("; "));
-        return NodeExecutionResult::Error(format!("Nodeset validation failed: {}", validation_errors.join("; ")));
+        Err(e) => e,
     }
-
-    // Create and execute the nodeset
-    let mut executor = match NodesetExecutor::new(&nodes, &edges, inputs) {
-        Ok(e) => e,
-        Err(e) => {
-            log::error!("Failed to create executor for {}: {}", device_name, e);
-            return NodeExecutionResult::Error(format!("Failed to create executor: {}", e));
-        }
-    };
-
-    let result = executor.execute();
-
-    // Convert execution result to AC commands
-    execute_result_to_commands(device, result).await
 }
 
 /// Gather all inputs needed for nodeset execution
@@ -382,30 +355,9 @@ async fn execute_action_result(device: &AcDevices, action: &ActionResult) -> Nod
     }
 
     // Execute the AC command
-    let result = send_ac_command(device_name, &current_state, &desired_state, cause_id).await;
+    let result = send_ac_command(device_name, &current_state, &desired_state, cause_id, is_first_execution).await;
 
-    match result {
-        Ok(()) => {
-            // Update state manager
-            update_state_manager(device_name, &desired_state);
-            
-            // Record turn-on time if applicable
-            if desired_state.is_on && !current_state.is_on {
-                super::min_on_time::get_min_on_time_state().record_turn_on(device_name);
-            }
-            
-            log::info!(
-                "Successfully executed AC command for device '{}': {:?}",
-                device_name,
-                action
-            );
-            NodeExecutionResult::CommandExecuted
-        }
-        Err(e) => {
-            log::error!("Failed to execute AC command for {}: {}", device_name, e);
-            NodeExecutionResult::Error(format!("Failed to execute command: {}", e))
-        }
-    }
+    handle_command_result(device_name, result, &current_state, &desired_state, action, false)
 }
 
 /// Convert an ActionResult to an AcState
@@ -465,33 +417,52 @@ fn update_state_manager(device_name: &str, state: &AcState) {
 }
 
 /// Send AC command based on state transition
+/// 
+/// # Arguments
+/// * `device_name` - Name of the AC device
+/// * `current_state` - Current tracked state of the device
+/// * `desired_state` - Desired state from nodeset execution
+/// * `cause_id` - ID of the cause reason for logging
+/// * `is_first_execution` - Whether this is the first command after startup (forces sync)
 async fn send_ac_command(
     device_name: &str,
     current_state: &AcState,
     desired_state: &AcState,
     cause_id: i32,
+    is_first_execution: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Case 1: Turning off
+    // Case 1: Turning off (from on state)
     if !desired_state.is_on && current_state.is_on {
         log::info!("Turning off AC '{}'", device_name);
         device_requests::ac::turn_off_ac(device_name, cause_id).await?;
         return Ok(());
     }
 
-    // Case 2: AC should be off and is already off - send off command on first execution
+    // Case 2: AC should be off and is already off
+    // Only send off command on first execution to sync with physical device state
     if !desired_state.is_on && !current_state.is_on {
-        // Only send if first execution (handled by caller checking is_first_execution)
-        log::info!("Sending OFF command to '{}' to ensure sync", device_name);
-        device_requests::ac::turn_off_ac(device_name, cause_id).await?;
+        if is_first_execution {
+            log::info!("Sending OFF command to '{}' to ensure sync with physical device", device_name);
+            device_requests::ac::turn_off_ac(device_name, cause_id).await?;
+        }
         return Ok(());
     }
 
     // Case 3: Turning on or changing settings
     if desired_state.is_on {
-        let mode = desired_state.mode.expect("Mode should be set when AC is on");
-        let fan_speed = desired_state.fan_speed.expect("Fan speed should be set when AC is on");
-        let temperature = desired_state.temperature.expect("Temperature should be set when AC is on");
-        let swing = desired_state.swing.expect("Swing should be set when AC is on");
+        // Extract AC parameters with proper error handling
+        let mode = desired_state.mode.ok_or_else(|| {
+            format!("Mode not set when AC is on for device '{}'", device_name)
+        })?;
+        let fan_speed = desired_state.fan_speed.ok_or_else(|| {
+            format!("Fan speed not set when AC is on for device '{}'", device_name)
+        })?;
+        let temperature = desired_state.temperature.ok_or_else(|| {
+            format!("Temperature not set when AC is on for device '{}'", device_name)
+        })?;
+        let swing = desired_state.swing.ok_or_else(|| {
+            format!("Swing not set when AC is on for device '{}'", device_name)
+        })?;
 
         log::info!(
             "Turning on AC '{}': mode={}, fan_speed={}, temp={}°C, swing={}",
@@ -519,17 +490,41 @@ async fn send_ac_command(
 }
 
 /// Execute nodeset for device when transitioning from manual to auto mode
-/// This is called with force execution to bypass state comparison
+/// 
+/// This function is called when a device transitions from Manual to Auto mode.
+/// It bypasses:
+/// - Manual mode check (since we know it just transitioned to Auto)
+/// - State comparison (to immediately sync AC state with nodeset decision)
+///
+/// The cause_reason is overridden to ManualToAutoTransition for proper logging.
 pub async fn execute_nodeset_for_device_forced(device: &AcDevices) -> NodeExecutionResult {
     let device_name = device.as_str();
     log::info!("Forced nodeset execution for device '{}' (manual to auto transition)", device_name);
+
+    // Execute nodeset core logic (shared with regular execution)
+    let result = execute_nodeset_core(device).await;
+    
+    match result {
+        Ok(execution_result) => {
+            // For forced execution, use the forced result handler
+            execute_result_to_commands_forced(device, execution_result).await
+        }
+        Err(e) => e,
+    }
+}
+
+/// Core nodeset execution logic shared between regular and forced execution
+/// 
+/// Returns the ExecutionResult on success, or a NodeExecutionResult::Error on failure
+async fn execute_nodeset_core(device: &AcDevices) -> Result<ExecutionResult, NodeExecutionResult> {
+    let device_name = device.as_str();
 
     // Gather execution inputs
     let inputs = match gather_execution_inputs(device).await {
         Ok(inputs) => inputs,
         Err(e) => {
             log::error!("Failed to gather execution inputs for {}: {}", device_name, e);
-            return NodeExecutionResult::Error(format!("Failed to gather inputs: {}", e));
+            return Err(NodeExecutionResult::Error(format!("Failed to gather inputs: {}", e)));
         }
     };
 
@@ -538,7 +533,7 @@ pub async fn execute_nodeset_for_device_forced(device: &AcDevices) -> NodeExecut
         Ok(data) => data,
         Err(e) => {
             log::error!("Failed to load active nodeset: {}", e);
-            return NodeExecutionResult::Error(format!("Failed to load nodeset: {}", e));
+            return Err(NodeExecutionResult::Error(format!("Failed to load nodeset: {}", e)));
         }
     };
 
@@ -546,7 +541,7 @@ pub async fn execute_nodeset_for_device_forced(device: &AcDevices) -> NodeExecut
     let validation_errors = crate::nodes::validate_nodeset_for_execution(&nodes, &edges);
     if !validation_errors.is_empty() {
         log::error!("Nodeset validation failed: {}", validation_errors.join("; "));
-        return NodeExecutionResult::Error(format!("Nodeset validation failed: {}", validation_errors.join("; ")));
+        return Err(NodeExecutionResult::Error(format!("Nodeset validation failed: {}", validation_errors.join("; "))));
     }
 
     // Create and execute the nodeset
@@ -554,14 +549,11 @@ pub async fn execute_nodeset_for_device_forced(device: &AcDevices) -> NodeExecut
         Ok(e) => e,
         Err(e) => {
             log::error!("Failed to create executor for {}: {}", device_name, e);
-            return NodeExecutionResult::Error(format!("Failed to create executor: {}", e));
+            return Err(NodeExecutionResult::Error(format!("Failed to create executor: {}", e)));
         }
     };
 
-    let result = executor.execute();
-
-    // For forced execution, we bypass state comparison
-    execute_result_to_commands_forced(device, result).await
+    Ok(executor.execute())
 }
 
 /// Convert execution result to AC commands with forced execution
@@ -602,39 +594,59 @@ async fn execute_result_to_commands_forced(device: &AcDevices, result: Execution
 }
 
 /// Execute an ActionResult with forced execution (bypass state comparison)
+/// 
+/// This is used when transitioning from Manual to Auto mode. The state comparison
+/// is bypassed because we want to immediately sync the AC state with the nodeset
+/// decision, regardless of whether the tracked state matches.
 async fn execute_action_result_forced(device: &AcDevices, action: &ActionResult) -> NodeExecutionResult {
     let device_name = device.as_str();
     let state_manager = get_state_manager();
     let current_state = state_manager.get_state(device_name);
     
-    // Parse the cause_reason - override to ManualToAutoTransition
+    // Override cause_reason to ManualToAutoTransition for proper logging
     let cause_id = CauseReason::ManualToAutoTransition.id();
 
     // Convert the action to a desired AcState
     let desired_state = action_to_ac_state(action);
 
-    // Execute the AC command (forced, bypass state comparison)
-    let result = send_ac_command(device_name, &current_state, &desired_state, cause_id).await;
+    // Execute the AC command with forced=true to ensure sync
+    let result = send_ac_command(device_name, &current_state, &desired_state, cause_id, true).await;
 
+    handle_command_result(device_name, result, &current_state, &desired_state, action, true)
+}
+
+/// Handle the result of an AC command execution
+/// Shared between regular and forced execution
+fn handle_command_result(
+    device_name: &str,
+    result: Result<(), Box<dyn std::error::Error>>,
+    current_state: &AcState,
+    desired_state: &AcState,
+    action: &ActionResult,
+    is_forced: bool,
+) -> NodeExecutionResult {
     match result {
         Ok(()) => {
             // Update state manager
-            update_state_manager(device_name, &desired_state);
+            update_state_manager(device_name, desired_state);
             
             // Record turn-on time if applicable
             if desired_state.is_on && !current_state.is_on {
                 super::min_on_time::get_min_on_time_state().record_turn_on(device_name);
             }
             
+            let forced_str = if is_forced { "forced " } else { "" };
             log::info!(
-                "Successfully executed forced AC command for device '{}': {:?}",
+                "Successfully executed {}AC command for device '{}': {:?}",
+                forced_str,
                 device_name,
                 action
             );
             NodeExecutionResult::CommandExecuted
         }
         Err(e) => {
-            log::error!("Failed to execute forced AC command for {}: {}", device_name, e);
+            let forced_str = if is_forced { "forced " } else { "" };
+            log::error!("Failed to execute {}AC command for {}: {}", forced_str, device_name, e);
             NodeExecutionResult::Error(format!("Failed to execute command: {}", e))
         }
     }
