@@ -676,7 +676,10 @@
 
   // Helper function to check if two enum types are compatible (same values)
   // Enums are compatible only if they have the exact same set of values
+  // Supports both Enum (simple strings) and EnumWithIds (id-label pairs)
   function areEnumsCompatible(sourceValueType, targetValueType) {
+    const sourceType = sourceValueType?.type;
+    const targetType = targetValueType?.type;
     const sourceValues = sourceValueType?.value || [];
     const targetValues = targetValueType?.value || [];
     
@@ -690,7 +693,14 @@
       return false;
     }
     
-    // Sort and compare values
+    // Handle EnumWithIds: compare by ID rather than by object reference
+    if (sourceType === 'EnumWithIds' && targetType === 'EnumWithIds') {
+      const sortedSourceIds = [...sourceValues].map(v => v.id).sort();
+      const sortedTargetIds = [...targetValues].map(v => v.id).sort();
+      return sortedSourceIds.every((id, idx) => id === sortedTargetIds[idx]);
+    }
+    
+    // Handle regular Enum: compare by string value
     const sortedSource = [...sourceValues].sort();
     const sortedTarget = [...targetValues].sort();
     
@@ -908,7 +918,8 @@
       if (constrainedType) {
         // If source is also Any with a constraint, compare constraints
         if (sourceType === 'Any' && sourceConstrainedType) {
-          if (constrainedType.type === 'Enum' && sourceConstrainedType.type === 'Enum') {
+          if ((constrainedType.type === 'Enum' || constrainedType.type === 'EnumWithIds') && 
+              (sourceConstrainedType.type === 'Enum' || sourceConstrainedType.type === 'EnumWithIds')) {
             return areEnumsCompatible(sourceConstrainedType, constrainedType);
           }
           return sourceConstrainedType.type === constrainedType.type;
@@ -917,8 +928,8 @@
         if (sourceType === 'Any') {
           return true;
         }
-        if (constrainedType.type === 'Enum') {
-          return sourceType === 'Enum' && areEnumsCompatible(sourceValueType, constrainedType);
+        if (constrainedType.type === 'Enum' || constrainedType.type === 'EnumWithIds') {
+          return (sourceType === 'Enum' || sourceType === 'EnumWithIds') && areEnumsCompatible(sourceValueType, constrainedType);
         }
         return sourceType === constrainedType.type;
       }
@@ -944,8 +955,8 @@
     if (sourceType === 'Any') {
       // If source has a constraint from its inputs, use that constraint
       if (sourceConstrainedType) {
-        if (targetType === 'Enum') {
-          return sourceConstrainedType.type === 'Enum' && areEnumsCompatible(sourceConstrainedType, targetValueType);
+        if (targetType === 'Enum' || targetType === 'EnumWithIds') {
+          return (sourceConstrainedType.type === 'Enum' || sourceConstrainedType.type === 'EnumWithIds') && areEnumsCompatible(sourceConstrainedType, targetValueType);
         }
         return sourceConstrainedType.type === targetType;
       }
@@ -963,8 +974,8 @@
       return false;
     }
 
-    // For Enum types, additionally check that enum values are compatible
-    if (sourceType === 'Enum') {
+    // For Enum and EnumWithIds types, additionally check that enum values are compatible
+    if (sourceType === 'Enum' || sourceType === 'EnumWithIds') {
       return areEnumsCompatible(sourceValueType, targetValueType);
     }
 
@@ -1089,8 +1100,9 @@
       }
     }
     
-    // Check for enum type mismatch
-    if (sourceType === 'Enum' && targetType === 'Enum') {
+    // Check for enum type mismatch (both Enum and EnumWithIds)
+    if ((sourceType === 'Enum' || sourceType === 'EnumWithIds') && 
+        (targetType === 'Enum' || targetType === 'EnumWithIds')) {
       return `⚠ Incompatible enum types`;
     }
     
