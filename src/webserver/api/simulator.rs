@@ -294,7 +294,8 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     };
     
     // Extract evaluate_every_minutes from the Start node (reported but has no effect in simulator)
-    let evaluate_every_minutes = get_evaluate_every_minutes_from_nodes(&nodes);
+    // Uses the shared extraction function with validation
+    let evaluate_every_minutes = crate::db::nodesets::extract_evaluate_every_minutes_from_nodes(&nodes);
     
     // Validate the nodeset before execution
     let validation_errors = validate_nodeset_for_execution(&nodes, &edges);
@@ -710,30 +711,4 @@ fn action_to_simulator_state(action: &crate::nodes::ActionResult) -> SimulatorAc
         swing: Some(0), // Swing off
         powerful_mode: action.is_powerful,
     }
-}
-
-/// Extract the evaluate_every_minutes value from the Start node in a nodeset
-/// Returns None if no Start node is found or the value is not set
-fn get_evaluate_every_minutes_from_nodes(nodes: &[serde_json::Value]) -> Option<i32> {
-    for node in nodes {
-        // Check if this is a Start node
-        let is_start_node = node
-            .get("data")
-            .and_then(|d| d.get("definition"))
-            .and_then(|def| def.get("node_type"))
-            .and_then(|nt| nt.as_str())
-            == Some("flow_start");
-        
-        if is_start_node {
-            // Get the primitiveValue which stores the evaluate_every_minutes
-            if let Some(data) = node.get("data") {
-                if let Some(value) = data.get("primitiveValue") {
-                    if let Some(minutes) = value.as_i64() {
-                        return Some(minutes as i32);
-                    }
-                }
-            }
-        }
-    }
-    None
 }

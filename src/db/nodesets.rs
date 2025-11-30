@@ -7,10 +7,58 @@ use crate::nodes::flow_nodes::MAX_EVALUATE_EVERY_MINUTES;
 
 /// Default evaluation interval in minutes if not specified in the nodeset
 /// This matches the original hardcoded 5-minute interval
-const DEFAULT_EVALUATE_EVERY_MINUTES: i32 = 5;
+pub const DEFAULT_EVALUATE_EVERY_MINUTES: i32 = 5;
 
 /// ID for the default nodeset that is loaded when no other nodeset is active
 const DEFAULT_NODESET_ID: i64 = 0;
+
+/// Extract the evaluate_every_minutes value from a list of node JSON values
+/// 
+/// This function finds the Start node and extracts its primitiveValue,
+/// which contains the evaluation interval in minutes.
+/// 
+/// Returns Some(minutes) if a valid value is found (1-1440)
+/// Returns None if:
+/// - No Start node is found
+/// - The Start node doesn't have a primitiveValue set
+/// - The value is outside the valid range (1-1440)
+pub fn extract_evaluate_every_minutes_from_nodes(nodes: &[serde_json::Value]) -> Option<i32> {
+    for node in nodes {
+        // Check if this is a Start node
+        let is_start_node = node
+            .get("data")
+            .and_then(|d| d.get("definition"))
+            .and_then(|def| def.get("node_type"))
+            .and_then(|nt| nt.as_str())
+            == Some("flow_start");
+        
+        if is_start_node {
+            // Get the primitiveValue which stores evaluate_every_minutes
+            if let Some(data) = node.get("data") {
+                if let Some(value) = data.get("primitiveValue") {
+                    if let Some(minutes) = value.as_i64() {
+                        // Validate the value is within range
+                        if minutes >= 1 && minutes <= MAX_EVALUATE_EVERY_MINUTES as i64 {
+                            return Some(minutes as i32);
+                        } else {
+                            log::debug!(
+                                "evaluate_every_minutes value {} is out of range (1-{})",
+                                minutes, MAX_EVALUATE_EVERY_MINUTES
+                            );
+                            return None;
+                        }
+                    }
+                }
+            }
+            
+            // Start node found but no primitiveValue set
+            return None;
+        }
+    }
+    
+    // No Start node found
+    None
+}
 
 /// Get the evaluate_every_minutes value from the active nodeset
 /// 
@@ -100,44 +148,11 @@ fn extract_evaluate_minutes_from_json(node_json: &str) -> i32 {
         }
     };
     
-    // Find the Start node
-    for node in nodes {
-        let is_start_node = node
-            .get("data")
-            .and_then(|d| d.get("definition"))
-            .and_then(|def| def.get("node_type"))
-            .and_then(|nt| nt.as_str())
-            == Some("flow_start");
-        
-        if is_start_node {
-            // Get the primitiveValue which stores evaluate_every_minutes
-            if let Some(data) = node.get("data") {
-                if let Some(value) = data.get("primitiveValue") {
-                    if let Some(minutes) = value.as_i64() {
-                        // Validate the value is within range
-                        if minutes >= 1 && minutes <= MAX_EVALUATE_EVERY_MINUTES as i64 {
-                            log::debug!("Using evaluate_every_minutes={} from active nodeset", minutes);
-                            return minutes as i32;
-                        } else {
-                            log::warn!(
-                                "evaluate_every_minutes value {} is out of range (1-{}). Using default.",
-                                minutes, MAX_EVALUATE_EVERY_MINUTES
-                            );
-                            return DEFAULT_EVALUATE_EVERY_MINUTES;
-                        }
-                    }
-                }
-            }
-            
-            // Start node found but no primitiveValue set
-            log::debug!("Start node found but no evaluate_every_minutes value set. Using default.");
-            return DEFAULT_EVALUATE_EVERY_MINUTES;
-        }
-    }
-    
-    // No Start node found
-    log::debug!("No Start node found in nodeset. Using default interval.");
-    DEFAULT_EVALUATE_EVERY_MINUTES
+    // Use the shared extraction function
+    extract_evaluate_every_minutes_from_nodes(nodes).unwrap_or_else(|| {
+        log::debug!("No valid evaluate_every_minutes found. Using default interval.");
+        DEFAULT_EVALUATE_EVERY_MINUTES
+    })
 }
 
 #[cfg(test)]
@@ -297,5 +312,107 @@ mod tests {
         let json = "not valid json";
         
         assert_eq!(extract_evaluate_minutes_from_json(json), DEFAULT_EVALUATE_EVERY_MINUTES);
+    }
+    
+    // Tests for the shared extract_evaluate_every_minutes_from_nodes function
+    
+    #[test]
+    fn test_shared_extract_valid() {
+        let nodes: Vec<serde_json::Value> = vec![
+            serde_json::json!({
+                "id": "flow_start-1",
+                "data": {
+                    "primitiveValue": 15,
+                    "definition": {
+                        "node_type": "flow_start"
+                    }
+                }
+            })
+        ];
+        
+        assert_eq!(extract_evaluate_every_minutes_from_nodes(&nodes), Some(15));
+    }
+    
+    #[test]
+    fn test_shared_extract_at_max() {
+        let nodes: Vec<serde_json::Value> = vec![
+            serde_json::json!({
+                "id": "flow_start-1",
+                "data": {
+                    "primitiveValue": 1440,
+                    "definition": {
+                        "node_type": "flow_start"
+                    }
+                }
+            })
+        ];
+        
+        assert_eq!(extract_evaluate_every_minutes_from_nodes(&nodes), Some(1440));
+    }
+    
+    #[test]
+    fn test_shared_extract_exceeds_max() {
+        let nodes: Vec<serde_json::Value> = vec![
+            serde_json::json!({
+                "id": "flow_start-1",
+                "data": {
+                    "primitiveValue": 1441,
+                    "definition": {
+                        "node_type": "flow_start"
+                    }
+                }
+            })
+        ];
+        
+        assert_eq!(extract_evaluate_every_minutes_from_nodes(&nodes), None);
+    }
+    
+    #[test]
+    fn test_shared_extract_zero() {
+        let nodes: Vec<serde_json::Value> = vec![
+            serde_json::json!({
+                "id": "flow_start-1",
+                "data": {
+                    "primitiveValue": 0,
+                    "definition": {
+                        "node_type": "flow_start"
+                    }
+                }
+            })
+        ];
+        
+        assert_eq!(extract_evaluate_every_minutes_from_nodes(&nodes), None);
+    }
+    
+    #[test]
+    fn test_shared_extract_no_start_node() {
+        let nodes: Vec<serde_json::Value> = vec![
+            serde_json::json!({
+                "id": "logic_and-1",
+                "data": {
+                    "definition": {
+                        "node_type": "logic_and"
+                    }
+                }
+            })
+        ];
+        
+        assert_eq!(extract_evaluate_every_minutes_from_nodes(&nodes), None);
+    }
+    
+    #[test]
+    fn test_shared_extract_no_primitive_value() {
+        let nodes: Vec<serde_json::Value> = vec![
+            serde_json::json!({
+                "id": "flow_start-1",
+                "data": {
+                    "definition": {
+                        "node_type": "flow_start"
+                    }
+                }
+            })
+        ];
+        
+        assert_eq!(extract_evaluate_every_minutes_from_nodes(&nodes), None);
     }
 }
