@@ -297,15 +297,28 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let do_nothing_node = definitions.iter().find(|d| d.node_type == "flow_do_nothing").unwrap();
         
-        assert_eq!(do_nothing_node.inputs.len(), 1, "Do Nothing node should have 1 input");
+        assert_eq!(do_nothing_node.inputs.len(), 2, "Do Nothing node should have 2 inputs (device and cause_reason)");
         assert_eq!(do_nothing_node.outputs.len(), 0, "Do Nothing node should have no outputs (terminal)");
         assert_eq!(do_nothing_node.category, "System");
         
-        // Verify input is Any type
-        let input = &do_nothing_node.inputs[0];
-        assert_eq!(input.id, "input");
-        assert_eq!(input.value_type, nodes::ValueType::Any);
-        assert!(input.required);
+        // Verify device input
+        let device_input = do_nothing_node.inputs.iter().find(|i| i.id == "device").unwrap();
+        match &device_input.value_type {
+            nodes::ValueType::Enum(values) => {
+                assert!(values.contains(&"LivingRoom".to_string()));
+                assert!(values.contains(&"Veranda".to_string()));
+            }
+            _ => panic!("Expected Enum type for device input"),
+        }
+        assert!(device_input.required);
+        
+        // Verify cause_reason input
+        let cause_input = do_nothing_node.inputs.iter().find(|i| i.id == "cause_reason").unwrap();
+        match &cause_input.value_type {
+            nodes::ValueType::Enum(_) => {} // Values loaded from database at runtime
+            _ => panic!("Expected Enum type for cause_reason input"),
+        }
+        assert!(cause_input.required);
     }
     
     // -------------------------------------------------------------------------

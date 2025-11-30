@@ -160,6 +160,8 @@ pub struct ExecutionResult {
     pub terminal_type: Option<String>,
     /// If Execute Action, the action parameters
     pub action: Option<ActionResult>,
+    /// If Do Nothing, the do_nothing parameters (for debugging/simulation)
+    pub do_nothing: Option<DoNothingResult>,
     /// Any error that occurred during execution
     pub error: Option<String>,
     /// Validation warnings (e.g., disconnected nodes)
@@ -174,6 +176,13 @@ pub struct ActionResult {
     pub mode: String,
     pub fan_speed: String,
     pub is_powerful: bool,
+    pub cause_reason: String,
+}
+
+/// Do Nothing parameters when Do Nothing node is reached (for debugging/simulation)
+#[derive(Debug, Clone, Serialize)]
+pub struct DoNothingResult {
+    pub device: String,
     pub cause_reason: String,
 }
 
@@ -334,6 +343,7 @@ impl NodesetExecutor {
                 completed: false,
                 terminal_type: None,
                 action: None,
+                do_nothing: None,
                 error: Some(ExecutionError::MissingStartNode.to_string()),
                 warnings: vec![],
             };
@@ -344,6 +354,7 @@ impl NodesetExecutor {
                 completed: false,
                 terminal_type: None,
                 action: None,
+                do_nothing: None,
                 error: Some(ExecutionError::MultipleStartNodes.to_string()),
                 warnings: vec![],
             };
@@ -362,6 +373,7 @@ impl NodesetExecutor {
                 completed: false,
                 terminal_type: None,
                 action: None,
+                do_nothing: None,
                 error: Some(ExecutionError::MissingTerminalNode.to_string()),
                 warnings: vec![],
             };
@@ -373,6 +385,7 @@ impl NodesetExecutor {
                 completed: false,
                 terminal_type: None,
                 action: None,
+                do_nothing: None,
                 error: Some(e.to_string()),
                 warnings: vec![],
             };
@@ -395,6 +408,7 @@ impl NodesetExecutor {
                             completed: true,
                             terminal_type: Some("Execute Action".to_string()),
                             action: Some(action),
+                            do_nothing: None,
                             error: None,
                             warnings: vec![],
                         };
@@ -404,6 +418,7 @@ impl NodesetExecutor {
                             completed: false,
                             terminal_type: None,
                             action: None,
+                            do_nothing: None,
                             error: Some(e.to_string()),
                             warnings: vec![],
                         };
@@ -416,11 +431,12 @@ impl NodesetExecutor {
         for (terminal_id, terminal_type) in &terminal_nodes {
             if terminal_type == NODE_TYPE_DO_NOTHING {
                 match self.evaluate_do_nothing_node(terminal_id) {
-                    Ok(()) => {
+                    Ok(do_nothing_result) => {
                         return ExecutionResult {
                             completed: true,
                             terminal_type: Some("Do Nothing".to_string()),
                             action: None,
+                            do_nothing: Some(do_nothing_result),
                             error: None,
                             warnings: vec![],
                         };
@@ -430,6 +446,7 @@ impl NodesetExecutor {
                             completed: false,
                             terminal_type: None,
                             action: None,
+                            do_nothing: None,
                             error: Some(e.to_string()),
                             warnings: vec![],
                         };
@@ -442,6 +459,7 @@ impl NodesetExecutor {
             completed: false,
             terminal_type: None,
             action: None,
+            do_nothing: None,
             error: Some("No valid terminal node could be evaluated".to_string()),
             warnings: vec![],
         }
@@ -526,11 +544,18 @@ impl NodesetExecutor {
         })
     }
     
-    /// Evaluate the Do Nothing node (just verify the input is connected)
-    fn evaluate_do_nothing_node(&mut self, node_id: &str) -> Result<(), ExecutionError> {
-        // Just need to verify the input can be evaluated
-        let _ = self.get_input_value(node_id, "input")?;
-        Ok(())
+    /// Evaluate the Do Nothing node and return the device and cause_reason for debugging
+    fn evaluate_do_nothing_node(&mut self, node_id: &str) -> Result<DoNothingResult, ExecutionError> {
+        // Extract device and cause_reason for debugging/simulation purposes
+        let device = self.get_input_value(node_id, "device")?
+            .as_string();
+        let cause_reason = self.get_input_value(node_id, "cause_reason")?
+            .as_string();
+        
+        Ok(DoNothingResult {
+            device,
+            cause_reason,
+        })
     }
     
     /// Get the value for a node's input by finding the connected edge and evaluating the source
@@ -1122,6 +1147,26 @@ mod tests {
         })
     }
 
+    fn create_do_nothing_node(id: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "type": "custom",
+            "position": { "x": 500, "y": 0 },
+            "data": {
+                "definition": {
+                    "node_type": "flow_do_nothing",
+                    "name": "Do Nothing",
+                    "category": "System",
+                    "inputs": [
+                        { "id": "device", "label": "Device" },
+                        { "id": "cause_reason", "label": "Cause Reason" }
+                    ],
+                    "outputs": []
+                }
+            }
+        })
+    }
+
     #[test]
     fn test_simple_execution() {
         // Create a simple nodeset: Start -> Float(22.0) -> Execute Action
@@ -1242,24 +1287,17 @@ mod tests {
                     }
                 }
             }),
-            json!({
-                "id": "do-nothing-1",
-                "type": "custom",
-                "position": { "x": 500, "y": 0 },
-                "data": {
-                    "definition": {
-                        "node_type": "flow_do_nothing",
-                        "name": "Do Nothing",
-                        "category": "System"
-                    }
-                }
-            }),
+            create_do_nothing_node("do-nothing-1"),
+            create_enum_node("device-1", "device", "LivingRoom"),
+            create_enum_node("cause-1", "cause_reason", "1"),
         ];
         
         let edges = vec![
             create_edge("bool-1", "value", "and-1", "input_1"),
             create_edge("bool-2", "value", "and-1", "input_2"),
-            create_edge("and-1", "result", "do-nothing-1", "input"),
+            // Do Nothing now requires device and cause_reason inputs
+            create_edge("device-1", "value", "do-nothing-1", "device"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
         let inputs = ExecutionInputs::default();
@@ -1268,6 +1306,11 @@ mod tests {
         
         assert!(result.completed);
         assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
+        // Verify do_nothing result has the expected values
+        assert!(result.do_nothing.is_some());
+        let do_nothing = result.do_nothing.unwrap();
+        assert_eq!(do_nothing.device, "LivingRoom");
+        assert_eq!(do_nothing.cause_reason, "1");
     }
 
     #[test]
@@ -1425,27 +1468,34 @@ mod tests {
     #[test]
     fn test_active_command_validation_with_is_defined() {
         // Active Command node with is_defined connected should not produce this error
+        // We use a logic_not node to consume the is_defined boolean output
         let nodes = vec![
             create_start_node(),
             create_active_command_node("active-cmd-1"),
+            create_do_nothing_node("do-nothing-1"),
+            create_enum_node("device-1", "device", "LivingRoom"),
+            create_enum_node("cause-1", "cause_reason", "1"),
             json!({
-                "id": "do-nothing-1",
+                "id": "not-1",
                 "type": "custom",
-                "position": { "x": 500, "y": 0 },
+                "position": { "x": 400, "y": 0 },
                 "data": {
                     "definition": {
-                        "node_type": "flow_do_nothing",
-                        "name": "Do Nothing",
-                        "category": "System"
+                        "node_type": "logic_not",
+                        "name": "NOT",
+                        "category": "Logic"
                     }
                 }
             }),
         ];
         
-        // Connect is_defined output to some node
+        // Connect is_defined to a NOT node (any node that accepts it), proving is_defined is handled
+        // Also connect the required device and cause_reason inputs for Do Nothing
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
-            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "input"),
+            create_edge("active-cmd-1", "is_defined", "not-1", "input"), // is_defined is connected (handled)
+            create_edge("device-1", "value", "do-nothing-1", "device"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
         let errors = validate_nodeset_for_execution(&nodes, &edges);
@@ -1457,18 +1507,22 @@ mod tests {
     #[test]
     fn test_active_command_evaluation_defined() {
         // Test evaluation of Active Command node when command is defined
+        // We need to connect is_defined to a node for validation, and connect device/cause_reason for Do Nothing
         let nodes = vec![
             create_start_node(),
             create_active_command_node("active-cmd-1"),
+            create_do_nothing_node("do-nothing-1"),
+            create_enum_node("device-1", "device", "LivingRoom"),
+            create_enum_node("cause-1", "cause_reason", "1"),
             json!({
-                "id": "do-nothing-1",
+                "id": "not-1",
                 "type": "custom",
-                "position": { "x": 500, "y": 0 },
+                "position": { "x": 400, "y": 0 },
                 "data": {
                     "definition": {
-                        "node_type": "flow_do_nothing",
-                        "name": "Do Nothing",
-                        "category": "System"
+                        "node_type": "logic_not",
+                        "name": "NOT",
+                        "category": "Logic"
                     }
                 }
             }),
@@ -1476,7 +1530,9 @@ mod tests {
         
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
-            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "input"),
+            create_edge("active-cmd-1", "is_defined", "not-1", "input"), // Connect is_defined to NOT node
+            create_edge("device-1", "value", "do-nothing-1", "device"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
         let inputs = ExecutionInputs {
@@ -1506,15 +1562,18 @@ mod tests {
         let nodes = vec![
             create_start_node(),
             create_active_command_node("active-cmd-1"),
+            create_do_nothing_node("do-nothing-1"),
+            create_enum_node("device-1", "device", "LivingRoom"),
+            create_enum_node("cause-1", "cause_reason", "1"),
             json!({
-                "id": "do-nothing-1",
+                "id": "not-1",
                 "type": "custom",
-                "position": { "x": 500, "y": 0 },
+                "position": { "x": 400, "y": 0 },
                 "data": {
                     "definition": {
-                        "node_type": "flow_do_nothing",
-                        "name": "Do Nothing",
-                        "category": "System"
+                        "node_type": "logic_not",
+                        "name": "NOT",
+                        "category": "Logic"
                     }
                 }
             }),
@@ -1522,7 +1581,9 @@ mod tests {
         
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
-            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "input"),
+            create_edge("active-cmd-1", "is_defined", "not-1", "input"), // Connect is_defined to NOT node
+            create_edge("device-1", "value", "do-nothing-1", "device"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
         
         // Default ActiveCommandData has is_defined = false
@@ -1535,8 +1596,7 @@ mod tests {
         let result = executor.execute();
         
         assert!(result.completed);
-        // is_defined is false (RuntimeValue::Boolean(false))
-        // Do Nothing node should still work as it accepts any input
+        // Do Nothing node should still work with device and cause_reason inputs
         assert_eq!(result.terminal_type, Some("Do Nothing".to_string()));
     }
 }
