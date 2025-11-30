@@ -272,7 +272,7 @@
   class="simulator-drawer" 
   class:open={isOpen}
   class:resizing={isResizing}
-  style="height: {isOpen ? drawerHeight : 40}px"
+  style="height: {isOpen ? drawerHeight : 48}px"
   role="region"
   aria-label="Simulator drawer"
 >
