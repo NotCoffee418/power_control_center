@@ -46,7 +46,7 @@
   // Generate a unique node ID using crypto.randomUUID for guaranteed uniqueness
   // Falls back to timestamp + random for older browsers without crypto.randomUUID
   function generateUniqueNodeId(nodeType) {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       // crypto.randomUUID() provides a RFC 4122 compliant UUID
       return `${nodeType}-${crypto.randomUUID()}`;
     }
