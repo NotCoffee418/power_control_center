@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::{
     ac_controller::{
         AcDevices,
-        ac_executor::get_state_manager,
+        ac_executor::{get_state_manager, AcState, AC_MODE_HEAT, AC_MODE_COOL},
     },
     config,
     db,
@@ -456,6 +456,43 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         }
         Some("Execute Action") => {
             if let Some(action) = execution_result.action {
+                // Convert the action to an AcState for comparison
+                let desired_state = action_to_ac_state(&action);
+                
+                // Check if the active command (current state) requires a change to reach the desired state
+                // This mirrors the logic in node_executor.rs execute_action_result
+                if let Some(ref sim_active_cmd) = inputs.active_command {
+                    if sim_active_cmd.is_defined {
+                        let current_state = simulator_active_command_to_ac_state(sim_active_cmd);
+                        
+                        // If no change is required, return NoChange instead of the action
+                        if !current_state.requires_change(&desired_state) {
+                            let result = SimulatorResult {
+                                success: true,
+                                plan: Some(SimulatorPlanResult {
+                                    mode: "NoChange".to_string(),
+                                    intensity: "Low".to_string(),
+                                    cause_label: "State Already Matches".to_string(),
+                                    cause_description: format!(
+                                        "No state change required - device is already in the desired state ({}). Command would be skipped.",
+                                        if desired_state.is_on { 
+                                            format!("{} at {}°C", action.mode, action.temperature)
+                                        } else { 
+                                            "Off".to_string() 
+                                        }
+                                    ),
+                                }),
+                                ac_state: None,
+                                error: None,
+                                inputs_used,
+                                evaluate_every_minutes,
+                            };
+                            let response = ApiResponse::success(result);
+                            return (StatusCode::OK, Json(response)).into_response();
+                        }
+                    }
+                }
+                
                 // Build the plan result from the action
                 let plan_result = SimulatorPlanResult {
                     mode: action.mode.clone(),
@@ -707,6 +744,51 @@ async fn get_cause_reason_label(cause_id: &str) -> String {
     
     // Fallback to the raw ID
     cause_id.to_string()
+}
+
+/// Convert an ActionResult to an AcState for state comparison
+fn action_to_ac_state(action: &crate::nodes::ActionResult) -> AcState {
+    match action.mode.as_str() {
+        "Off" => AcState::new_off(),
+        "Heat" => {
+            let fan_speed = match action.fan_speed.as_str() {
+                "Auto" => 0,
+                "High" => 1,
+                "Medium" => 2,
+                "Low" => 3,
+                "Quiet" => 4,
+                _ => 0,
+            };
+            AcState::new_on(AC_MODE_HEAT, fan_speed, action.temperature, 0, action.is_powerful)
+        }
+        "Cool" => {
+            let fan_speed = match action.fan_speed.as_str() {
+                "Auto" => 0,
+                "High" => 1,
+                "Medium" => 2,
+                "Low" => 3,
+                "Quiet" => 4,
+                _ => 0,
+            };
+            AcState::new_on(AC_MODE_COOL, fan_speed, action.temperature, 1, action.is_powerful)
+        }
+        _ => AcState::new_off(),
+    }
+}
+
+/// Convert a SimulatorActiveCommand to an AcState for state comparison
+fn simulator_active_command_to_ac_state(cmd: &SimulatorActiveCommand) -> AcState {
+    if !cmd.is_on {
+        AcState::new_off()
+    } else {
+        AcState::new_on(
+            cmd.mode,
+            cmd.fan_speed,
+            cmd.temperature,
+            cmd.swing,
+            cmd.is_powerful,
+        )
+    }
 }
 
 /// Convert an ActionResult to a SimulatorAcState
