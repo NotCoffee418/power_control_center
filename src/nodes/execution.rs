@@ -1892,4 +1892,39 @@ mod tests {
         // The reset_active_command flag should NOT be set
         assert!(!result.reset_active_command, "Reset Active Command flag should NOT be set when node is not used");
     }
+
+    #[test]
+    fn test_reset_active_command_node_exec_out_not_connected() {
+        // Test that when Reset Active Command node's exec_out is not connected, we get an error
+        // Flow: Start -> Reset Active Command (exec_out not connected)
+        let nodes = vec![
+            create_start_node(),
+            create_reset_active_command_node("reset-1"),
+            create_do_nothing_node_with_id("do-nothing-1"), // Present but not connected
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            // Execution flow: Start -> Reset Active Command (but exec_out not connected)
+            create_edge("start-1", "exec_out", "reset-1", "exec_in"),
+            // Missing: create_edge("reset-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        // Execution should fail because exec_out is not connected
+        assert!(!result.completed);
+        assert!(result.error.is_some());
+        let error_msg = result.error.unwrap();
+        assert!(error_msg.contains("not connected"), "Error should indicate exec_out is not connected, got: {}", error_msg);
+        // The reset flag should still be propagated even in error case since the node was executed
+        assert!(result.reset_active_command, "Reset Active Command flag should be set even when exec_out is not connected");
+    }
 }
