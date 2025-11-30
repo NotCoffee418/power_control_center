@@ -29,4 +29,5 @@ target
 # Custom added
 config.json
 tmp-screenshots/
-*.backuptest.db
+*.backup
+test.db
