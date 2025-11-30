@@ -295,7 +295,7 @@ impl Node for DoNothingNode {
 
 /// Turn Off Node - Terminates the flow by executing a "turn off" action
 /// This is an alias node for Execute Action with preset values:
-/// - Temperature: 21
+/// - Temperature: TURN_OFF_DEFAULT_TEMPERATURE (21°C) - see execution.rs
 /// - Mode: Off
 /// - Fan Speed: Auto
 /// - Is Powerful: False

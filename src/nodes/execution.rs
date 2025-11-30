@@ -47,6 +47,9 @@ pub const NODE_TYPE_PIR_DETECTION: &str = "pir_detection";
 /// Sentinel value indicating no PIR detection has ever occurred
 pub const PIR_NEVER_DETECTED: i64 = -1;
 
+/// Default temperature value for Turn Off node (used when the AC is turned off)
+pub const TURN_OFF_DEFAULT_TEMPERATURE: f64 = 21.0;
+
 /// Tolerance for floating-point comparisons (suitable for temperature values in AC control)
 const FLOAT_TOLERANCE: f64 = 0.0001;
 
@@ -742,7 +745,7 @@ impl NodesetExecutor {
         
         Ok(ActionResult {
             device,
-            temperature: 21.0,
+            temperature: TURN_OFF_DEFAULT_TEMPERATURE,
             mode: "Off".to_string(),
             fan_speed: "Auto".to_string(),
             is_powerful: false,
@@ -2021,7 +2024,7 @@ mod tests {
         let action = result.action.unwrap();
         assert_eq!(action.device, "LivingRoom");
         // Verify the fixed "turn off" parameters
-        assert!((action.temperature - 21.0).abs() < f64::EPSILON, "Temperature should be 21");
+        assert!((action.temperature - TURN_OFF_DEFAULT_TEMPERATURE).abs() < f64::EPSILON, "Temperature should be TURN_OFF_DEFAULT_TEMPERATURE");
         assert_eq!(action.mode, "Off", "Mode should be Off");
         assert_eq!(action.fan_speed, "Auto", "Fan Speed should be Auto");
         assert!(!action.is_powerful, "Is Powerful should be false");
@@ -2070,7 +2073,7 @@ mod tests {
         
         let action = result.action.unwrap();
         assert_eq!(action.device, "Veranda");
-        assert!((action.temperature - 21.0).abs() < f64::EPSILON);
+        assert!((action.temperature - TURN_OFF_DEFAULT_TEMPERATURE).abs() < f64::EPSILON);
         assert_eq!(action.mode, "Off");
         assert_eq!(action.fan_speed, "Auto");
         assert!(!action.is_powerful);
