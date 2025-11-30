@@ -49,7 +49,13 @@
 
   // Initialize state variables after functions are defined
   let dynamicInputs = $state(data?.dynamicInputs || definition?.inputs || []);
-  let dynamicOutputs = $state(data?.dynamicOutputs || definition?.outputs || []); // For Sequence node
+  // For Sequence node: use dynamicOutputs if available, otherwise use definition outputs for initial state
+  // Only Sequence nodes should use dynamicOutputs, others always use static definition outputs
+  let dynamicOutputs = $state(
+    data?.dynamicOutputs || 
+    (nodeType === 'logic_sequence' ? definition?.outputs : []) || 
+    []
+  );
   let primitiveValue = $state(data?.primitiveValue ?? getDefaultPrimitiveValue());
   let enumValue = $state(data?.enumValue ?? getDefaultEnumValue());
   let operatorValue = $state(data?.operatorValue ?? '>'); // For Evaluate Number node

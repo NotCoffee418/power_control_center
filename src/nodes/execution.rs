@@ -507,10 +507,37 @@ impl NodesetExecutor {
         }
     }
     
+    /// Sort "then_N" output IDs by their numeric suffix
+    fn sort_then_outputs(outputs: &mut Vec<String>) {
+        outputs.sort_by(|a, b| {
+            let a_num: usize = a.strip_prefix("then_").and_then(|s| s.parse().ok()).unwrap_or(0);
+            let b_num: usize = b.strip_prefix("then_").and_then(|s| s.parse().ok()).unwrap_or(0);
+            a_num.cmp(&b_num)
+        });
+    }
+    
+    /// Get dynamic outputs from a node's data, if any
+    fn get_dynamic_outputs_from_node(node: &RuntimeNode) -> Vec<String> {
+        let mut outputs = Vec::new();
+        if let Some(dynamic_outputs) = node.data.get("data")
+            .and_then(|d| d.get("dynamicOutputs"))
+            .and_then(|o| o.as_array()) 
+        {
+            for output in dynamic_outputs {
+                if let Some(id) = output.get("id").and_then(|i| i.as_str()) {
+                    if id.starts_with("then_") {
+                        outputs.push(id.to_string());
+                    }
+                }
+            }
+        }
+        outputs
+    }
+    
     /// Execute a Sequence node - try each output in order until one reaches a terminal
     /// 
     /// The sequence evaluates each "then_N" output in order (then_0, then_1, etc.).
-    /// If a path leads to Execute Action or Do Nothing, the sequence stops there.
+    /// Execution stops when any path successfully reaches a terminal node (Execute Action or Do Nothing).
     /// If a path is not connected or leads to an error, it continues to the next output.
     fn execute_sequence_node(&mut self, node_id: &str) -> Result<ExecutionResult, ExecutionError> {
         // Get the node to check for dynamic outputs
@@ -524,34 +551,17 @@ impl NodesetExecutor {
             .map(|e| e.source_handle.clone())
             .collect();
         
-        // Sort by the numeric suffix to ensure correct order
-        then_outputs.sort_by(|a, b| {
-            let a_num: usize = a.strip_prefix("then_").and_then(|s| s.parse().ok()).unwrap_or(0);
-            let b_num: usize = b.strip_prefix("then_").and_then(|s| s.parse().ok()).unwrap_or(0);
-            a_num.cmp(&b_num)
-        });
-        
-        // Also check for any dynamicOutputs in the node data
-        if let Some(dynamic_outputs) = node.data.get("data")
-            .and_then(|d| d.get("dynamicOutputs"))
-            .and_then(|o| o.as_array()) 
-        {
-            for output in dynamic_outputs {
-                if let Some(id) = output.get("id").and_then(|i| i.as_str()) {
-                    if id.starts_with("then_") && !then_outputs.contains(&id.to_string()) {
-                        then_outputs.push(id.to_string());
-                    }
-                }
+        // Add any dynamic outputs defined in the node data
+        for output_id in Self::get_dynamic_outputs_from_node(&node) {
+            if !then_outputs.contains(&output_id) {
+                then_outputs.push(output_id);
             }
-            // Re-sort after adding dynamic outputs
-            then_outputs.sort_by(|a, b| {
-                let a_num: usize = a.strip_prefix("then_").and_then(|s| s.parse().ok()).unwrap_or(0);
-                let b_num: usize = b.strip_prefix("then_").and_then(|s| s.parse().ok()).unwrap_or(0);
-                a_num.cmp(&b_num)
-            });
         }
         
-        // If no then outputs are connected, that's an error
+        // Sort by the numeric suffix to ensure correct order
+        Self::sort_then_outputs(&mut then_outputs);
+        
+        // If no then outputs are found, that's an error
         if then_outputs.is_empty() {
             return Err(ExecutionError::Other(format!(
                 "Sequence node '{}' has no connected outputs",
@@ -559,24 +569,29 @@ impl NodesetExecutor {
             )));
         }
         
-        // Try each output in order
+        // Try each output in order, collecting errors for debugging
+        let mut last_error: Option<ExecutionError> = None;
         for output_id in &then_outputs {
             match self.follow_execution_flow(node_id, output_id) {
                 Ok(result) => {
                     // Path reached a terminal - return the result
                     return Ok(result);
                 }
-                Err(_) => {
-                    // This path didn't work, try the next one
+                Err(e) => {
+                    // This path didn't work, record the error and try the next one
+                    last_error = Some(e);
                     continue;
                 }
             }
         }
         
-        // No path reached a terminal
+        // No path reached a terminal - include the last error for debugging
+        let error_info = last_error
+            .map(|e| format!(": last error was '{}'", e))
+            .unwrap_or_default();
         Err(ExecutionError::Other(format!(
-            "Sequence node '{}': no path reached a terminal node",
-            node_id
+            "Sequence node '{}': no path reached a terminal node{}",
+            node_id, error_info
         )))
     }
     

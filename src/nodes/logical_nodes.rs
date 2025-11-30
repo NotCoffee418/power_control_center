@@ -338,11 +338,12 @@ impl Node for BranchNode {
     }
 }
 
-/// Sequence node - executes outputs in order until one path completes
+/// Sequence node - executes outputs in order until one path reaches a terminal
 /// Has dynamic number of execution output pins (minimum 2)
 /// When triggered, it evaluates each output path in order (Then 0, Then 1, etc.)
-/// If a path leads to Execute Action or Do Nothing, the sequence stops there.
-/// Otherwise, it continues to the next output.
+/// Execution stops when any path successfully reaches a terminal node (Execute Action or Do Nothing),
+/// even if that path goes through intermediate If or Sequence nodes first.
+/// If a path fails (disconnected or error), the sequence continues to the next output.
 pub struct SequenceNode;
 
 impl Node for SequenceNode {
@@ -350,7 +351,7 @@ impl Node for SequenceNode {
         NodeDefinition::new(
             "logic_sequence",
             "Sequence",
-            "Executes outputs in order. When triggered, evaluates each 'Then' output in sequence. If a path leads to Execute Action or Do Nothing, the sequence stops. Otherwise continues to the next output.",
+            "Executes outputs in order. When triggered, evaluates each 'Then' output in sequence. Stops when any path reaches a terminal node (Execute Action or Do Nothing). If a path fails, continues to the next output.",
             "Logic",
             vec![
                 NodeInput::new(
