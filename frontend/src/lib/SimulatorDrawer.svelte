@@ -272,7 +272,7 @@
   class="simulator-drawer" 
   class:open={isOpen}
   class:resizing={isResizing}
-  style="height: {isOpen ? drawerHeight : 48}px"
+  style="height: {isOpen ? drawerHeight : 40}px"
   role="region"
   aria-label="Simulator drawer"
 >
@@ -570,7 +570,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 1rem;
+    padding: 0rem 1rem;
     background: #252525;
     border-bottom: 1px solid #404040;
     min-height: 40px;
