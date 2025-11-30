@@ -6,9 +6,11 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use serde::{Serialize, Deserialize};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     db,
+    nodes,
     types::ApiResponse,
 };
 
@@ -73,6 +75,85 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
         execute_count,
         errors,
     }
+}
+
+/// Updates node definitions in a nodeset to match the current version.
+/// This ensures that when a profile is loaded, all nodes have their definitions
+/// updated to the latest version, preventing crashes due to outdated definitions.
+/// 
+/// The function:
+/// - Preserves user data (position, enumValue, primitiveValue, dynamicInputs, comment, etc.)
+/// - Updates the node definition to the current version
+/// - Removes nodes whose type no longer exists (returns list of removed node IDs)
+/// 
+/// Returns tuple of (updated_nodes, removed_node_ids)
+fn update_node_definitions(nodes: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, Vec<String>) {
+    // Build a map of current node definitions by node_type
+    let current_definitions: HashMap<String, serde_json::Value> = nodes::get_all_node_definitions()
+        .into_iter()
+        .filter_map(|def| {
+            serde_json::to_value(&def)
+                .ok()
+                .map(|v| (def.node_type.clone(), v))
+        })
+        .collect();
+    
+    let mut updated_nodes = Vec::new();
+    let mut removed_node_ids = Vec::new();
+    
+    for mut node in nodes {
+        // Get the node type from the stored definition
+        let node_type = node
+            .get("data")
+            .and_then(|d| d.get("definition"))
+            .and_then(|def| def.get("node_type"))
+            .and_then(|nt| nt.as_str())
+            .map(|s| s.to_string());
+        
+        if let Some(node_type) = node_type {
+            if let Some(current_def) = current_definitions.get(&node_type) {
+                // Update the definition while preserving user data
+                if let Some(data) = node.get_mut("data") {
+                    if let Some(data_obj) = data.as_object_mut() {
+                        data_obj.insert("definition".to_string(), current_def.clone());
+                    }
+                }
+                updated_nodes.push(node);
+            } else {
+                // Node type no longer exists - record for removal
+                if let Some(id) = node.get("id").and_then(|id| id.as_str()) {
+                    log::warn!("Removing node '{}' with unknown type '{}'", id, node_type);
+                    removed_node_ids.push(id.to_string());
+                }
+            }
+        } else {
+            // Node has no type - keep it but log a warning
+            log::warn!("Node has no type defined, keeping as-is: {:?}", node.get("id"));
+            updated_nodes.push(node);
+        }
+    }
+    
+    (updated_nodes, removed_node_ids)
+}
+
+/// Removes edges that reference removed nodes
+fn remove_orphaned_edges(edges: Vec<serde_json::Value>, removed_node_ids: &[String]) -> Vec<serde_json::Value> {
+    if removed_node_ids.is_empty() {
+        return edges;
+    }
+    
+    // Use HashSet for O(1) lookups
+    let removed_set: HashSet<&str> = removed_node_ids.iter().map(|s| s.as_str()).collect();
+    
+    edges
+        .into_iter()
+        .filter(|edge| {
+            let source = edge.get("source").and_then(|s| s.as_str()).unwrap_or("");
+            let target = edge.get("target").and_then(|t| t.as_str()).unwrap_or("");
+            
+            !removed_set.contains(source) && !removed_set.contains(target)
+        })
+        .collect()
 }
 
 pub fn nodes_routes() -> Router {
@@ -155,7 +236,15 @@ async fn get_node_configuration() -> Response {
         Ok(Some(record)) => {
             match serde_json::from_str::<NodeConfiguration>(&record.0) {
                 Ok(config) => {
-                    let response = ApiResponse::success(config);
+                    // Update node definitions to current version
+                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes);
+                    let updated_edges = remove_orphaned_edges(config.edges, &removed_node_ids);
+                    
+                    let updated_config = NodeConfiguration {
+                        nodes: updated_nodes,
+                        edges: updated_edges,
+                    };
+                    let response = ApiResponse::success(updated_config);
                     (StatusCode::OK, Json(response)).into_response()
                 }
                 Err(e) => {
@@ -221,11 +310,15 @@ async fn get_nodeset(Path(id): Path<i64>) -> Response {
         Ok(Some((id, name, node_json))) => {
             match serde_json::from_str::<NodeConfiguration>(&node_json) {
                 Ok(config) => {
+                    // Update node definitions to current version
+                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes);
+                    let updated_edges = remove_orphaned_edges(config.edges, &removed_node_ids);
+                    
                     let nodeset = Nodeset {
                         id,
                         name,
-                        nodes: config.nodes,
-                        edges: config.edges,
+                        nodes: updated_nodes,
+                        edges: updated_edges,
                     };
                     let response = ApiResponse::success(nodeset);
                     (StatusCode::OK, Json(response)).into_response()
@@ -508,11 +601,15 @@ async fn get_active_nodeset() -> Response {
         Ok(Some((id, name, node_json))) => {
             match serde_json::from_str::<NodeConfiguration>(&node_json) {
                 Ok(config) => {
+                    // Update node definitions to current version
+                    let (updated_nodes, removed_node_ids) = update_node_definitions(config.nodes);
+                    let updated_edges = remove_orphaned_edges(config.edges, &removed_node_ids);
+                    
                     let nodeset = Nodeset {
                         id,
                         name,
-                        nodes: config.nodes,
-                        edges: config.edges,
+                        nodes: updated_nodes,
+                        edges: updated_edges,
                     };
                     let response = ApiResponse::success(nodeset);
                     (StatusCode::OK, Json(response)).into_response()
@@ -820,5 +917,294 @@ mod tests {
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
         assert_eq!(result.execute_count, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Tests for update_node_definitions
+    // -------------------------------------------------------------------------
+
+    /// Creates a node with an outdated definition (missing inputs/outputs)
+    fn create_outdated_node(node_type: &str) -> serde_json::Value {
+        json!({
+            "id": format!("{}-outdated-1", node_type),
+            "type": "custom",
+            "position": { "x": 100, "y": 200 },
+            "data": {
+                "label": "Outdated Node",
+                "definition": {
+                    "node_type": node_type,
+                    "name": "Old Name",
+                    "description": "Old description",
+                    "category": "Old Category",
+                    "inputs": [],
+                    "outputs": [],
+                    "color": "#000000"
+                },
+                "comment": "User comment",
+                "primitiveValue": 42
+            }
+        })
+    }
+
+    #[test]
+    fn test_update_node_definitions_updates_outdated_nodes() {
+        // Create a node with an outdated definition
+        let outdated_node = create_outdated_node("logic_and");
+        let nodes = vec![outdated_node];
+        
+        // Update the definitions
+        let (updated_nodes, removed_ids) = update_node_definitions(nodes);
+        
+        // Should have one node with no removals
+        assert_eq!(updated_nodes.len(), 1);
+        assert!(removed_ids.is_empty());
+        
+        // Verify the definition was updated
+        let updated = &updated_nodes[0];
+        let definition = updated.get("data")
+            .and_then(|d| d.get("definition"))
+            .expect("Node should have definition");
+        
+        // Name should be updated to current version
+        assert_eq!(definition.get("name").and_then(|n| n.as_str()), Some("AND"));
+        // Category should be updated
+        assert_eq!(definition.get("category").and_then(|c| c.as_str()), Some("Logic"));
+        // Should now have inputs and outputs from current definition
+        let inputs = definition.get("inputs").and_then(|i| i.as_array()).expect("Should have inputs");
+        assert!(inputs.len() >= 2, "AND node should have at least 2 inputs");
+        let outputs = definition.get("outputs").and_then(|o| o.as_array()).expect("Should have outputs");
+        assert_eq!(outputs.len(), 1, "AND node should have 1 output");
+    }
+
+    #[test]
+    fn test_update_node_definitions_preserves_user_data() {
+        // Create a node with user-specific data
+        let node = json!({
+            "id": "primitive_integer-123",
+            "type": "custom",
+            "position": { "x": 50, "y": 75 },
+            "data": {
+                "label": "Integer",
+                "definition": {
+                    "node_type": "primitive_integer",
+                    "name": "Old Name",
+                    "description": "Old desc",
+                    "category": "Primitives",
+                    "inputs": [],
+                    "outputs": [],
+                    "color": "#000000"
+                },
+                "primitiveValue": 999,
+                "comment": "Important integer value"
+            }
+        });
+        let nodes = vec![node];
+        
+        let (updated_nodes, removed_ids) = update_node_definitions(nodes);
+        
+        assert_eq!(updated_nodes.len(), 1);
+        assert!(removed_ids.is_empty());
+        
+        let updated = &updated_nodes[0];
+        let data = updated.get("data").expect("Should have data");
+        
+        // User data should be preserved
+        assert_eq!(data.get("primitiveValue").and_then(|v| v.as_i64()), Some(999));
+        assert_eq!(data.get("comment").and_then(|c| c.as_str()), Some("Important integer value"));
+        
+        // Position should be preserved
+        let position = updated.get("position").expect("Should have position");
+        assert_eq!(position.get("x").and_then(|x| x.as_f64()), Some(50.0));
+        assert_eq!(position.get("y").and_then(|y| y.as_f64()), Some(75.0));
+    }
+
+    #[test]
+    fn test_update_node_definitions_removes_unknown_nodes() {
+        // Create a node with an unknown type
+        let unknown_node = json!({
+            "id": "unknown_type-1",
+            "type": "custom",
+            "position": { "x": 0, "y": 0 },
+            "data": {
+                "definition": {
+                    "node_type": "non_existent_node_type",
+                    "name": "Unknown",
+                    "description": "This node type does not exist",
+                    "category": "Unknown",
+                    "inputs": [],
+                    "outputs": [],
+                    "color": "#FF0000"
+                }
+            }
+        });
+        
+        // Also add a valid node
+        let valid_node = create_node("logic_and");
+        let nodes = vec![unknown_node, valid_node];
+        
+        let (updated_nodes, removed_ids) = update_node_definitions(nodes);
+        
+        // Only valid node should remain
+        assert_eq!(updated_nodes.len(), 1);
+        assert_eq!(removed_ids.len(), 1);
+        assert_eq!(removed_ids[0], "unknown_type-1");
+        
+        // Verify the remaining node is the valid one
+        let node_type = updated_nodes[0]
+            .get("data")
+            .and_then(|d| d.get("definition"))
+            .and_then(|def| def.get("node_type"))
+            .and_then(|nt| nt.as_str());
+        assert_eq!(node_type, Some("logic_and"));
+    }
+
+    #[test]
+    fn test_update_node_definitions_handles_empty_list() {
+        let nodes: Vec<serde_json::Value> = vec![];
+        let (updated_nodes, removed_ids) = update_node_definitions(nodes);
+        
+        assert!(updated_nodes.is_empty());
+        assert!(removed_ids.is_empty());
+    }
+
+    #[test]
+    fn test_remove_orphaned_edges_removes_edges_to_removed_nodes() {
+        let edges = vec![
+            json!({
+                "id": "edge-1",
+                "source": "node-1",
+                "sourceHandle": "output",
+                "target": "node-2",
+                "targetHandle": "input"
+            }),
+            json!({
+                "id": "edge-2",
+                "source": "node-2",
+                "sourceHandle": "output",
+                "target": "node-3",
+                "targetHandle": "input"
+            }),
+            json!({
+                "id": "edge-3",
+                "source": "node-1",
+                "sourceHandle": "output",
+                "target": "node-3",
+                "targetHandle": "input"
+            }),
+        ];
+        
+        // Remove node-2
+        let removed_ids = vec!["node-2".to_string()];
+        let filtered_edges = remove_orphaned_edges(edges, &removed_ids);
+        
+        // Only edge-3 should remain (node-1 -> node-3)
+        assert_eq!(filtered_edges.len(), 1);
+        assert_eq!(
+            filtered_edges[0].get("id").and_then(|id| id.as_str()),
+            Some("edge-3")
+        );
+    }
+
+    #[test]
+    fn test_remove_orphaned_edges_preserves_valid_edges() {
+        let edges = vec![
+            json!({
+                "id": "edge-1",
+                "source": "node-1",
+                "target": "node-2"
+            }),
+            json!({
+                "id": "edge-2",
+                "source": "node-2",
+                "target": "node-3"
+            }),
+        ];
+        
+        // No nodes removed
+        let removed_ids: Vec<String> = vec![];
+        let filtered_edges = remove_orphaned_edges(edges.clone(), &removed_ids);
+        
+        assert_eq!(filtered_edges.len(), 2);
+    }
+
+    #[test]
+    fn test_update_preserves_enum_value() {
+        // Create a cause_reason node with a specific enum value
+        let node = json!({
+            "id": "cause_reason-1",
+            "type": "custom",
+            "position": { "x": 0, "y": 0 },
+            "data": {
+                "label": "Cause Reason",
+                "definition": {
+                    "node_type": "cause_reason",
+                    "name": "Old Cause Reason",
+                    "description": "Old description",
+                    "category": "Enums",
+                    "inputs": [],
+                    "outputs": [{ "id": "value", "label": "Value" }],
+                    "color": "#E91E63"
+                },
+                "enumValue": "5"
+            }
+        });
+        let nodes = vec![node];
+        
+        let (updated_nodes, removed_ids) = update_node_definitions(nodes);
+        
+        assert_eq!(updated_nodes.len(), 1);
+        assert!(removed_ids.is_empty());
+        
+        let data = updated_nodes[0].get("data").expect("Should have data");
+        
+        // Enum value should be preserved
+        assert_eq!(data.get("enumValue").and_then(|v| v.as_str()), Some("5"));
+        
+        // But definition should be updated
+        let definition = data.get("definition").expect("Should have definition");
+        assert_eq!(definition.get("name").and_then(|n| n.as_str()), Some("Cause Reason"));
+    }
+
+    #[test]
+    fn test_update_preserves_dynamic_inputs() {
+        // Create an AND node with dynamically added inputs
+        let node = json!({
+            "id": "logic_and-1",
+            "type": "custom",
+            "position": { "x": 0, "y": 0 },
+            "data": {
+                "label": "AND",
+                "definition": {
+                    "node_type": "logic_and",
+                    "name": "AND",
+                    "description": "Old description",
+                    "category": "Logic",
+                    "inputs": [
+                        { "id": "input_1", "label": "Input 1" },
+                        { "id": "input_2", "label": "Input 2" }
+                    ],
+                    "outputs": [{ "id": "result", "label": "Result" }],
+                    "color": "#9C27B0"
+                },
+                "dynamicInputs": [
+                    { "id": "input_1", "label": "Input 1" },
+                    { "id": "input_2", "label": "Input 2" },
+                    { "id": "input_3", "label": "Input 3" },
+                    { "id": "input_4", "label": "Input 4" }
+                ]
+            }
+        });
+        let nodes = vec![node];
+        
+        let (updated_nodes, removed_ids) = update_node_definitions(nodes);
+        
+        assert_eq!(updated_nodes.len(), 1);
+        assert!(removed_ids.is_empty());
+        
+        let data = updated_nodes[0].get("data").expect("Should have data");
+        
+        // Dynamic inputs should be preserved
+        let dynamic_inputs = data.get("dynamicInputs").and_then(|i| i.as_array()).expect("Should have dynamicInputs");
+        assert_eq!(dynamic_inputs.len(), 4);
     }
 }
