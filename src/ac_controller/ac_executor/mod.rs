@@ -37,19 +37,19 @@ impl AcStateManager {
     }
 
     /// Update the state for a device
-    fn set_state(&self, device_name: &str, state: AcState) {
+    pub fn set_state(&self, device_name: &str, state: AcState) {
         let mut states = self.states.write().unwrap();
         states.insert(device_name.to_string(), state);
     }
 
     /// Check if a device has been initialized (had its first command sent)
-    fn is_device_initialized(&self, device_name: &str) -> bool {
+    pub fn is_device_initialized(&self, device_name: &str) -> bool {
         let initialized = self.initialized_devices.read().unwrap();
         initialized.get(device_name).copied().unwrap_or(false)
     }
 
     /// Mark a device as initialized after its first command
-    fn mark_device_initialized(&self, device_name: &str) {
+    pub fn mark_device_initialized(&self, device_name: &str) {
         let mut initialized = self.initialized_devices.write().unwrap();
         initialized.insert(device_name.to_string(), true);
     }
