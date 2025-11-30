@@ -4,6 +4,10 @@ use super::super::plan_types::{Intensity, RequestMode};
 pub const AC_MODE_HEAT: i32 = 1;
 pub const AC_MODE_COOL: i32 = 4;
 
+/// Temperature tolerance in Celsius for state change detection.
+/// If the temperature difference is within this tolerance, we skip sending a new command.
+pub const TEMPERATURE_TOLERANCE: f64 = 0.5;
+
 /// Represents the actual state of an AC device
 /// This is what we track to determine if we need to send new commands
 #[derive(Debug, Clone, PartialEq)]
@@ -48,9 +52,49 @@ impl AcState {
     }
 
     /// Check if this state represents a change from another state
-    /// Returns true if the states are different and a command should be sent
+    /// Returns true if the states are different and a command should be sent.
+    /// 
+    /// Note: Temperature changes within ±0.5°C are considered equivalent
+    /// to avoid sending redundant commands for minor temperature fluctuations.
     pub fn requires_change(&self, other: &AcState) -> bool {
-        self != other
+        // If on/off state differs, it's definitely a change
+        if self.is_on != other.is_on {
+            return true;
+        }
+        
+        // If both are off, no change needed (off state has no other properties that matter)
+        if !self.is_on && !other.is_on {
+            return false;
+        }
+        
+        // Both are on, check other properties
+        if self.mode != other.mode {
+            return true;
+        }
+        
+        if self.fan_speed != other.fan_speed {
+            return true;
+        }
+        
+        if self.swing != other.swing {
+            return true;
+        }
+        
+        if self.powerful_mode != other.powerful_mode {
+            return true;
+        }
+        
+        // Check temperature with tolerance
+        match (self.temperature, other.temperature) {
+            (Some(t1), Some(t2)) => {
+                // Temperature change within tolerance is not considered a change
+                (t1 - t2).abs() > TEMPERATURE_TOLERANCE
+            }
+            // If one has temperature and other doesn't, it's a change
+            (Some(_), None) | (None, Some(_)) => true,
+            // If neither has temperature (shouldn't happen for on state), no change
+            (None, None) => false,
+        }
     }
 }
 
@@ -273,5 +317,77 @@ mod tests {
         let state2 = AcState::new_off();
 
         assert!(state1.requires_change(&state2));
+    }
+
+    #[test]
+    fn test_temperature_tolerance_within_threshold() {
+        // Temperature difference of 0.3°C should NOT require a change (within ±0.5°C tolerance)
+        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(4, 0, 22.3, 1, false);
+
+        assert!(!state1.requires_change(&state2), "0.3°C difference should not require a change");
+    }
+
+    #[test]
+    fn test_temperature_tolerance_at_threshold() {
+        // Temperature difference of exactly 0.5°C should NOT require a change (at tolerance boundary)
+        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(4, 0, 22.5, 1, false);
+
+        assert!(!state1.requires_change(&state2), "0.5°C difference (at tolerance) should not require a change");
+    }
+
+    #[test]
+    fn test_temperature_tolerance_above_threshold() {
+        // Temperature difference of 0.51°C should require a change (above tolerance)
+        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(4, 0, 22.51, 1, false);
+
+        assert!(state1.requires_change(&state2), "0.51°C difference should require a change");
+    }
+
+    #[test]
+    fn test_temperature_tolerance_negative_difference() {
+        // Negative temperature difference should also be handled
+        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(4, 0, 21.6, 1, false); // 0.4°C lower
+
+        assert!(!state1.requires_change(&state2), "-0.4°C difference should not require a change");
+    }
+
+    #[test]
+    fn test_temperature_tolerance_large_difference() {
+        // Large temperature difference should always require a change
+        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(4, 0, 25.0, 1, false); // 3°C higher
+
+        assert!(state1.requires_change(&state2), "3°C difference should require a change");
+    }
+
+    #[test]
+    fn test_same_state_no_change() {
+        // Exactly the same state should not require a change
+        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(4, 0, 22.0, 1, false);
+
+        assert!(!state1.requires_change(&state2), "Same state should not require a change");
+    }
+
+    #[test]
+    fn test_off_to_off_no_change() {
+        // Both off should not require a change
+        let state1 = AcState::new_off();
+        let state2 = AcState::new_off();
+
+        assert!(!state1.requires_change(&state2), "Off to off should not require a change");
+    }
+
+    #[test]
+    fn test_off_to_on_requires_change() {
+        // Off to on should require a change
+        let state1 = AcState::new_off();
+        let state2 = AcState::new_on(4, 0, 22.0, 1, false);
+
+        assert!(state1.requires_change(&state2), "Off to on should require a change");
     }
 }

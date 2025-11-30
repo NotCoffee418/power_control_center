@@ -27,6 +27,15 @@
   let lastChangeMinutesStr = $state('60');
   let netPowerWattStr = $state('0');
 
+  // Active Command state
+  let activeCommandIsDefined = $state(false);
+  let activeCommandIsOn = $state(false);
+  let activeCommandTemperatureStr = $state('22.0');
+  let activeCommandMode = $state('Cool'); // 'Heat', 'Cool', or 'Off'
+  let activeCommandFanSpeedStr = $state('0'); // 0-5, where 0 is auto
+  let activeCommandSwingStr = $state('0'); // 0 = off, 1 = on
+  let activeCommandIsPowerful = $state(false);
+
   // Available devices
   let devices = $state([]);
   
@@ -81,16 +90,44 @@
   function getNetPowerWatt() {
     return isValidInteger(netPowerWattStr) ? parseInt(netPowerWattStr, 10) : 0;
   }
+  function getActiveCommandTemperature() {
+    return isValidFloat(activeCommandTemperatureStr) ? parseFloat(activeCommandTemperatureStr) : 0;
+  }
+  function getActiveCommandFanSpeed() {
+    return isValidInteger(activeCommandFanSpeedStr) ? parseInt(activeCommandFanSpeedStr, 10) : 0;
+  }
+  function getActiveCommandSwing() {
+    return isValidInteger(activeCommandSwingStr) ? parseInt(activeCommandSwingStr, 10) : 0;
+  }
+  function getActiveCommandModeInt() {
+    // Convert mode string to integer (1 = Heat, 4 = Cool, 0 = Off)
+    switch (activeCommandMode) {
+      case 'Heat': return 1;
+      case 'Cool': return 4;
+      case 'Off': return 0;
+      default: return 0;
+    }
+  }
 
   // Check if all inputs are valid
   function areAllInputsValid() {
-    return isValidFloat(temperatureStr) &&
+    const baseValid = isValidFloat(temperatureStr) &&
            isValidInteger(solarProductionStr) &&
            isValidFloat(outdoorTempStr) &&
            isValidFloat(avgNext24hOutdoorTempStr) &&
            isValidInteger(pirMinutesAgoStr) &&
            isValidInteger(lastChangeMinutesStr) &&
            isValidInteger(netPowerWattStr);
+    
+    // If active command is defined, validate its fields too
+    if (activeCommandIsDefined) {
+      return baseValid &&
+             isValidFloat(activeCommandTemperatureStr) &&
+             isValidInteger(activeCommandFanSpeedStr) &&
+             isValidInteger(activeCommandSwingStr);
+    }
+    
+    return baseValid;
   }
 
   // Load live inputs from backend
@@ -182,6 +219,16 @@
         // Always include the current nodes and edges from the editor
         nodes: nodes || [],
         edges: edges || [],
+        // Active Command data (for testing with specific active command states)
+        active_command: activeCommandIsDefined ? {
+          is_defined: true,
+          is_on: activeCommandIsOn,
+          temperature: getActiveCommandTemperature(),
+          mode: getActiveCommandModeInt(),
+          fan_speed: getActiveCommandFanSpeed(),
+          swing: getActiveCommandSwing(),
+          is_powerful: activeCommandIsPowerful,
+        } : null,
       };
       
       const response = await fetch('/api/simulator/evaluate', {
@@ -454,6 +501,99 @@
               placeholder="e.g. -500"
             />
           </div>
+        </div>
+        
+        <!-- Active Command Section -->
+        <div class="active-command-section">
+          <h5>Active Command (Last Sent)</h5>
+          
+          <div class="input-group checkbox-group">
+            <label for="activeCommandDefined">
+              <input 
+                type="checkbox" 
+                id="activeCommandDefined" 
+                bind:checked={activeCommandIsDefined}
+              />
+              Is Defined
+            </label>
+          </div>
+          
+          {#if activeCommandIsDefined}
+            <div class="active-command-grid">
+              <!-- Is On -->
+              <div class="input-group checkbox-group">
+                <label for="activeCommandOn">
+                  <input 
+                    type="checkbox" 
+                    id="activeCommandOn" 
+                    bind:checked={activeCommandIsOn}
+                  />
+                  AC Is On
+                </label>
+              </div>
+              
+              <!-- Mode -->
+              <div class="input-group">
+                <label for="activeCommandMode">Mode</label>
+                <select 
+                  id="activeCommandMode" 
+                  bind:value={activeCommandMode}
+                >
+                  <option value="Heat">Heat</option>
+                  <option value="Cool">Cool</option>
+                  <option value="Off">Off</option>
+                </select>
+              </div>
+              
+              <!-- Temperature -->
+              <div class="input-group">
+                <label for="activeCommandTemp">Temperature (°C)</label>
+                <input 
+                  type="text" 
+                  id="activeCommandTemp" 
+                  bind:value={activeCommandTemperatureStr}
+                  class:invalid={!isValidFloat(activeCommandTemperatureStr)}
+                  placeholder="e.g. 22.0"
+                />
+              </div>
+              
+              <!-- Fan Speed -->
+              <div class="input-group">
+                <label for="activeCommandFan">Fan Speed (0-5)</label>
+                <input 
+                  type="text" 
+                  id="activeCommandFan" 
+                  bind:value={activeCommandFanSpeedStr}
+                  class:invalid={!isValidInteger(activeCommandFanSpeedStr)}
+                  placeholder="0=Auto"
+                />
+              </div>
+              
+              <!-- Swing -->
+              <div class="input-group">
+                <label for="activeCommandSwing">Swing (0/1)</label>
+                <input 
+                  type="text" 
+                  id="activeCommandSwing" 
+                  bind:value={activeCommandSwingStr}
+                  class:invalid={!isValidInteger(activeCommandSwingStr)}
+                  placeholder="0=Off"
+                />
+              </div>
+              
+              <!-- Is Powerful -->
+              <div class="input-group checkbox-group">
+                <label for="activeCommandPowerful">
+                  <input 
+                    type="checkbox" 
+                    id="activeCommandPowerful" 
+                    bind:checked={activeCommandIsPowerful}
+                  />
+                  Powerful Mode
+                </label>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
       
@@ -795,5 +935,52 @@
     margin: 0;
     color: #bbb;
     line-height: 1.4;
+  }
+
+  /* Active Command Section Styles */
+  .active-command-section {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #404040;
+  }
+
+  .active-command-section h5 {
+    margin: 0 0 0.5rem 0;
+    color: #aaa;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .active-command-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #252525;
+    border-radius: 4px;
+  }
+
+  .active-command-grid .input-group {
+    gap: 0.15rem;
+  }
+
+  .active-command-grid .input-group label {
+    font-size: 0.7rem;
+  }
+
+  .active-command-grid .input-group input[type="text"],
+  .active-command-grid .input-group select {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  .active-command-grid .checkbox-group label {
+    font-size: 0.8rem;
+  }
+
+  .active-command-grid .checkbox-group input[type="checkbox"] {
+    width: 0.875rem;
+    height: 0.875rem;
   }
 </style>

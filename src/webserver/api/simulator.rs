@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::{
     ac_controller::{
         AcDevices,
-        ac_executor::{AC_MODE_HEAT, AC_MODE_COOL, get_state_manager},
+        ac_executor::{get_state_manager, AcState, AC_MODE_HEAT, AC_MODE_COOL},
     },
     config,
     db,
@@ -61,6 +61,28 @@ pub struct SimulatorInputs {
     pub nodes: Option<Vec<serde_json::Value>>,
     /// Edges configuration for unsaved/new nodesets (when nodeset_id is -1)
     pub edges: Option<Vec<serde_json::Value>>,
+    /// Active command data for simulator testing (optional)
+    /// When provided, overrides the state manager's tracked state
+    pub active_command: Option<SimulatorActiveCommand>,
+}
+
+/// Active command data from the simulator input
+#[derive(Debug, Clone, Deserialize)]
+pub struct SimulatorActiveCommand {
+    /// Whether an active command exists
+    pub is_defined: bool,
+    /// Whether the AC is currently on
+    pub is_on: bool,
+    /// Target temperature in Celsius
+    pub temperature: f64,
+    /// AC mode: 1 = Heat, 4 = Cool, 0 = Off
+    pub mode: i32,
+    /// Fan speed setting (0-5, where 0 is auto)
+    pub fan_speed: i32,
+    /// Swing setting (0 = off, 1 = on)
+    pub swing: i32,
+    /// Whether powerful mode was enabled
+    pub is_powerful: bool,
 }
 
 /// Result of simulating a workflow
@@ -320,28 +342,40 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     let mut pir_state = HashMap::new();
     pir_state.insert(inputs.device.clone(), (pir_detected, pir_minutes_ago));
     
-    // Get active command from the AC state manager
-    // The state manager tracks the last known state of each device.
-    // A command is considered "defined" if we have any meaningful state tracked.
-    // Note: The state manager's is_device_initialized() is private, but we can infer
-    // initialization from whether mode or other optional fields have values.
-    let state_manager = get_state_manager();
-    let ac_state = state_manager.get_state(&inputs.device);
-    
-    // Determine if an active command exists:
-    // - If device is currently on, we definitely have an active command
-    // - If mode has a value, we've sent a command at some point
-    // This aligns with how AcState tracks device state (mode is Some only after sending a command)
-    let is_defined = ac_state.is_on || ac_state.mode.is_some();
-    
-    let active_command = ActiveCommandData {
-        is_defined,
-        is_on: ac_state.is_on,
-        temperature: ac_state.temperature.unwrap_or(0.0),
-        mode: ac_state.mode.unwrap_or(0),
-        fan_speed: ac_state.fan_speed.unwrap_or(0),
-        swing: ac_state.swing.unwrap_or(0),
-        is_powerful: ac_state.powerful_mode,
+    // Get active command - prefer the simulator input if provided, otherwise use state manager
+    let active_command = if let Some(ref sim_active_cmd) = inputs.active_command {
+        // Use the active command from the simulator input
+        ActiveCommandData {
+            is_defined: sim_active_cmd.is_defined,
+            is_on: sim_active_cmd.is_on,
+            temperature: sim_active_cmd.temperature,
+            mode: sim_active_cmd.mode,
+            fan_speed: sim_active_cmd.fan_speed,
+            swing: sim_active_cmd.swing,
+            is_powerful: sim_active_cmd.is_powerful,
+        }
+    } else {
+        // Fall back to the AC state manager for the tracked state
+        // The state manager tracks the last known state of each device.
+        // A command is considered "defined" if we have any meaningful state tracked.
+        let state_manager = get_state_manager();
+        let ac_state = state_manager.get_state(&inputs.device);
+        
+        // Determine if an active command exists:
+        // - If device is currently on, we definitely have an active command
+        // - If mode has a value, we've sent a command at some point
+        // This aligns with how AcState tracks device state (mode is Some only after sending a command)
+        let is_defined = ac_state.is_on || ac_state.mode.is_some();
+        
+        ActiveCommandData {
+            is_defined,
+            is_on: ac_state.is_on,
+            temperature: ac_state.temperature.unwrap_or(0.0),
+            mode: ac_state.mode.unwrap_or(0),
+            fan_speed: ac_state.fan_speed.unwrap_or(0),
+            swing: ac_state.swing.unwrap_or(0),
+            is_powerful: ac_state.powerful_mode,
+        }
     };
     
     // Build execution inputs
@@ -422,6 +456,43 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         }
         Some("Execute Action") => {
             if let Some(action) = execution_result.action {
+                // Convert the action to an AcState for comparison
+                let desired_state = action_to_ac_state(&action);
+                
+                // Check if the active command (current state) requires a change to reach the desired state
+                // This mirrors the logic in node_executor.rs execute_action_result
+                if let Some(ref sim_active_cmd) = inputs.active_command {
+                    if sim_active_cmd.is_defined {
+                        let current_state = simulator_active_command_to_ac_state(sim_active_cmd);
+                        
+                        // If no change is required, return NoChange instead of the action
+                        if !current_state.requires_change(&desired_state) {
+                            let result = SimulatorResult {
+                                success: true,
+                                plan: Some(SimulatorPlanResult {
+                                    mode: "NoChange".to_string(),
+                                    intensity: "Low".to_string(),
+                                    cause_label: "State Already Matches".to_string(),
+                                    cause_description: format!(
+                                        "No state change required - device is already in the desired state ({}). Command would be skipped.",
+                                        if desired_state.is_on { 
+                                            format!("{} at {}°C", action.mode, action.temperature)
+                                        } else { 
+                                            "Off".to_string() 
+                                        }
+                                    ),
+                                }),
+                                ac_state: None,
+                                error: None,
+                                inputs_used,
+                                evaluate_every_minutes,
+                            };
+                            let response = ApiResponse::success(result);
+                            return (StatusCode::OK, Json(response)).into_response();
+                        }
+                    }
+                }
+                
                 // Build the plan result from the action
                 let plan_result = SimulatorPlanResult {
                     mode: action.mode.clone(),
@@ -673,6 +744,53 @@ async fn get_cause_reason_label(cause_id: &str) -> String {
     
     // Fallback to the raw ID
     cause_id.to_string()
+}
+
+/// Convert an ActionResult to an AcState for state comparison
+fn action_to_ac_state(action: &crate::nodes::ActionResult) -> AcState {
+    match action.mode.as_str() {
+        "Off" => AcState::new_off(),
+        "Heat" => {
+            let fan_speed = match action.fan_speed.as_str() {
+                "Auto" => 0,
+                "High" => 1,
+                "Medium" => 2,
+                "Low" => 3,
+                "Quiet" => 4,
+                _ => 0,
+            };
+            // Swing off (0) for heating - matches node_executor.rs behavior
+            AcState::new_on(AC_MODE_HEAT, fan_speed, action.temperature, 0, action.is_powerful)
+        }
+        "Cool" => {
+            let fan_speed = match action.fan_speed.as_str() {
+                "Auto" => 0,
+                "High" => 1,
+                "Medium" => 2,
+                "Low" => 3,
+                "Quiet" => 4,
+                _ => 0,
+            };
+            // Swing on (1) for cooling - matches node_executor.rs behavior
+            AcState::new_on(AC_MODE_COOL, fan_speed, action.temperature, 1, action.is_powerful)
+        }
+        _ => AcState::new_off(),
+    }
+}
+
+/// Convert a SimulatorActiveCommand to an AcState for state comparison
+fn simulator_active_command_to_ac_state(cmd: &SimulatorActiveCommand) -> AcState {
+    if !cmd.is_on {
+        AcState::new_off()
+    } else {
+        AcState::new_on(
+            cmd.mode,
+            cmd.fan_speed,
+            cmd.temperature,
+            cmd.swing,
+            cmd.is_powerful,
+        )
+    }
 }
 
 /// Convert an ActionResult to a SimulatorAcState
