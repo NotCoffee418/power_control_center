@@ -43,11 +43,11 @@
   const NODE_WIDTH = 220; // Approximate width of a node
   const NODE_SPAWN_MARGIN = 50; // Margin between spawned nodes
   
-  // Generate a unique node ID using timestamp and random suffix
+  // Generate a unique node ID using crypto.randomUUID for guaranteed uniqueness
   function generateUniqueNodeId(nodeType) {
-    const timestamp = Date.now();
-    const randomSuffix = Math.random().toString(36).substring(2, 8);
-    return `${nodeType}-${timestamp}-${randomSuffix}`;
+    // crypto.randomUUID() provides a RFC 4122 compliant UUID
+    const uuid = crypto.randomUUID();
+    return `${nodeType}-${uuid}`;
   }
   
   // Calculate spawn position for new nodes
@@ -59,7 +59,8 @@
     }
     
     // Find the highest X position among existing nodes
-    let maxX = 0;
+    // Initialize with first node's position to handle negative X values correctly
+    let maxX = nodes[0].position?.x ?? 0;
     let avgY = 0;
     
     for (const node of nodes) {
