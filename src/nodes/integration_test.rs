@@ -9,6 +9,11 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         
         // Verify we have 20 node definitions:
+        // System: 3 (flow_start, flow_execute_action, flow_do_nothing)
+        // Sensors: 1 (pir_detection)
+        // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
+        // Primitives: 3 (float, integer, boolean)
+        // Enums: 5 (device, intensity, cause_reason, request_mode, fan_speed)
         // System: 4 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command)
         // Sensors: 1 (pir_detection)
         // Logic: 8 (and, or, nand, if, not, equals, evaluate_number, branch)
@@ -83,7 +88,7 @@ mod integration_tests {
                 "primitive_float" | "primitive_integer" | "primitive_boolean" => {
                     assert_eq!(def.category, "Primitives", "Primitive nodes should be in 'Primitives' category");
                 }
-                "device" | "intensity" | "cause_reason" | "request_mode" => {
+                "device" | "intensity" | "cause_reason" | "request_mode" | "fan_speed" => {
                     assert_eq!(def.category, "Enums", "Enum nodes should be in 'Enums' category");
                 }
                 _ => panic!("Unexpected node type: {}", def.node_type),
@@ -269,7 +274,7 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
         
-        assert_eq!(execute_node.inputs.len(), 5, "Execute Action node should have 5 inputs");
+        assert_eq!(execute_node.inputs.len(), 6, "Execute Action node should have 6 inputs");
         assert_eq!(execute_node.outputs.len(), 0, "Execute Action node should have no outputs (terminal)");
         assert_eq!(execute_node.category, "System");
         
@@ -278,6 +283,7 @@ mod integration_tests {
         assert!(input_ids.contains(&"device"));
         assert!(input_ids.contains(&"temperature"));
         assert!(input_ids.contains(&"mode"));
+        assert!(input_ids.contains(&"fan_speed"));
         assert!(input_ids.contains(&"is_powerful"));
         assert!(input_ids.contains(&"cause_reason"));
         

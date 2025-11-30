@@ -83,7 +83,7 @@ impl Node for StartNode {
 }
 
 /// Execute Action Node - End point that executes the command and stores to database
-/// Takes raw AC control values: temperature, mode (Heat/Cool/Off), and isPowerful
+/// Takes raw AC control values: temperature, mode (Heat/Cool/Off), fan_speed, and isPowerful
 /// This node represents the final action in the evaluation flow
 /// NOTE: The cause_reason input's hardcoded enum values are deprecated.
 /// The actual cause reasons are loaded from the database at runtime
@@ -123,6 +123,19 @@ impl Node for ExecuteActionNode {
                         "Heat".to_string(),
                         "Cool".to_string(),
                         "Off".to_string(),
+                    ]),
+                    true,
+                ),
+                NodeInput::new(
+                    "fan_speed",
+                    "Fan Speed",
+                    "Fan speed setting: 0=Auto, 1=High, 2=Medium, 3=Low, 4=Quiet",
+                    ValueType::Enum(vec![
+                        "Auto".to_string(),
+                        "High".to_string(),
+                        "Medium".to_string(),
+                        "Low".to_string(),
+                        "Quiet".to_string(),
                     ]),
                     true,
                 ),
@@ -312,7 +325,7 @@ mod tests {
         assert_eq!(def.node_type, "flow_execute_action");
         assert_eq!(def.name, "Execute Action");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 5); // device, temperature, mode, is_powerful, cause_reason
+        assert_eq!(def.inputs.len(), 6); // device, temperature, mode, fan_speed, is_powerful, cause_reason
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
         
         // Verify device input
@@ -343,6 +356,21 @@ mod tests {
             _ => panic!("Expected Enum type for mode input"),
         }
         assert!(mode_input.required);
+        
+        // Verify fan_speed input (0=Auto, 1=High, 2=Medium, 3=Low, 4=Quiet)
+        let fan_speed_input = def.inputs.iter().find(|i| i.id == "fan_speed").unwrap();
+        match &fan_speed_input.value_type {
+            ValueType::Enum(values) => {
+                assert_eq!(values.len(), 5);
+                assert!(values.contains(&"Auto".to_string()));
+                assert!(values.contains(&"High".to_string()));
+                assert!(values.contains(&"Medium".to_string()));
+                assert!(values.contains(&"Low".to_string()));
+                assert!(values.contains(&"Quiet".to_string()));
+            }
+            _ => panic!("Expected Enum type for fan_speed input"),
+        }
+        assert!(fan_speed_input.required);
         
         // Verify is_powerful input
         let powerful_input = def.inputs.iter().find(|i| i.id == "is_powerful").unwrap();

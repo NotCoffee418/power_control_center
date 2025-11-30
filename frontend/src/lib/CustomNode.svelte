@@ -17,7 +17,7 @@
   // Determine node behavior flags - derived from nodeType
   const isDynamicLogicNode = $derived(['logic_and', 'logic_or', 'logic_nand'].includes(nodeType));
   const isPrimitiveNode = $derived(['primitive_float', 'primitive_integer', 'primitive_boolean'].includes(nodeType));
-  const isEnumNode = $derived(['device', 'intensity', 'cause_reason', 'request_mode'].includes(nodeType));
+  const isEnumNode = $derived(['device', 'intensity', 'cause_reason', 'request_mode', 'fan_speed'].includes(nodeType));
   const isEvaluateNumberNode = $derived(nodeType === 'logic_evaluate_number');
 
   // Get default value based on primitive type

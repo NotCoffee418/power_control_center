@@ -111,6 +111,36 @@ impl Node for RequestModeNode {
     }
 }
 
+/// FanSpeed node - represents a fan speed selection for AC operation
+/// This node provides a dropdown for selecting fan speed (Auto, High, Medium, Low, Quiet)
+pub struct FanSpeedNode;
+
+impl Node for FanSpeedNode {
+    fn definition() -> NodeDefinition {
+        NodeDefinition::new(
+            "fan_speed",
+            "Fan Speed",
+            "Select a fan speed for AC operation.",
+            "Enums",
+            vec![], // No inputs - this is a source node with enum selection
+            vec![
+                NodeOutput::new(
+                    "fan_speed",
+                    "Fan Speed",
+                    "The selected fan speed",
+                    ValueType::Enum(vec![
+                        "Auto".to_string(),
+                        "High".to_string(),
+                        "Medium".to_string(),
+                        "Low".to_string(),
+                        "Quiet".to_string(),
+                    ]),
+                ),
+            ],
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,6 +194,7 @@ mod tests {
             IntensityNode::definition(),
             CauseReasonNode::definition(),
             RequestModeNode::definition(),
+            FanSpeedNode::definition(),
         ];
         
         for def in definitions {
@@ -213,6 +244,30 @@ mod tests {
                 assert!(values.contains(&"Off".to_string()));
             }
             _ => panic!("Expected Enum type for request_mode output"),
+        }
+    }
+
+    #[test]
+    fn test_fan_speed_node_definition() {
+        let def = FanSpeedNode::definition();
+        
+        assert_eq!(def.node_type, "fan_speed");
+        assert_eq!(def.name, "Fan Speed");
+        assert_eq!(def.category, "Enums");
+        assert_eq!(def.inputs.len(), 0); // Source node has no inputs
+        assert_eq!(def.outputs.len(), 1); // One output: fan_speed
+        
+        // Verify output is an enum with fan speed values (0: Auto, 1: High, 2: Medium, 3: Low, 4: Quiet)
+        match &def.outputs[0].value_type {
+            ValueType::Enum(values) => {
+                assert_eq!(values.len(), 5);
+                assert!(values.contains(&"Auto".to_string()));
+                assert!(values.contains(&"High".to_string()));
+                assert!(values.contains(&"Medium".to_string()));
+                assert!(values.contains(&"Low".to_string()));
+                assert!(values.contains(&"Quiet".to_string()));
+            }
+            _ => panic!("Expected Enum type for fan_speed output"),
         }
     }
 }

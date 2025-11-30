@@ -30,6 +30,7 @@ pub const NODE_TYPE_DEVICE: &str = "device";
 pub const NODE_TYPE_INTENSITY: &str = "intensity";
 pub const NODE_TYPE_CAUSE_REASON: &str = "cause_reason";
 pub const NODE_TYPE_REQUEST_MODE: &str = "request_mode";
+pub const NODE_TYPE_FAN_SPEED: &str = "fan_speed";
 pub const NODE_TYPE_PIR_DETECTION: &str = "pir_detection";
 
 /// Sentinel value indicating no PIR detection has ever occurred
@@ -170,6 +171,7 @@ pub struct ActionResult {
     pub device: String,
     pub temperature: f64,
     pub mode: String,
+    pub fan_speed: String,
     pub is_powerful: bool,
     pub cause_reason: String,
 }
@@ -502,6 +504,8 @@ impl NodesetExecutor {
             })?;
         let mode = self.get_input_value(node_id, "mode")?
             .as_string();
+        let fan_speed = self.get_input_value(node_id, "fan_speed")?
+            .as_string();
         let is_powerful = self.get_input_value(node_id, "is_powerful")?
             .as_bool()
             .ok_or_else(|| ExecutionError::TypeMismatch {
@@ -515,6 +519,7 @@ impl NodesetExecutor {
             device,
             temperature,
             mode,
+            fan_speed,
             is_powerful,
             cause_reason,
         })
@@ -622,7 +627,7 @@ impl NodesetExecutor {
             }
             
             // Enum nodes
-            NODE_TYPE_DEVICE | NODE_TYPE_INTENSITY | NODE_TYPE_CAUSE_REASON | NODE_TYPE_REQUEST_MODE => {
+            NODE_TYPE_DEVICE | NODE_TYPE_INTENSITY | NODE_TYPE_CAUSE_REASON | NODE_TYPE_REQUEST_MODE | NODE_TYPE_FAN_SPEED => {
                 let value = node.data
                     .get("data")
                     .and_then(|d| d.get("enumValue"))
@@ -1039,6 +1044,7 @@ mod tests {
                         { "id": "device", "label": "Device" },
                         { "id": "temperature", "label": "Temperature" },
                         { "id": "mode", "label": "Mode" },
+                        { "id": "fan_speed", "label": "Fan Speed" },
                         { "id": "is_powerful", "label": "Is Powerful" },
                         { "id": "cause_reason", "label": "Cause Reason" }
                     ],
@@ -1123,6 +1129,7 @@ mod tests {
             create_float_node("float-1", 22.0),
             create_boolean_node("bool-1", false),
             create_enum_node("mode-1", "request_mode", "Heat"),
+            create_enum_node("fan-speed-1", "fan_speed", "Auto"),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_execute_action_node(),
         ];
@@ -1131,6 +1138,7 @@ mod tests {
             create_edge("start-1", "device", "execute-1", "device"),
             create_edge("float-1", "value", "execute-1", "temperature"),
             create_edge("mode-1", "value", "execute-1", "mode"),
+            create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
             create_edge("bool-1", "value", "execute-1", "is_powerful"),
             create_edge("cause-1", "value", "execute-1", "cause_reason"),
         ];
@@ -1152,6 +1160,7 @@ mod tests {
         assert_eq!(action.device, "LivingRoom");
         assert!((action.temperature - 22.0).abs() < f64::EPSILON);
         assert_eq!(action.mode, "Heat");
+        assert_eq!(action.fan_speed, "Auto");
         assert!(!action.is_powerful);
     }
 
@@ -1280,6 +1289,7 @@ mod tests {
                 }
             }),
             create_enum_node("mode-1", "request_mode", "Heat"),
+            create_enum_node("fan-speed-1", "fan_speed", "Medium"),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_boolean_node("powerful", false),
             create_execute_action_node(),
@@ -1292,6 +1302,7 @@ mod tests {
             create_edge("false-val", "value", "branch-1", "false_value"),
             create_edge("branch-1", "result", "execute-1", "temperature"),
             create_edge("mode-1", "value", "execute-1", "mode"),
+            create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
             create_edge("powerful", "value", "execute-1", "is_powerful"),
             create_edge("cause-1", "value", "execute-1", "cause_reason"),
         ];
@@ -1330,6 +1341,7 @@ mod tests {
                 }
             }),
             create_enum_node("mode-1", "request_mode", "Cool"),
+            create_enum_node("fan-speed-1", "fan_speed", "High"),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_boolean_node("powerful", false),
             create_execute_action_node(),
@@ -1342,6 +1354,7 @@ mod tests {
             create_edge("false-val", "value", "branch-1", "false_value"),
             create_edge("branch-1", "result", "execute-1", "temperature"),
             create_edge("mode-1", "value", "execute-1", "mode"),
+            create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
             create_edge("powerful", "value", "execute-1", "is_powerful"),
             create_edge("cause-1", "value", "execute-1", "cause_reason"),
         ];
