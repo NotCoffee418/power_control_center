@@ -5,6 +5,9 @@
     getBezierPath 
   } from '@xyflow/svelte';
 
+  // Default edge color when no style is provided
+  const DEFAULT_EDGE_COLOR = '#b1b1b7';
+
   let {
     id,
     sourceX,
@@ -35,9 +38,9 @@
   
   // Get edge color from style for endpoint circles
   let edgeColor = $derived(() => {
-    if (!style) return '#b1b1b7';
+    if (!style) return DEFAULT_EDGE_COLOR;
     const match = style.match(/stroke:\s*([^;]+)/);
-    return match ? match[1].trim() : '#b1b1b7';
+    return match ? match[1].trim() : DEFAULT_EDGE_COLOR;
   });
 </script>
 

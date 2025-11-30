@@ -619,18 +619,21 @@
 
   // Check if there's an active click-connect in progress
   function hasActiveConnection() {
-    return connection.current?.inProgress === true;
+    return connection.current?.inProgress;
   }
 
   // Handle pane context menu - cancel pending connection on right-click
+  // When clickConnect is enabled, clicking a pin starts a connection that follows the cursor.
+  // The connection is completed by clicking another compatible pin, or cancelled by:
+  // 1. Clicking on the pane (empty space) - SvelteFlow handles this automatically
+  // 2. Right-clicking anywhere - we prevent the context menu and let the click cancel the connection
+  // 3. Pressing Escape - SvelteFlow handles this automatically
   function handlePaneContextMenu({ event }) {
     // If there's a pending connection (click-connect in progress), cancel it
-    // by preventing the default context menu and doing nothing else
-    // The connection will be cancelled by clicking elsewhere
+    // by preventing the default context menu - the click event itself cancels the connection
     if (hasActiveConnection()) {
       event.preventDefault();
       event.stopPropagation();
-      // Connection will be cancelled automatically by the click
       return;
     }
     
