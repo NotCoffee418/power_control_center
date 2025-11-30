@@ -534,24 +534,6 @@ async fn get_temperature_trend() -> Result<f64, ()> {
         .map_err(|_| ())
 }
 
-#[allow(dead_code)]
-fn ac_state_to_simulator_state(state: &crate::ac_controller::ac_executor::AcState) -> SimulatorAcState {
-    let mode = state.mode.map(|m| match m {
-        AC_MODE_HEAT => "Heat".to_string(),
-        AC_MODE_COOL => "Cool".to_string(),
-        _ => format!("Unknown ({})", m),
-    });
-    
-    SimulatorAcState {
-        is_on: state.is_on,
-        mode,
-        fan_speed: state.fan_speed,
-        temperature: state.temperature,
-        swing: state.swing,
-        powerful_mode: state.powerful_mode,
-    }
-}
-
 /// Get minutes since the last AC command for a specific device
 /// Returns i32::MAX if no actions have been recorded
 async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
@@ -569,61 +551,6 @@ async fn get_last_change_minutes_for_device(device_name: &str) -> Option<i32> {
         Err(_) => {
             // Database error - return None to indicate unavailable
             None
-        }
-    }
-}
-
-/// Validate the active nodeset configuration
-/// Returns Ok(()) if valid, Err(error_message) if invalid
-#[allow(dead_code)]
-async fn validate_active_nodeset(pool: &sqlx::SqlitePool) -> Result<(), String> {
-    // Get the active nodeset id using shared helper
-    let active_id = match get_active_nodeset_id(pool).await {
-        Ok(id) => id,
-        Err(e) => {
-            log::error!("Failed to get active nodeset id: {}", e);
-            return Err("Failed to get active nodeset".to_string());
-        }
-    };
-
-    // Fetch the nodeset
-    let result = sqlx::query_as::<_, (String,)>(
-        "SELECT node_json FROM nodesets WHERE id = ?"
-    )
-    .bind(active_id)
-    .fetch_optional(pool)
-    .await;
-
-    match result {
-        Ok(Some((node_json,))) => {
-            match serde_json::from_str::<NodeConfiguration>(&node_json) {
-                Ok(config) => {
-                    let validation = validate_nodeset(&config.nodes);
-                    if validation.is_valid {
-                        Ok(())
-                    } else {
-                        let error_message = validation.errors.join("; ");
-                        Err(format!("Invalid active profile: {}", error_message))
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to parse nodeset configuration: {}", e);
-                    Err("Failed to parse active profile configuration".to_string())
-                }
-            }
-        }
-        Ok(None) => {
-            // No nodeset found - could be default or missing
-            // For default nodeset (id 0), we skip validation as it may be empty
-            if active_id == DEFAULT_NODESET_ID {
-                Ok(()) // Default nodeset is allowed to be empty
-            } else {
-                Err("Active profile not found".to_string())
-            }
-        }
-        Err(e) => {
-            log::error!("Failed to fetch active nodeset: {}", e);
-            Err("Failed to fetch active profile".to_string())
         }
     }
 }

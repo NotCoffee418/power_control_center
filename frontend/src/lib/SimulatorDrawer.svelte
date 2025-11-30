@@ -1,6 +1,10 @@
 <script>
   import { onMount } from 'svelte';
 
+  // Constants
+  /** ID used for new unsaved nodesets that haven't been saved to the database yet */
+  const NEW_NODESET_ID = -1;
+
   // Props
   let { isOpen = $bindable(true), currentNodesetId = $bindable(null), nodes = $bindable([]), edges = $bindable([]) } = $props();
 
@@ -183,12 +187,12 @@
       };
       
       // If we have a current nodeset, include it in the request
-      // nodeset_id of -1 means use the provided nodes/edges (new/unsaved)
+      // NEW_NODESET_ID (-1) means use the provided nodes/edges (new/unsaved)
       // nodeset_id of null means use the active nodeset
       if (currentNodesetId !== null) {
         payload.nodeset_id = currentNodesetId;
-        // For new/unsaved nodesets (id = -1), also pass the nodes and edges
-        if (currentNodesetId === -1 && nodes && edges) {
+        // For new/unsaved nodesets, also pass the nodes and edges
+        if (currentNodesetId === NEW_NODESET_ID && nodes && edges) {
           payload.nodes = nodes;
           payload.edges = edges;
         }

@@ -28,6 +28,9 @@ pub const NODE_TYPE_CAUSE_REASON: &str = "cause_reason";
 pub const NODE_TYPE_REQUEST_MODE: &str = "request_mode";
 pub const NODE_TYPE_PIR_DETECTION: &str = "pir_detection";
 
+/// Sentinel value indicating no PIR detection has ever occurred
+pub const PIR_NEVER_DETECTED: i64 = -1;
+
 /// A runtime value that can flow through nodes
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RuntimeValue {
@@ -318,8 +321,15 @@ impl NodesetExecutor {
             };
         }
         
-        // Try to find a reachable terminal node and evaluate it
-        // For now, we evaluate the Execute Action node if present
+        // Execution Order Decision:
+        // We prioritize Execute Action nodes over Do Nothing nodes because:
+        // 1. Execute Action represents an actual AC command that should be simulated
+        // 2. Do Nothing is a fallback terminal that represents "no action taken"
+        // 3. In a well-formed nodeset, only one terminal should be reachable from
+        //    the current execution path, but if multiple exist, we prefer action.
+        //
+        // Note: A future enhancement could trace the actual execution path from
+        // Start to determine which terminal is reachable, rather than trying all.
         for (terminal_id, terminal_type) in &terminal_nodes {
             if terminal_type == NODE_TYPE_EXECUTE_ACTION {
                 match self.evaluate_execute_action_node(terminal_id) {
@@ -618,14 +628,16 @@ impl NodesetExecutor {
                 let b = self.get_input_value(&node.id, "input_b")?;
                 
                 // Compare values - both must be same type and equal
+                // Use a practical tolerance for floating-point comparisons (suitable for temperature values)
+                const FLOAT_TOLERANCE: f64 = 0.0001;
                 let is_equal = match (&a, &b) {
-                    (RuntimeValue::Float(av), RuntimeValue::Float(bv)) => (av - bv).abs() < f64::EPSILON,
+                    (RuntimeValue::Float(av), RuntimeValue::Float(bv)) => (av - bv).abs() < FLOAT_TOLERANCE,
                     (RuntimeValue::Integer(av), RuntimeValue::Integer(bv)) => av == bv,
                     (RuntimeValue::Boolean(av), RuntimeValue::Boolean(bv)) => av == bv,
                     (RuntimeValue::String(av), RuntimeValue::String(bv)) => av == bv,
                     // Allow comparing Integer and Float
-                    (RuntimeValue::Float(av), RuntimeValue::Integer(bv)) => (av - (*bv as f64)).abs() < f64::EPSILON,
-                    (RuntimeValue::Integer(av), RuntimeValue::Float(bv)) => ((*av as f64) - bv).abs() < f64::EPSILON,
+                    (RuntimeValue::Float(av), RuntimeValue::Integer(bv)) => (av - (*bv as f64)).abs() < FLOAT_TOLERANCE,
+                    (RuntimeValue::Integer(av), RuntimeValue::Float(bv)) => ((*av as f64) - bv).abs() < FLOAT_TOLERANCE,
                     _ => false,
                 };
                 
@@ -652,10 +664,12 @@ impl NodesetExecutor {
                     .and_then(|v| v.as_str())
                     .unwrap_or(">");
                 
+                // Use a practical tolerance for floating-point comparisons (suitable for temperature values)
+                const FLOAT_TOLERANCE: f64 = 0.0001;
                 let result = match operator {
                     ">" => a_num > b_num,
                     ">=" => a_num >= b_num,
-                    "==" => (a_num - b_num).abs() < f64::EPSILON,
+                    "==" => (a_num - b_num).abs() < FLOAT_TOLERANCE,
                     "<=" => a_num <= b_num,
                     "<" => a_num < b_num,
                     _ => a_num > b_num, // Default to >
@@ -775,10 +789,11 @@ impl NodesetExecutor {
         };
         
         // Look up PIR state for this device
+        // PIR_NEVER_DETECTED (-1) indicates no detection has ever occurred
         let (is_triggered, minutes_ago) = self.inputs.pir_state
             .get(&device)
             .copied()
-            .unwrap_or((false, -1));
+            .unwrap_or((false, PIR_NEVER_DETECTED));
         
         match output_id {
             "is_recently_triggered" => {
