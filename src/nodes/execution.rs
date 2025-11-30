@@ -26,6 +26,7 @@ pub const NODE_TYPE_DEVICE: &str = "device";
 pub const NODE_TYPE_INTENSITY: &str = "intensity";
 pub const NODE_TYPE_CAUSE_REASON: &str = "cause_reason";
 pub const NODE_TYPE_REQUEST_MODE: &str = "request_mode";
+pub const NODE_TYPE_FAN_SPEED: &str = "fan_speed";
 pub const NODE_TYPE_PIR_DETECTION: &str = "pir_detection";
 
 /// Sentinel value indicating no PIR detection has ever occurred
@@ -119,6 +120,7 @@ pub struct ActionResult {
     pub device: String,
     pub temperature: f64,
     pub mode: String,
+    pub fan_speed: String,
     pub is_powerful: bool,
     pub cause_reason: String,
 }
@@ -447,6 +449,8 @@ impl NodesetExecutor {
             })?;
         let mode = self.get_input_value(node_id, "mode")?
             .as_string();
+        let fan_speed = self.get_input_value(node_id, "fan_speed")?
+            .as_string();
         let is_powerful = self.get_input_value(node_id, "is_powerful")?
             .as_bool()
             .ok_or_else(|| ExecutionError::TypeMismatch {
@@ -460,6 +464,7 @@ impl NodesetExecutor {
             device,
             temperature,
             mode,
+            fan_speed,
             is_powerful,
             cause_reason,
         })
@@ -567,7 +572,7 @@ impl NodesetExecutor {
             }
             
             // Enum nodes
-            NODE_TYPE_DEVICE | NODE_TYPE_INTENSITY | NODE_TYPE_CAUSE_REASON | NODE_TYPE_REQUEST_MODE => {
+            NODE_TYPE_DEVICE | NODE_TYPE_INTENSITY | NODE_TYPE_CAUSE_REASON | NODE_TYPE_REQUEST_MODE | NODE_TYPE_FAN_SPEED => {
                 let value = node.data
                     .get("data")
                     .and_then(|d| d.get("enumValue"))

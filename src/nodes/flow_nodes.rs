@@ -77,7 +77,7 @@ impl Node for StartNode {
 }
 
 /// Execute Action Node - End point that executes the command and stores to database
-/// Takes raw AC control values: temperature, mode (Heat/Cool/Off), and isPowerful
+/// Takes raw AC control values: temperature, mode (Heat/Cool/Off), fan_speed, and isPowerful
 /// This node represents the final action in the evaluation flow
 /// NOTE: The cause_reason input's hardcoded enum values are deprecated.
 /// The actual cause reasons are loaded from the database at runtime
@@ -117,6 +117,20 @@ impl Node for ExecuteActionNode {
                         "Heat".to_string(),
                         "Cool".to_string(),
                         "Off".to_string(),
+                    ]),
+                    true,
+                ),
+                NodeInput::new(
+                    "fan_speed",
+                    "Fan Speed",
+                    "Fan speed setting: Auto (0) or Level 1-5",
+                    ValueType::Enum(vec![
+                        "Auto".to_string(),
+                        "Level1".to_string(),
+                        "Level2".to_string(),
+                        "Level3".to_string(),
+                        "Level4".to_string(),
+                        "Level5".to_string(),
                     ]),
                     true,
                 ),
