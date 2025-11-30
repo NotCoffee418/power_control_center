@@ -1439,7 +1439,7 @@
           onpanecontextmenu={handlePaneContextMenu}
           deleteKeyCode="Delete"
           fitView
-          selectionOnDrag={true}
+          selectionKey="Control"
           selectionMode="partial"
           clickConnect={true}
         >
