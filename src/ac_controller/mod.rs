@@ -4,6 +4,7 @@ pub mod pir_state;
 pub mod ac_executor;
 mod manual_mode_monitor;
 pub mod min_on_time;
+mod node_executor;
 
 // Re-export types needed by other modules
 pub use plan_types::{AcDevices, RequestMode, Intensity, PlanResult, PlanInput, get_plan};
@@ -94,31 +95,28 @@ async fn collect_initial_device_states() {
     log::info!("Initial device state collection complete");
 }
 
-/// Execute one cycle of AC control for all devices
+/// Execute one cycle of AC control for all devices using node-based execution
 async fn execute_ac_control_cycle() {
-    log::info!("Starting AC control cycle");
+    log::info!("Starting AC control cycle (node-based)");
     
     // Process each device
     for device in AcDevices::all() {
         let device_name = device.as_str();
         log::debug!("Processing device: {}", device_name);
         
-        // Fetch data and calculate plan
-        // Note: fetch_data_and_get_plan handles errors internally and returns NoChange on failure
-        let plan = plan_types::fetch_data_and_get_plan(&device).await;
-        log::info!("Plan for {}: {:?}", device_name, plan);
-        
-        // Execute the plan
-        match ac_executor::execute_plan(&device, &plan, false).await {
-            Ok(command_sent) => {
-                if command_sent {
-                    log::info!("AC command executed for {}", device_name);
-                } else {
-                    log::debug!("No command needed for {} (state unchanged)", device_name);
-                }
+        // Execute the active nodeset for this device
+        match node_executor::execute_nodeset_for_device(&device).await {
+            node_executor::NodeExecutionResult::CommandExecuted => {
+                log::info!("AC command executed for {}", device_name);
             }
-            Err(e) => {
-                log::error!("Failed to execute plan for {}: {}", device_name, e);
+            node_executor::NodeExecutionResult::NoAction => {
+                log::debug!("No action needed for {} (state unchanged or Do Nothing)", device_name);
+            }
+            node_executor::NodeExecutionResult::ManualMode => {
+                log::debug!("Device {} is in manual mode, skipped", device_name);
+            }
+            node_executor::NodeExecutionResult::Error(e) => {
+                log::error!("Failed to execute nodeset for {}: {}", device_name, e);
             }
         }
     }
@@ -154,32 +152,23 @@ async fn manual_mode_monitoring_loop() {
                     
                     if transitioned_to_auto {
                         log::info!(
-                            "Device '{}' transitioned from Manual to Auto mode - triggering immediate plan execution",
+                            "Device '{}' transitioned from Manual to Auto mode - triggering immediate nodeset execution",
                             device_name
                         );
                         
-                        // Fetch data and calculate plan
-                        let plan = plan_types::fetch_data_and_get_plan(&device).await;
-                        log::info!("Manual→Auto transition plan for {}: {:?}", device_name, plan);
-                        
-                        // Execute the plan with force_execution flag to bypass NoChange optimization
-                        // Override the cause to ManualToAutoTransition
-                        let transition_plan = plan_types::PlanResult::new(
-                            plan.mode,
-                            plan.intensity,
-                            crate::types::CauseReason::ManualToAutoTransition
-                        );
-                        
-                        match ac_executor::execute_plan(&device, &transition_plan, true).await {
-                            Ok(command_sent) => {
-                                if command_sent {
-                                    log::info!("Manual→Auto transition command sent for {}", device_name);
-                                } else {
-                                    log::warn!("Manual→Auto transition detected but no command was sent for {}", device_name);
-                                }
+                        // Execute nodeset with forced execution to bypass state comparison
+                        match node_executor::execute_nodeset_for_device_forced(&device).await {
+                            node_executor::NodeExecutionResult::CommandExecuted => {
+                                log::info!("Manual→Auto transition command sent for {}", device_name);
                             }
-                            Err(e) => {
-                                log::error!("Failed to execute Manual→Auto transition plan for {}: {}", device_name, e);
+                            node_executor::NodeExecutionResult::NoAction => {
+                                log::warn!("Manual→Auto transition detected but no action taken for {}", device_name);
+                            }
+                            node_executor::NodeExecutionResult::ManualMode => {
+                                log::warn!("Manual→Auto transition detected but device {} is in manual mode", device_name);
+                            }
+                            node_executor::NodeExecutionResult::Error(e) => {
+                                log::error!("Failed to execute Manual→Auto transition nodeset for {}: {}", device_name, e);
                             }
                         }
                     } else if sensor_data.is_automatic_mode {
