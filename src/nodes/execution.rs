@@ -1467,19 +1467,32 @@ mod tests {
     #[test]
     fn test_active_command_validation_with_is_defined() {
         // Active Command node with is_defined connected should not produce this error
+        // We use a logic_not node to consume the is_defined boolean output
         let nodes = vec![
             create_start_node(),
             create_active_command_node("active-cmd-1"),
             create_do_nothing_node("do-nothing-1"),
             create_enum_node("device-1", "device", "LivingRoom"),
             create_enum_node("cause-1", "cause_reason", "1"),
+            json!({
+                "id": "not-1",
+                "type": "custom",
+                "position": { "x": 400, "y": 0 },
+                "data": {
+                    "definition": {
+                        "node_type": "logic_not",
+                        "name": "NOT",
+                        "category": "Logic"
+                    }
+                }
+            }),
         ];
         
-        // Connect is_defined output to some node (we still track that is_defined is connected for validation)
-        // And also connect the required device and cause_reason inputs for Do Nothing
+        // Connect is_defined to a NOT node (any node that accepts it), proving is_defined is handled
+        // Also connect the required device and cause_reason inputs for Do Nothing
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
-            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "device"), // Using is_defined as any valid connection
+            create_edge("active-cmd-1", "is_defined", "not-1", "input"), // is_defined is connected (handled)
             create_edge("device-1", "value", "do-nothing-1", "device"),
             create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
@@ -1493,17 +1506,30 @@ mod tests {
     #[test]
     fn test_active_command_evaluation_defined() {
         // Test evaluation of Active Command node when command is defined
+        // We need to connect is_defined to a node for validation, and connect device/cause_reason for Do Nothing
         let nodes = vec![
             create_start_node(),
             create_active_command_node("active-cmd-1"),
             create_do_nothing_node("do-nothing-1"),
             create_enum_node("device-1", "device", "LivingRoom"),
             create_enum_node("cause-1", "cause_reason", "1"),
+            json!({
+                "id": "not-1",
+                "type": "custom",
+                "position": { "x": 400, "y": 0 },
+                "data": {
+                    "definition": {
+                        "node_type": "logic_not",
+                        "name": "NOT",
+                        "category": "Logic"
+                    }
+                }
+            }),
         ];
         
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
-            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "device"), // Connects is_defined to something
+            create_edge("active-cmd-1", "is_defined", "not-1", "input"), // Connect is_defined to NOT node
             create_edge("device-1", "value", "do-nothing-1", "device"),
             create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
@@ -1538,11 +1564,23 @@ mod tests {
             create_do_nothing_node("do-nothing-1"),
             create_enum_node("device-1", "device", "LivingRoom"),
             create_enum_node("cause-1", "cause_reason", "1"),
+            json!({
+                "id": "not-1",
+                "type": "custom",
+                "position": { "x": 400, "y": 0 },
+                "data": {
+                    "definition": {
+                        "node_type": "logic_not",
+                        "name": "NOT",
+                        "category": "Logic"
+                    }
+                }
+            }),
         ];
         
         let edges = vec![
             create_edge("start-1", "active_command", "active-cmd-1", "active_command"),
-            create_edge("active-cmd-1", "is_defined", "do-nothing-1", "device"), // Connects is_defined to something
+            create_edge("active-cmd-1", "is_defined", "not-1", "input"), // Connect is_defined to NOT node
             create_edge("device-1", "value", "do-nothing-1", "device"),
             create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
         ];
