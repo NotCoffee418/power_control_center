@@ -246,7 +246,7 @@ mod tests {
         assert_eq!(def.node_type, "flow_execute_action");
         assert_eq!(def.name, "Execute Action");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 5); // device, temperature, mode, is_powerful, cause_reason
+        assert_eq!(def.inputs.len(), 6); // device, temperature, mode, fan_speed, is_powerful, cause_reason
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
         
         // Verify device input
@@ -277,6 +277,22 @@ mod tests {
             _ => panic!("Expected Enum type for mode input"),
         }
         assert!(mode_input.required);
+        
+        // Verify fan_speed input
+        let fan_speed_input = def.inputs.iter().find(|i| i.id == "fan_speed").unwrap();
+        match &fan_speed_input.value_type {
+            ValueType::Enum(values) => {
+                assert_eq!(values.len(), 6);
+                assert!(values.contains(&"Auto".to_string()));
+                assert!(values.contains(&"Level1".to_string()));
+                assert!(values.contains(&"Level2".to_string()));
+                assert!(values.contains(&"Level3".to_string()));
+                assert!(values.contains(&"Level4".to_string()));
+                assert!(values.contains(&"Level5".to_string()));
+            }
+            _ => panic!("Expected Enum type for fan_speed input"),
+        }
+        assert!(fan_speed_input.required);
         
         // Verify is_powerful input
         let powerful_input = def.inputs.iter().find(|i| i.id == "is_powerful").unwrap();
