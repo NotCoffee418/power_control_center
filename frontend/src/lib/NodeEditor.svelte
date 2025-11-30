@@ -1026,11 +1026,13 @@
 
     const { sourceNode, sourceOutput, targetInput, targetNode } = details;
 
-    // Check if the target handle already has a connection (inputs can only have one connection)
+    // Check if the target handle already has a connection
+    // Execution type inputs can have multiple connections (multiple paths can trigger the same action)
+    // Data inputs can only have one connection
     const existingConnection = edges.find(
       e => e.target === connection.target && e.targetHandle === connection.targetHandle
     );
-    if (existingConnection) {
+    if (existingConnection && targetInput.value_type?.type !== 'Execution') {
       return false;
     }
 
