@@ -8,13 +8,14 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 23 node definitions:
+        // Verify we have 27 node definitions:
         // System: 5 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command, flow_reset_active_command)
         // Sensors: 1 (pir_detection)
         // Logic: 9 (and, or, nand, if, not, equals, evaluate_number, branch, sequence)
+        // Math: 4 (add, subtract, multiply, divide)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 5 (device, intensity, cause_reason, request_mode, fan_speed)
-        assert_eq!(definitions.len(), 23);
+        assert_eq!(definitions.len(), 27);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
@@ -37,6 +38,12 @@ mod integration_tests {
         assert!(node_types.contains(&"logic_evaluate_number"));
         assert!(node_types.contains(&"logic_branch"));
         assert!(node_types.contains(&"logic_sequence"));
+        
+        // Verify math node types
+        assert!(node_types.contains(&"math_add"));
+        assert!(node_types.contains(&"math_subtract"));
+        assert!(node_types.contains(&"math_multiply"));
+        assert!(node_types.contains(&"math_divide"));
         
         // Verify primitive node types
         assert!(node_types.contains(&"primitive_float"));
@@ -81,6 +88,9 @@ mod integration_tests {
                 }
                 "logic_and" | "logic_or" | "logic_nand" | "logic_if" | "logic_not" | "logic_equals" | "logic_evaluate_number" | "logic_branch" | "logic_sequence" => {
                     assert_eq!(def.category, "Logic", "Logic nodes should be in 'Logic' category");
+                }
+                "math_add" | "math_subtract" | "math_multiply" | "math_divide" => {
+                    assert_eq!(def.category, "Logic", "Math nodes should be in 'Logic' category");
                 }
                 "primitive_float" | "primitive_integer" | "primitive_boolean" => {
                     assert_eq!(def.category, "Primitives", "Primitive nodes should be in 'Primitives' category");
