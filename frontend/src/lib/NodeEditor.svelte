@@ -899,6 +899,7 @@
   /**
    * Check if a source type is compatible with a target type, considering dynamic constraints.
    * This is a reusable function for type matching that handles:
+   * - Execution flow type (must match exactly - only Execution to Execution)
    * - Any type with optional constraints from other connected inputs
    * - Enum compatibility checking
    * - Standard type matching
@@ -916,6 +917,11 @@
 
     if (!sourceType || !targetType) {
       return false;
+    }
+
+    // Execution type must match exactly - can only connect Execution to Execution
+    if (sourceType === 'Execution' || targetType === 'Execution') {
+      return sourceType === 'Execution' && targetType === 'Execution';
     }
 
     // Handle "Any" target type with potential constraints
@@ -953,7 +959,7 @@
         return allowedTypes.includes(sourceType);
       }
       
-      // No constraint - accept anything
+      // No constraint - accept anything (except Execution which is handled above)
       return true;
     }
 
