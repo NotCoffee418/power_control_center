@@ -66,9 +66,9 @@ impl Node for StartNode {
                     ValueType::Integer,
                 ),
                 NodeOutput::new(
-                    "outside_temperature_trend",
-                    "Outside Temperature Trend",
-                    "Temperature trend in Celsius (positive = getting warmer, negative = getting colder)",
+                    "avg_next_24h_outdoor_temp",
+                    "Avg Next 24h Outdoor Temp",
+                    "Average outdoor temperature in Celsius forecasted for the next 24 hours. This is the absolute average temperature, not a trend or offset.",
                     ValueType::Float,
                 ),
                 NodeOutput::new(
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(def.name, "Start");
         assert_eq!(def.category, "System");
         assert_eq!(def.inputs.len(), 0); // Source node has no inputs
-        assert_eq!(def.outputs.len(), 10); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, outside_temperature_trend, active_command
+        assert_eq!(def.outputs.len(), 10); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, avg_next_24h_outdoor_temp, active_command
         
         // Verify device output is an enum with device values
         let device_output = def.outputs.iter().find(|o| o.id == "device").unwrap();
@@ -313,9 +313,9 @@ mod tests {
         let solar_output = def.outputs.iter().find(|o| o.id == "raw_solar_watt").unwrap();
         assert_eq!(solar_output.value_type, ValueType::Integer);
         
-        // Verify outside_temperature_trend output is a float
-        let trend_output = def.outputs.iter().find(|o| o.id == "outside_temperature_trend").unwrap();
-        assert_eq!(trend_output.value_type, ValueType::Float);
+        // Verify avg_next_24h_outdoor_temp output is a float
+        let avg_temp_output = def.outputs.iter().find(|o| o.id == "avg_next_24h_outdoor_temp").unwrap();
+        assert_eq!(avg_temp_output.value_type, ValueType::Float);
     }
 
     #[test]

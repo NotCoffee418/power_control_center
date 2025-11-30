@@ -20,13 +20,12 @@
   let isAutoMode = $state(true);
   let solarProductionStr = $state('0');
   let outdoorTempStr = $state('20.0');
-  let avgNext12hOutdoorTempStr = $state('20.0');
+  let avgNext24hOutdoorTempStr = $state('20.0');
   let userIsHome = $state(true);
   let pirDetected = $state(false);
   let pirMinutesAgoStr = $state('0');
   let lastChangeMinutesStr = $state('60');
   let netPowerWattStr = $state('0');
-  let outsideTempTrendStr = $state('0.0');
 
   // Available devices
   let devices = $state([]);
@@ -70,8 +69,8 @@
   function getOutdoorTemp() {
     return isValidFloat(outdoorTempStr) ? parseFloat(outdoorTempStr) : 0;
   }
-  function getAvgNext12hOutdoorTemp() {
-    return isValidFloat(avgNext12hOutdoorTempStr) ? parseFloat(avgNext12hOutdoorTempStr) : 0;
+  function getAvgNext24hOutdoorTemp() {
+    return isValidFloat(avgNext24hOutdoorTempStr) ? parseFloat(avgNext24hOutdoorTempStr) : 0;
   }
   function getPirMinutesAgo() {
     return isValidInteger(pirMinutesAgoStr) ? parseInt(pirMinutesAgoStr, 10) : 0;
@@ -82,20 +81,16 @@
   function getNetPowerWatt() {
     return isValidInteger(netPowerWattStr) ? parseInt(netPowerWattStr, 10) : 0;
   }
-  function getOutsideTempTrend() {
-    return isValidFloat(outsideTempTrendStr) ? parseFloat(outsideTempTrendStr) : 0;
-  }
 
   // Check if all inputs are valid
   function areAllInputsValid() {
     return isValidFloat(temperatureStr) &&
            isValidInteger(solarProductionStr) &&
            isValidFloat(outdoorTempStr) &&
-           isValidFloat(avgNext12hOutdoorTempStr) &&
+           isValidFloat(avgNext24hOutdoorTempStr) &&
            isValidInteger(pirMinutesAgoStr) &&
            isValidInteger(lastChangeMinutesStr) &&
-           isValidInteger(netPowerWattStr) &&
-           isValidFloat(outsideTempTrendStr);
+           isValidInteger(netPowerWattStr);
   }
 
   // Load live inputs from backend
@@ -136,14 +131,11 @@
         if (data.outdoor_temp !== null) {
           outdoorTempStr = String(roundToOneDecimal(data.outdoor_temp));
         }
-        if (data.avg_next_12h_outdoor_temp !== null) {
-          avgNext12hOutdoorTempStr = String(roundToOneDecimal(data.avg_next_12h_outdoor_temp));
+        if (data.avg_next_24h_outdoor_temp !== null) {
+          avgNext24hOutdoorTempStr = String(roundToOneDecimal(data.avg_next_24h_outdoor_temp));
         }
         if (data.net_power_watt !== null) {
           netPowerWattStr = String(data.net_power_watt);
-        }
-        if (data.outside_temperature_trend !== null) {
-          outsideTempTrendStr = String(roundToOneDecimal(data.outside_temperature_trend));
         }
         userIsHome = data.user_is_home;
       } else {
@@ -179,13 +171,12 @@
         is_auto_mode: isAutoMode,
         solar_production: getSolarProduction(),
         outdoor_temp: getOutdoorTemp(),
-        avg_next_12h_outdoor_temp: getAvgNext12hOutdoorTemp(),
+        avg_next_24h_outdoor_temp: getAvgNext24hOutdoorTemp(),
         user_is_home: userIsHome,
         pir_detected: pirDetected,
         pir_minutes_ago: getPirMinutesAgo(),
         last_change_minutes: getLastChangeMinutes(),
         net_power_watt: getNetPowerWatt(),
-        outside_temperature_trend: getOutsideTempTrend(),
         // Always pass -1 to indicate we're using inline nodes/edges
         nodeset_id: NEW_NODESET_ID,
         // Always include the current nodes and edges from the editor
@@ -390,14 +381,14 @@
             />
           </div>
           
-          <!-- Avg Next 12h Outdoor Temp (float) -->
-          <div class="input-group">
-            <label for="avgOutdoor">Avg Next 12h (°C)</label>
+          <!-- Avg Next 24h Outdoor Temp (float) -->
+          <div class="input-group" title="Average outdoor temperature forecasted for the next 24 hours">
+            <label for="avgOutdoor">Avg Next 24h (°C)</label>
             <input 
               type="text" 
               id="avgOutdoor" 
-              bind:value={avgNext12hOutdoorTempStr}
-              class:invalid={!isValidFloat(avgNext12hOutdoorTempStr)}
+              bind:value={avgNext24hOutdoorTempStr}
+              class:invalid={!isValidFloat(avgNext24hOutdoorTempStr)}
               placeholder="e.g. 20.0"
             />
           </div>

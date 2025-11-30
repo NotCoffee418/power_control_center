@@ -143,7 +143,8 @@ pub struct ExecutionInputs {
     pub is_user_home: bool,
     pub net_power_watt: i64,
     pub raw_solar_watt: i64,
-    pub outside_temperature_trend: f64,
+    /// Average outdoor temperature for the next 24 hours
+    pub avg_next_24h_outdoor_temp: f64,
     /// PIR detection state by device: (is_recently_triggered, minutes_ago)
     pub pir_state: HashMap<String, (bool, i64)>,
     /// Active command data (last command sent to the device)
@@ -481,8 +482,8 @@ impl NodesetExecutor {
             RuntimeValue::Integer(self.inputs.raw_solar_watt),
         );
         self.output_cache.insert(
-            (start_node_id.to_string(), "outside_temperature_trend".to_string()),
-            RuntimeValue::Float(self.inputs.outside_temperature_trend),
+            (start_node_id.to_string(), "avg_next_24h_outdoor_temp".to_string()),
+            RuntimeValue::Float(self.inputs.avg_next_24h_outdoor_temp),
         );
         self.output_cache.insert(
             (start_node_id.to_string(), "active_command".to_string()),
