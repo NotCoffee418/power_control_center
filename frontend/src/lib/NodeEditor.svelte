@@ -8,6 +8,7 @@
   } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import CustomNode from './CustomNode.svelte';
+  import CommentAreaNode from './CommentAreaNode.svelte';
   import ReconnectableEdge from './ReconnectableEdge.svelte';
   import SimulatorDrawer from './SimulatorDrawer.svelte';
   import CauseReasonsPanel from './CauseReasonsPanel.svelte';
@@ -15,6 +16,18 @@
   // Constants for nodeset IDs
   const NEW_NODESET_ID = -1;
   const DEFAULT_NODESET_ID = 0;
+
+  // Default dimensions for nodes and comment areas
+  const DEFAULT_NODE_WIDTH = 100;
+  const DEFAULT_NODE_HEIGHT = 50;
+  const DEFAULT_COMMENT_AREA_WIDTH = 300;
+  const DEFAULT_COMMENT_AREA_HEIGHT = 200;
+  const NEW_NODE_SPAWN_X_RANGE = 400;
+  const NEW_NODE_SPAWN_Y_RANGE = 300;
+  const NEW_NODE_SPAWN_X_OFFSET = 200;
+  const NEW_NODE_SPAWN_Y_OFFSET = 200;
+  const NEW_COMMENT_SPAWN_X_OFFSET = 100;
+  const NEW_COMMENT_SPAWN_Y_OFFSET = 100;
 
   // Node and edge state - using $state.raw for proper SvelteFlow integration
   // $state.raw prevents deep reactivity, allowing SvelteFlow to manage internal state
@@ -46,6 +59,10 @@
 
   // Helper functions
   function getNodeDisplayName(node) {
+    // Handle comment area nodes
+    if (node?.type === 'commentArea') {
+      return node?.data?.label || 'Comment Area';
+    }
     return node?.data?.definition?.name || node?.id || 'Unknown';
   }
 
@@ -55,7 +72,8 @@
 
   // Custom node types
   const nodeTypes = {
-    custom: CustomNode
+    custom: CustomNode,
+    commentArea: CommentAreaNode
   };
 
   // Custom edge types with reconnect anchors
@@ -456,11 +474,36 @@
       definition,
       `${definition.node_type}-${nodeIdCounter}`,
       { 
-        x: Math.random() * 400 + 200, 
-        y: Math.random() * 300 + 200 
+        x: Math.random() * NEW_NODE_SPAWN_X_RANGE + NEW_NODE_SPAWN_X_OFFSET, 
+        y: Math.random() * NEW_NODE_SPAWN_Y_RANGE + NEW_NODE_SPAWN_Y_OFFSET 
       },
       false
     );
+    
+    nodes = [...nodes, newNode];
+    hasUnsavedChanges = true;
+  }
+
+  // Add a new comment area node
+  function addCommentArea() {
+    nodeIdCounter++;
+    const newNode = {
+      id: `comment-area-${nodeIdCounter}`,
+      type: 'commentArea',
+      position: { 
+        x: Math.random() * NEW_NODE_SPAWN_X_RANGE + NEW_COMMENT_SPAWN_X_OFFSET, 
+        y: Math.random() * NEW_NODE_SPAWN_Y_RANGE + NEW_COMMENT_SPAWN_Y_OFFSET 
+      },
+      data: {
+        label: 'Comment',
+        description: '',
+        color: '#4a5568'
+      },
+      // Make the comment area expandable with default size
+      style: `width: ${DEFAULT_COMMENT_AREA_WIDTH}px; height: ${DEFAULT_COMMENT_AREA_HEIGHT}px;`,
+      // Ensure comment areas render behind regular nodes
+      zIndex: -1
+    };
     
     nodes = [...nodes, newNode];
     hasUnsavedChanges = true;
@@ -636,6 +679,91 @@
         }
       }
     });
+  }
+
+  // Helper function to check if a point is inside a comment area's bounds
+  function isInsideCommentArea(nodePosition, nodeWidth, nodeHeight, commentArea) {
+    const commentX = commentArea.position?.x || 0;
+    const commentY = commentArea.position?.y || 0;
+    // Parse dimensions from style or use defaults
+    const commentWidth = commentArea.measured?.width || commentArea.width || DEFAULT_COMMENT_AREA_WIDTH;
+    const commentHeight = commentArea.measured?.height || commentArea.height || DEFAULT_COMMENT_AREA_HEIGHT;
+    
+    // Check if the node's center is within the comment area bounds
+    const nodeCenterX = nodePosition.x + (nodeWidth || DEFAULT_NODE_WIDTH) / 2;
+    const nodeCenterY = nodePosition.y + (nodeHeight || DEFAULT_NODE_HEIGHT) / 2;
+    
+    return nodeCenterX >= commentX && 
+           nodeCenterX <= commentX + commentWidth &&
+           nodeCenterY >= commentY && 
+           nodeCenterY <= commentY + commentHeight;
+  }
+
+  // Find the comment area that contains a given node position
+  function findContainingCommentArea(node) {
+    if (node.type === 'commentArea') return null; // Comment areas can't be inside other comment areas
+    
+    const nodeWidth = node.measured?.width || node.width || DEFAULT_NODE_WIDTH;
+    const nodeHeight = node.measured?.height || node.height || DEFAULT_NODE_HEIGHT;
+    
+    const commentAreas = nodes.filter(n => n.type === 'commentArea');
+    
+    for (const commentArea of commentAreas) {
+      if (isInsideCommentArea(node.position, nodeWidth, nodeHeight, commentArea)) {
+        return commentArea;
+      }
+    }
+    return null;
+  }
+
+  // Handle node drag stop - update parent relationships for comment areas
+  function onNodeDragStop(event, draggedNode) {
+    // Skip if dragging a comment area itself
+    if (draggedNode.type === 'commentArea') {
+      return;
+    }
+
+    // Find if this node is now inside a comment area
+    const containingCommentArea = findContainingCommentArea(draggedNode);
+    
+    // Get the current parentId of the node
+    const currentParentId = draggedNode.parentId || null;
+    const newParentId = containingCommentArea?.id || null;
+    
+    // If parent changed, update the node
+    if (currentParentId !== newParentId) {
+      nodes = nodes.map(n => {
+        if (n.id === draggedNode.id) {
+          if (newParentId) {
+            // Calculate relative position within the comment area
+            const commentArea = nodes.find(ca => ca.id === newParentId);
+            const relativeX = n.position.x - (commentArea?.position?.x || 0);
+            const relativeY = n.position.y - (commentArea?.position?.y || 0);
+            
+            return {
+              ...n,
+              parentId: newParentId,
+              position: { x: relativeX, y: relativeY },
+              extent: 'parent' // Constrain to parent bounds
+            };
+          } else {
+            // Removing from parent - convert to absolute position
+            const oldParent = nodes.find(p => p.id === currentParentId);
+            const absoluteX = n.position.x + (oldParent?.position?.x || 0);
+            const absoluteY = n.position.y + (oldParent?.position?.y || 0);
+            
+            // Remove parentId and extent
+            const { parentId, extent, ...rest } = n;
+            return {
+              ...rest,
+              position: { x: absoluteX, y: absoluteY }
+            };
+          }
+        }
+        return n;
+      });
+      hasUnsavedChanges = true;
+    }
   }
 
   // Handle edge changes - with bind:edges, changes are handled automatically
@@ -1252,6 +1380,19 @@
   <div class="main-content">
     <div class="sidebar">
       <h3>Available Nodes</h3>
+      
+      <!-- Comment Area section -->
+      <div class="utility-section">
+        <button 
+          onclick={addCommentArea}
+          class="comment-area-btn"
+          title="Add a comment area to group and annotate nodes"
+        >
+          <span class="comment-area-icon">📝</span>
+          <span class="comment-area-text">Add Comment Area</span>
+        </button>
+      </div>
+      
       <input 
         type="text" 
         placeholder="Search nodes..." 
@@ -1324,6 +1465,7 @@
           onreconnect={onReconnect}
           onreconnectend={onReconnectEnd}
           onbeforedelete={onBeforeDelete}
+          onnodedragstop={onNodeDragStop}
           isValidConnection={isValidConnection}
           onnodecontextmenu={handleNodeContextMenu}
           onedgecontextmenu={handleEdgeContextMenu}
@@ -1552,6 +1694,42 @@
     background: #252525;
     border-bottom: 1px solid #404040;
     color: #e0e0e0;
+  }
+
+  .utility-section {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #404040;
+    background: #252525;
+  }
+
+  .comment-area-btn {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    color: #e0e0e0;
+  }
+
+  .comment-area-btn:hover {
+    background: linear-gradient(135deg, #5a6578 0%, #3d4758 100%);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .comment-area-icon {
+    font-size: 1.1rem;
+  }
+
+  .comment-area-text {
+    font-size: 0.85rem;
+    font-weight: 500;
   }
 
   .search-input {
