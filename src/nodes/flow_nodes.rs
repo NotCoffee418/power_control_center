@@ -259,7 +259,7 @@ impl Node for DoNothingNode {
                 NodeInput::new(
                     "trigger",
                     "Trigger",
-                    "Any signal that triggers the do-nothing action. When a signal of any type is received, the evaluation ends without taking action.",
+                    "Accepts any data type from upstream nodes. When this input receives a value (Boolean, Float, Integer, String, or any other type), the evaluation ends without taking action.",
                     ValueType::Any,
                     true,
                 ),

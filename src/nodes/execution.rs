@@ -549,8 +549,10 @@ impl NodesetExecutor {
     /// Device is inferred from the execution context (Start node)
     /// The trigger input accepts any signal type to terminate the evaluation
     fn evaluate_do_nothing_node(&mut self, node_id: &str) -> Result<DoNothingResult, ExecutionError> {
-        // Trigger input is used to signal that "do nothing" should be executed
-        // We just need to verify it's connected (the value itself doesn't matter)
+        // Validate that trigger input is connected by attempting to get its value.
+        // The actual value is discarded - we only need to verify the connection exists
+        // and the upstream node evaluates successfully. This ensures the Do Nothing
+        // node only triggers when some upstream condition produces a value.
         let _trigger = self.get_input_value(node_id, "trigger")?;
         
         // Device is inferred from execution context, not from node input
