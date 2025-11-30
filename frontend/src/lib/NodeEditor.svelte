@@ -44,10 +44,16 @@
   const NODE_SPAWN_MARGIN = 50; // Margin between spawned nodes
   
   // Generate a unique node ID using crypto.randomUUID for guaranteed uniqueness
+  // Falls back to timestamp + random for older browsers without crypto.randomUUID
   function generateUniqueNodeId(nodeType) {
-    // crypto.randomUUID() provides a RFC 4122 compliant UUID
-    const uuid = crypto.randomUUID();
-    return `${nodeType}-${uuid}`;
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      // crypto.randomUUID() provides a RFC 4122 compliant UUID
+      return `${nodeType}-${crypto.randomUUID()}`;
+    }
+    // Fallback for older browsers: timestamp + random string
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 10);
+    return `${nodeType}-${timestamp}-${randomSuffix}`;
   }
   
   // Calculate spawn position for new nodes
@@ -60,7 +66,8 @@
     
     // Find the highest X position among existing nodes
     // Initialize with first node's position to handle negative X values correctly
-    let maxX = nodes[0].position?.x ?? 0;
+    // Using optional chaining for defensive programming
+    let maxX = nodes[0]?.position?.x ?? 0;
     let avgY = 0;
     
     for (const node of nodes) {
