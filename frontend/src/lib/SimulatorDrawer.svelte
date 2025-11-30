@@ -171,6 +171,8 @@
     
     try {
       // Build the request payload
+      // Always use the currently displayed nodes/edges from the editor (what the user sees)
+      // This ensures the simulator runs on the current state, not a saved version
       const payload = {
         device: selectedDevice,
         temperature: getTemperature(),
@@ -184,19 +186,12 @@
         last_change_minutes: getLastChangeMinutes(),
         net_power_watt: getNetPowerWatt(),
         outside_temperature_trend: getOutsideTempTrend(),
+        // Always pass -1 to indicate we're using inline nodes/edges
+        nodeset_id: NEW_NODESET_ID,
+        // Always include the current nodes and edges from the editor
+        nodes: nodes || [],
+        edges: edges || [],
       };
-      
-      // If we have a current nodeset, include it in the request
-      // NEW_NODESET_ID (-1) means use the provided nodes/edges (new/unsaved)
-      // nodeset_id of null means use the active nodeset
-      if (currentNodesetId !== null) {
-        payload.nodeset_id = currentNodesetId;
-        // For new/unsaved nodesets, also pass the nodes and edges
-        if (currentNodesetId === NEW_NODESET_ID && nodes && edges) {
-          payload.nodes = nodes;
-          payload.edges = edges;
-        }
-      }
       
       const response = await fetch('/api/simulator/evaluate', {
         method: 'POST',
@@ -270,16 +265,6 @@
       default: return mode;
     }
   }
-
-  // Get intensity display string
-  function getIntensityDisplay(intensity) {
-    switch (intensity) {
-      case 'Low': return '🔋 Low';
-      case 'Medium': return '⚡ Medium';
-      case 'High': return '⚡⚡ High (Powerful)';
-      default: return intensity;
-    }
-  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -337,10 +322,6 @@
       <!-- Inputs Panel -->
       <div class="inputs-panel">
         <h4>Simulation Inputs</h4>
-        
-        {#if errorMessage}
-          <div class="error-message">{errorMessage}</div>
-        {/if}
         
         <div class="input-grid">
           <!-- Device Selection -->
@@ -470,12 +451,28 @@
               placeholder="e.g. 60"
             />
           </div>
+          
+          <!-- Net Power (integer, positive = consuming, negative = producing) -->
+          <div class="input-group">
+            <label for="netPower">Net Power (W)</label>
+            <input 
+              type="text" 
+              id="netPower" 
+              bind:value={netPowerWattStr}
+              class:invalid={!isValidInteger(netPowerWattStr)}
+              placeholder="e.g. -500"
+            />
+          </div>
         </div>
       </div>
       
       <!-- Results Panel -->
       <div class="results-panel">
         <h4>Simulation Result</h4>
+        
+        {#if errorMessage}
+          <div class="error-message">{errorMessage}</div>
+        {/if}
         
         {#if simulationResult}
           {#if simulationResult.success && simulationResult.plan}
@@ -486,12 +483,6 @@
                   <span class="result-label">Mode:</span>
                   <span class="result-value mode-{simulationResult.plan.mode.toLowerCase()}">
                     {getModeDisplay(simulationResult.plan.mode)}
-                  </span>
-                </div>
-                <div class="result-row">
-                  <span class="result-label">Intensity:</span>
-                  <span class="result-value">
-                    {getIntensityDisplay(simulationResult.plan.intensity)}
                   </span>
                 </div>
                 <div class="result-row">
