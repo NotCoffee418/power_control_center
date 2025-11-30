@@ -12,14 +12,11 @@ pub use manual_mode_monitor::get_manual_mode_monitor;
 use std::time::Duration;
 use tokio;
 
-/// Control cycle interval in seconds (5 minutes)
-const CONTROL_CYCLE_INTERVAL_SECS: u64 = 300;
-
 /// Manual mode polling interval in seconds (10 seconds)
 const MANUAL_MODE_POLL_INTERVAL_SECS: u64 = 10;
 
 /// Start the AC controller loop
-/// Runs immediately on startup, then repeats every 5 minutes
+/// Runs immediately on startup, then repeats at the interval specified in the active profile
 /// Also spawns a separate task to monitor devices in manual mode
 pub async fn start_ac_controller() {
     log::info!("AC controller starting...");
@@ -33,13 +30,32 @@ pub async fn start_ac_controller() {
         manual_mode_monitoring_loop().await;
     });
     
-    // Main control loop (5 minutes)
+    // Get the initial interval from the active profile
+    let mut current_interval_minutes = crate::db::nodesets::get_evaluate_every_minutes().await;
+    log::info!(
+        "AC controller using evaluate_every_minutes={} from active profile",
+        current_interval_minutes
+    );
+    
+    // Main control loop with dynamic interval
     loop {
         // Execute AC control for all devices
         execute_ac_control_cycle().await;
         
-        // Wait before next cycle
-        tokio::time::sleep(Duration::from_secs(CONTROL_CYCLE_INTERVAL_SECS)).await;
+        // Check if the interval has changed in the active profile
+        let new_interval_minutes = crate::db::nodesets::get_evaluate_every_minutes().await;
+        if new_interval_minutes != current_interval_minutes {
+            log::info!(
+                "Evaluation interval changed from {} to {} minutes",
+                current_interval_minutes,
+                new_interval_minutes
+            );
+            current_interval_minutes = new_interval_minutes;
+        }
+        
+        // Wait before next cycle using the current interval
+        let interval_secs = (current_interval_minutes as u64) * 60;
+        tokio::time::sleep(Duration::from_secs(interval_secs)).await;
     }
 }
 
