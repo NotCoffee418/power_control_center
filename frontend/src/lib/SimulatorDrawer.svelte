@@ -35,18 +35,23 @@
   }
 
   // Validation helpers - return true if the value is valid
+  // Uses regex to ensure only standard numeric formats are accepted (no scientific notation)
   function isValidFloat(str) {
     if (str === '' || str === null || str === undefined) return false;
     const trimmed = String(str).trim();
+    // Only allow standard decimal format: optional minus, digits, optional decimal point with digits
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return false;
     const parsed = parseFloat(trimmed);
-    return trimmed !== '' && !isNaN(parsed) && isFinite(parsed);
+    return !isNaN(parsed) && isFinite(parsed);
   }
 
   function isValidInteger(str) {
     if (str === '' || str === null || str === undefined) return false;
     const trimmed = String(str).trim();
-    const parsed = Number(trimmed);
-    return trimmed !== '' && Number.isInteger(parsed);
+    // Only allow integers: optional minus, digits only (no decimal point, no scientific notation)
+    if (!/^-?\d+$/.test(trimmed)) return false;
+    const parsed = parseInt(trimmed, 10);
+    return !isNaN(parsed) && isFinite(parsed);
   }
 
   // Get parsed numeric values (or default if invalid)
