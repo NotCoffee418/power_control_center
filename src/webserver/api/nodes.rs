@@ -23,22 +23,33 @@ pub const DEFAULT_NODESET_ID: i64 = 0;
 const NODE_TYPE_START: &str = "flow_start";
 /// Node type for the Execute Action node
 const NODE_TYPE_EXECUTE_ACTION: &str = "flow_execute_action";
+/// Node type for the Do Nothing node
+const NODE_TYPE_DO_NOTHING: &str = "flow_do_nothing";
+/// Node type for the Turn Off node
+const NODE_TYPE_TURN_OFF: &str = "flow_turn_off";
 
 /// Result of nodeset validation
 #[derive(Debug)]
 pub struct NodesetValidationResult {
     pub is_valid: bool,
     pub start_count: usize,
-    pub execute_count: usize,
+    pub terminal_count: usize,
     pub errors: Vec<String>,
 }
 
-/// Validates that a nodeset has exactly one Start node and at least one Execute Action node.
+/// Check if a node type is a terminal node (Execute Action, Do Nothing, or Turn Off)
+fn is_terminal_node(node_type: &str) -> bool {
+    matches!(node_type, NODE_TYPE_EXECUTE_ACTION | NODE_TYPE_DO_NOTHING | NODE_TYPE_TURN_OFF)
+}
+
+/// Validates that a nodeset has exactly one Start node and at least one terminal node
+/// (Execute Action, Do Nothing, or Turn Off).
 /// Also validates the evaluate_every_minutes value on the Start node.
+/// Note: Disconnected nodes are allowed and will be treated as "Do Nothing" at runtime.
 /// Returns a validation result with counts and any errors
 pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult {
     let mut start_count = 0;
-    let mut execute_count = 0;
+    let mut terminal_count = 0;
     let mut errors = Vec::new();
 
     for node in nodes {
@@ -49,30 +60,28 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
             .and_then(|def| def.get("node_type"))
             .and_then(|nt| nt.as_str())
         {
-            match node_type {
-                NODE_TYPE_START => {
-                    start_count += 1;
-                    // Validate evaluate_every_minutes value
-                    if let Some(data) = node.get("data") {
-                        if let Some(value) = data.get("primitiveValue") {
-                            if let Some(minutes) = value.as_i64() {
-                                if minutes < 1 {
-                                    errors.push(format!(
-                                        "Evaluate Every Minutes must be at least 1 (found {})",
-                                        minutes
-                                    ));
-                                } else if minutes > MAX_EVALUATE_EVERY_MINUTES as i64 {
-                                    errors.push(format!(
-                                        "Evaluate Every Minutes cannot exceed {} (24 hours), found {}",
-                                        MAX_EVALUATE_EVERY_MINUTES, minutes
-                                    ));
-                                }
+            if node_type == NODE_TYPE_START {
+                start_count += 1;
+                // Validate evaluate_every_minutes value
+                if let Some(data) = node.get("data") {
+                    if let Some(value) = data.get("primitiveValue") {
+                        if let Some(minutes) = value.as_i64() {
+                            if minutes < 1 {
+                                errors.push(format!(
+                                    "Evaluate Every Minutes must be at least 1 (found {})",
+                                    minutes
+                                ));
+                            } else if minutes > MAX_EVALUATE_EVERY_MINUTES as i64 {
+                                errors.push(format!(
+                                    "Evaluate Every Minutes cannot exceed {} (24 hours), found {}",
+                                    MAX_EVALUATE_EVERY_MINUTES, minutes
+                                ));
                             }
                         }
                     }
                 }
-                NODE_TYPE_EXECUTE_ACTION => execute_count += 1,
-                _ => {}
+            } else if is_terminal_node(node_type) {
+                terminal_count += 1;
             }
         }
     }
@@ -83,14 +92,14 @@ pub fn validate_nodeset(nodes: &[serde_json::Value]) -> NodesetValidationResult 
         errors.push(format!("Profile must have exactly one Start node (found {})", start_count));
     }
     
-    if execute_count == 0 {
-        errors.push("Profile must have at least one Execute Action node".to_string());
+    if terminal_count == 0 {
+        errors.push("Profile must have at least one terminal node (Execute Action, Do Nothing, or Turn Off)".to_string());
     }
 
     NodesetValidationResult {
-        is_valid: start_count == 1 && execute_count >= 1 && errors.is_empty(),
+        is_valid: start_count == 1 && terminal_count >= 1 && errors.is_empty(),
         start_count,
-        execute_count,
+        terminal_count,
         errors,
     }
 }
@@ -829,14 +838,15 @@ mod tests {
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 0);
-        assert_eq!(result.execute_count, 0);
+        assert_eq!(result.terminal_count, 0);
         assert_eq!(result.errors.len(), 2);
         assert!(result.errors.iter().any(|e| e.contains("Start node")));
-        assert!(result.errors.iter().any(|e| e.contains("Execute Action node")));
+        assert!(result.errors.iter().any(|e| e.contains("terminal node")));
     }
 
     #[test]
     fn test_validate_nodeset_valid() {
+        // Disconnected nodes are allowed - they will be treated as "Do Nothing" at runtime
         let nodes = vec![
             create_node(NODE_TYPE_START),
             create_node(NODE_TYPE_EXECUTE_ACTION),
@@ -845,7 +855,7 @@ mod tests {
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.terminal_count, 1);
         assert!(result.errors.is_empty());
     }
 
@@ -858,13 +868,12 @@ mod tests {
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 0);
-        assert_eq!(result.execute_count, 1);
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("Start node"));
+        assert_eq!(result.terminal_count, 1);
+        assert!(result.errors.iter().any(|e| e.contains("Start node")));
     }
 
     #[test]
-    fn test_validate_nodeset_missing_execute() {
+    fn test_validate_nodeset_missing_terminal() {
         let nodes = vec![
             create_node(NODE_TYPE_START),
         ];
@@ -872,9 +881,8 @@ mod tests {
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 0);
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("Execute Action node"));
+        assert_eq!(result.terminal_count, 0);
+        assert!(result.errors.iter().any(|e| e.contains("terminal node")));
     }
 
     #[test]
@@ -888,24 +896,53 @@ mod tests {
         
         assert!(!result.is_valid);
         assert_eq!(result.start_count, 2);
-        assert_eq!(result.execute_count, 1);
-        assert_eq!(result.errors.len(), 1);
-        assert!(result.errors[0].contains("found 2"));
+        assert_eq!(result.terminal_count, 1);
+        assert!(result.errors.iter().any(|e| e.contains("found 2")));
     }
 
     #[test]
-    fn test_validate_nodeset_multiple_executes() {
-        // Multiple Execute Action nodes are now allowed for flow control support
+    fn test_validate_nodeset_multiple_terminals() {
+        // Multiple terminal nodes are allowed for flow control support
         let nodes = vec![
             create_node(NODE_TYPE_START),
             create_node(NODE_TYPE_EXECUTE_ACTION),
-            create_node(NODE_TYPE_EXECUTE_ACTION),
+            create_node(NODE_TYPE_DO_NOTHING),
         ];
         let result = validate_nodeset(&nodes);
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 2);
+        assert_eq!(result.terminal_count, 2);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_with_do_nothing() {
+        // Do Nothing should be a valid terminal node
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_DO_NOTHING),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.terminal_count, 1);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_nodeset_with_turn_off() {
+        // Turn Off should be a valid terminal node
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_TURN_OFF),
+        ];
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.terminal_count, 1);
         assert!(result.errors.is_empty());
     }
 
@@ -923,7 +960,7 @@ mod tests {
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.terminal_count, 1);
         assert!(result.errors.is_empty());
     }
 
@@ -941,7 +978,23 @@ mod tests {
         
         assert!(result.is_valid);
         assert_eq!(result.start_count, 1);
-        assert_eq!(result.execute_count, 1);
+        assert_eq!(result.terminal_count, 1);
+    }
+
+    #[test]
+    fn test_validate_nodeset_disconnected_nodes_allowed() {
+        // Disconnected nodes are allowed - they will be treated as "Do Nothing" at runtime
+        let nodes = vec![
+            create_node(NODE_TYPE_START),
+            create_node(NODE_TYPE_EXECUTE_ACTION),
+        ];
+        // No edges connecting them - this is allowed
+        let result = validate_nodeset(&nodes);
+        
+        assert!(result.is_valid);
+        assert_eq!(result.start_count, 1);
+        assert_eq!(result.terminal_count, 1);
+        assert!(result.errors.is_empty());
     }
 
     // -------------------------------------------------------------------------
