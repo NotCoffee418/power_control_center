@@ -3,7 +3,7 @@ mod logical_nodes;
 mod primitive_nodes;
 mod enum_nodes;
 mod sensor_nodes;
-mod flow_nodes;
+pub mod flow_nodes;
 pub mod execution;
 #[cfg(test)]
 mod integration_test;

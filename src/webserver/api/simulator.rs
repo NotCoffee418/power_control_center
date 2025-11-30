@@ -76,6 +76,9 @@ pub struct SimulatorResult {
     pub error: Option<String>,
     /// Input values used for the simulation (including fetched defaults)
     pub inputs_used: SimulatorInputsUsed,
+    /// The evaluate_every_minutes value from the Start node (no effect in simulator, just reported)
+    /// This value controls how often the AC state is reevaluated in the actual controller
+    pub evaluate_every_minutes: Option<i32>,
 }
 
 /// The plan result from simulation
@@ -186,6 +189,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
                 ac_state: None,
                 error: Some(format!("Unknown device: {}", inputs.device)),
                 inputs_used: SimulatorInputsUsed::from_inputs_with_defaults(&inputs),
+                evaluate_every_minutes: None,
             };
             let response = ApiResponse::success(error_result);
             return (StatusCode::OK, Json(response)).into_response();
@@ -205,6 +209,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
             ac_state: None,
             error: None,
             inputs_used: SimulatorInputsUsed::from_inputs_with_defaults(&inputs),
+            evaluate_every_minutes: None,
         };
         let response = ApiResponse::success(result);
         return (StatusCode::OK, Json(response)).into_response();
@@ -270,11 +275,16 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
                 ac_state: None,
                 error: Some(error_msg),
                 inputs_used,
+                evaluate_every_minutes: None,
             };
             let response = ApiResponse::success(error_result);
             return (StatusCode::OK, Json(response)).into_response();
         }
     };
+    
+    // Extract evaluate_every_minutes from the Start node (reported but has no effect in simulator)
+    // Uses the shared extraction function with validation
+    let evaluate_every_minutes = crate::db::nodesets::extract_evaluate_every_minutes_from_nodes(&nodes);
     
     // Validate the nodeset before execution
     let validation_errors = validate_nodeset_for_execution(&nodes, &edges);
@@ -285,6 +295,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
             ac_state: None,
             error: Some(format!("Nodeset validation failed: {}", validation_errors.join("; "))),
             inputs_used,
+            evaluate_every_minutes,
         };
         let response = ApiResponse::success(error_result);
         return (StatusCode::OK, Json(response)).into_response();
@@ -299,6 +310,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
             ac_state: None,
             error: Some(format!("Profile structure invalid: {}", structural_validation.errors.join("; "))),
             inputs_used,
+            evaluate_every_minutes,
         };
         let response = ApiResponse::success(error_result);
         return (StatusCode::OK, Json(response)).into_response();
@@ -357,6 +369,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
                 ac_state: None,
                 error: Some(format!("Failed to create executor: {}", e)),
                 inputs_used,
+                evaluate_every_minutes,
             };
             let response = ApiResponse::success(error_result);
             return (StatusCode::OK, Json(response)).into_response();
@@ -373,6 +386,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
             ac_state: None,
             error: Some(error),
             inputs_used,
+            evaluate_every_minutes,
         };
         let response = ApiResponse::success(error_result);
         return (StatusCode::OK, Json(response)).into_response();
@@ -392,6 +406,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
                 ac_state: None,
                 error: None,
                 inputs_used,
+                evaluate_every_minutes,
             };
             let response = ApiResponse::success(result);
             return (StatusCode::OK, Json(response)).into_response();
@@ -415,6 +430,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
                     ac_state: Some(ac_state),
                     error: None,
                     inputs_used,
+                    evaluate_every_minutes,
                 };
                 let response = ApiResponse::success(result);
                 return (StatusCode::OK, Json(response)).into_response();
@@ -430,6 +446,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         ac_state: None,
         error: Some("Workflow did not reach a valid terminal node".to_string()),
         inputs_used,
+        evaluate_every_minutes,
     };
     let response = ApiResponse::success(error_result);
     (StatusCode::OK, Json(response)).into_response()

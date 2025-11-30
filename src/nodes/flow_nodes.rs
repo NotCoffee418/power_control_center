@@ -1,8 +1,16 @@
 use super::node_system::{Node, NodeDefinition, NodeInput, NodeOutput, ValueType};
 
+/// Maximum value for evaluate_every_minutes (24 hours * 60 minutes = 1440)
+pub const MAX_EVALUATE_EVERY_MINUTES: i32 = 1440;
+
 /// Start Node - Entry point for the device evaluation flow
 /// This node provides all the required data to start evaluating an AC device
 /// Outputs device identifier, sensor temperature, environmental data, and mode status
+/// 
+/// The "Evaluate Every Minutes" input controls how often the AC state is reevaluated.
+/// This value determines the interval in minutes between each evaluation cycle.
+/// For example, if set to 5, the node logic runs every 5 minutes.
+/// In the simulator, this value has no effect but is still reported.
 pub struct StartNode;
 
 impl Node for StartNode {
@@ -12,7 +20,15 @@ impl Node for StartNode {
             "Start",
             "Entry point for device evaluation. Provides device data including identifier, sensor temperature, outdoor conditions, power data, and auto/manual mode status. One Start node should exist per evaluation flow.",
             "System",
-            vec![], // No inputs - this is the entry point
+            vec![
+                NodeInput::new(
+                    "evaluate_every_minutes",
+                    "Evaluate Every Minutes",
+                    "How often to reevaluate the AC state in minutes. This controls the interval between each evaluation cycle. For example, if set to 5, the node logic runs every 5 minutes. Maximum value is 1440 (24 hours). In the simulator, this has no effect but is still reported.",
+                    ValueType::Integer,
+                    true,
+                ),
+            ],
             vec![
                 NodeOutput::new(
                     "device",
@@ -271,8 +287,14 @@ mod tests {
         assert_eq!(def.node_type, "flow_start");
         assert_eq!(def.name, "Start");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 0); // Source node has no inputs
-        assert_eq!(def.outputs.len(), 10); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, avg_next_24h_outdoor_temp, active_command
+        assert_eq!(def.inputs.len(), 1); // evaluate_every_minutes input
+        assert_eq!(def.outputs.len(), 10); // device, device_sensor_temperature, is_auto_mode, last_change_minutes, outdoor_temperature, is_user_home, net_power_watt, raw_solar_watt, outside_temperature_trend, active_command
+        
+        // Verify evaluate_every_minutes input
+        let eval_input = def.inputs.iter().find(|i| i.id == "evaluate_every_minutes").unwrap();
+        assert_eq!(eval_input.value_type, ValueType::Integer);
+        assert!(eval_input.required);
+        assert_eq!(eval_input.label, "Evaluate Every Minutes");
         
         // Verify device output is an enum with device values
         let device_output = def.outputs.iter().find(|o| o.id == "device").unwrap();
@@ -316,6 +338,12 @@ mod tests {
         // Verify avg_next_24h_outdoor_temp output is a float
         let avg_temp_output = def.outputs.iter().find(|o| o.id == "avg_next_24h_outdoor_temp").unwrap();
         assert_eq!(avg_temp_output.value_type, ValueType::Float);
+    }
+    
+    #[test]
+    fn test_max_evaluate_every_minutes_constant() {
+        // Verify the constant value is 1440 (24 hours * 60 minutes)
+        assert_eq!(MAX_EVALUATE_EVERY_MINUTES, 1440);
     }
 
     #[test]
@@ -426,7 +454,9 @@ mod tests {
     #[test]
     fn test_start_node_is_source_node() {
         let def = StartNode::definition();
-        assert_eq!(def.inputs.len(), 0, "Start node should have no inputs (source node)");
+        // Start node now has 1 input (evaluate_every_minutes) but still acts as a source
+        // because it doesn't require connections from other nodes for its output data
+        assert_eq!(def.inputs.len(), 1, "Start node should have 1 input (evaluate_every_minutes)");
         assert!(def.outputs.len() > 0, "Start node should have outputs");
     }
 

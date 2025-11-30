@@ -3,6 +3,8 @@ pub use ac_actions::*;
 
 pub mod cause_reasons;
 
+pub mod nodesets;
+
 use crate::config;
 use sqlx::SqlitePool;
 use tokio::sync::OnceCell;
