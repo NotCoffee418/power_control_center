@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::{
     ac_controller::{
         AcDevices,
-        ac_executor::{AC_MODE_HEAT, AC_MODE_COOL, get_state_manager},
+        ac_executor::get_state_manager,
     },
     config,
     db,
@@ -61,6 +61,28 @@ pub struct SimulatorInputs {
     pub nodes: Option<Vec<serde_json::Value>>,
     /// Edges configuration for unsaved/new nodesets (when nodeset_id is -1)
     pub edges: Option<Vec<serde_json::Value>>,
+    /// Active command data for simulator testing (optional)
+    /// When provided, overrides the state manager's tracked state
+    pub active_command: Option<SimulatorActiveCommand>,
+}
+
+/// Active command data from the simulator input
+#[derive(Debug, Clone, Deserialize)]
+pub struct SimulatorActiveCommand {
+    /// Whether an active command exists
+    pub is_defined: bool,
+    /// Whether the AC is currently on
+    pub is_on: bool,
+    /// Target temperature in Celsius
+    pub temperature: f64,
+    /// AC mode: 1 = Heat, 4 = Cool, 0 = Off
+    pub mode: i32,
+    /// Fan speed setting (0-5, where 0 is auto)
+    pub fan_speed: i32,
+    /// Swing setting (0 = off, 1 = on)
+    pub swing: i32,
+    /// Whether powerful mode was enabled
+    pub is_powerful: bool,
 }
 
 /// Result of simulating a workflow
@@ -320,28 +342,40 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     let mut pir_state = HashMap::new();
     pir_state.insert(inputs.device.clone(), (pir_detected, pir_minutes_ago));
     
-    // Get active command from the AC state manager
-    // The state manager tracks the last known state of each device.
-    // A command is considered "defined" if we have any meaningful state tracked.
-    // Note: The state manager's is_device_initialized() is private, but we can infer
-    // initialization from whether mode or other optional fields have values.
-    let state_manager = get_state_manager();
-    let ac_state = state_manager.get_state(&inputs.device);
-    
-    // Determine if an active command exists:
-    // - If device is currently on, we definitely have an active command
-    // - If mode has a value, we've sent a command at some point
-    // This aligns with how AcState tracks device state (mode is Some only after sending a command)
-    let is_defined = ac_state.is_on || ac_state.mode.is_some();
-    
-    let active_command = ActiveCommandData {
-        is_defined,
-        is_on: ac_state.is_on,
-        temperature: ac_state.temperature.unwrap_or(0.0),
-        mode: ac_state.mode.unwrap_or(0),
-        fan_speed: ac_state.fan_speed.unwrap_or(0),
-        swing: ac_state.swing.unwrap_or(0),
-        is_powerful: ac_state.powerful_mode,
+    // Get active command - prefer the simulator input if provided, otherwise use state manager
+    let active_command = if let Some(ref sim_active_cmd) = inputs.active_command {
+        // Use the active command from the simulator input
+        ActiveCommandData {
+            is_defined: sim_active_cmd.is_defined,
+            is_on: sim_active_cmd.is_on,
+            temperature: sim_active_cmd.temperature,
+            mode: sim_active_cmd.mode,
+            fan_speed: sim_active_cmd.fan_speed,
+            swing: sim_active_cmd.swing,
+            is_powerful: sim_active_cmd.is_powerful,
+        }
+    } else {
+        // Fall back to the AC state manager for the tracked state
+        // The state manager tracks the last known state of each device.
+        // A command is considered "defined" if we have any meaningful state tracked.
+        let state_manager = get_state_manager();
+        let ac_state = state_manager.get_state(&inputs.device);
+        
+        // Determine if an active command exists:
+        // - If device is currently on, we definitely have an active command
+        // - If mode has a value, we've sent a command at some point
+        // This aligns with how AcState tracks device state (mode is Some only after sending a command)
+        let is_defined = ac_state.is_on || ac_state.mode.is_some();
+        
+        ActiveCommandData {
+            is_defined,
+            is_on: ac_state.is_on,
+            temperature: ac_state.temperature.unwrap_or(0.0),
+            mode: ac_state.mode.unwrap_or(0),
+            fan_speed: ac_state.fan_speed.unwrap_or(0),
+            swing: ac_state.swing.unwrap_or(0),
+            is_powerful: ac_state.powerful_mode,
+        }
     };
     
     // Build execution inputs
