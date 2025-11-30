@@ -14,11 +14,17 @@ use crate::{
     config,
     db,
     device_requests,
-    nodes::{ActiveCommandData, ActionResult, ExecutionInputs, ExecutionResult, NodesetExecutor},
+    nodes::{
+        ActiveCommandData, ActionResult, ExecutionInputs, ExecutionResult, NodesetExecutor,
+        execution::PIR_NEVER_DETECTED,
+    },
     types::CauseReason,
 };
 
 use super::ac_executor::AcState;
+
+/// Default outdoor temperature used when weather API is unavailable
+const DEFAULT_OUTDOOR_TEMPERATURE: f64 = 20.0;
 
 /// Result of node-based AC control execution
 #[derive(Debug)]
@@ -128,7 +134,7 @@ async fn gather_execution_inputs(device: &AcDevices) -> Result<ExecutionInputs, 
         Ok(temp) => temp,
         Err(e) => {
             log::warn!("Failed to get outdoor temperature: {}. Using default.", e);
-            20.0
+            DEFAULT_OUTDOOR_TEMPERATURE
         }
     };
 
@@ -175,8 +181,8 @@ async fn gather_execution_inputs(device: &AcDevices) -> Result<ExecutionInputs, 
         let is_triggered = pir.has_recent_detection(device_name, config.pir_timeout_minutes);
         pir_state_map.insert(device_name.to_string(), (is_triggered, minutes_ago));
     } else {
-        // No detection ever - use sentinel value (-1 indicates never detected)
-        pir_state_map.insert(device_name.to_string(), (false, crate::nodes::execution::PIR_NEVER_DETECTED));
+        // No detection ever - use sentinel value indicating never detected
+        pir_state_map.insert(device_name.to_string(), (false, PIR_NEVER_DETECTED));
     }
 
     // Get active command from state manager
@@ -318,7 +324,16 @@ async fn execute_action_result(device: &AcDevices, action: &ActionResult) -> Nod
     let current_state = state_manager.get_state(device_name);
     
     // Parse the cause_reason to get the ID for logging
-    let cause_id: i32 = action.cause_reason.parse().unwrap_or(CauseReason::Undefined.id());
+    let cause_id: i32 = match action.cause_reason.parse() {
+        Ok(id) => id,
+        Err(e) => {
+            log::warn!(
+                "Failed to parse cause_reason '{}' for device '{}': {}. Using Undefined.",
+                action.cause_reason, device_name, e
+            );
+            CauseReason::Undefined.id()
+        }
+    };
 
     // Convert the action to a desired AcState
     let desired_state = action_to_ac_state(action);
