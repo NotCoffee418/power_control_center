@@ -51,7 +51,8 @@ pub struct PlanInput {
     pub solar_production: u32,
     pub user_is_home: bool,
     pub current_outdoor_temp: f64,
-    pub avg_next_12h_outdoor_temp: f64,
+    /// Average outdoor temperature for the next 24 hours
+    pub avg_next_24h_outdoor_temp: f64,
     /// Current AC operating mode: Some(true) = heating, Some(false) = cooling, None = off
     /// Used for temperature hysteresis to prevent rapid on/off cycling
     pub current_ac_mode: Option<bool>,
@@ -154,7 +155,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
     let solar_production = get_solar_production_watts().await.unwrap_or(0);
     let user_is_home = plan_helpers::is_user_home_and_awake();
     let current_outdoor_temp = get_current_outdoor_temp().await;
-    let avg_next_12h_outdoor_temp = get_avg_next_12h_outdoor_temp().await;
+    let avg_next_24h_outdoor_temp = get_avg_next_24h_outdoor_temp().await;
 
     // Get current AC state to implement temperature hysteresis
     // Some(true) = heating, Some(false) = cooling, None = off
@@ -166,7 +167,7 @@ pub(super) async fn fetch_data_and_get_plan(device: &AcDevices) -> PlanResult {
         solar_production,
         user_is_home,
         current_outdoor_temp,
-        avg_next_12h_outdoor_temp,
+        avg_next_24h_outdoor_temp,
         current_ac_mode,
     };
 
@@ -202,7 +203,7 @@ pub fn get_plan(input: &PlanInput) -> PlanResult {
 /// Calculate the request mode and cause based on temperature and other conditions
 fn calculate_request_mode_with_cause(input: &PlanInput) -> PlanResult {
     // Calculate temperature forecast trend
-    let temp_trend = input.avg_next_12h_outdoor_temp - input.current_outdoor_temp;
+    let temp_trend = input.avg_next_24h_outdoor_temp - input.current_outdoor_temp;
     let getting_significantly_colder = temp_trend < -SIGNIFICANT_TEMP_CHANGE;
     let getting_significantly_warmer = temp_trend > SIGNIFICANT_TEMP_CHANGE;
     let significant_temp_change_pending = getting_significantly_colder || getting_significantly_warmer;
@@ -390,25 +391,13 @@ async fn get_current_outdoor_temp() -> f64 {
     }
 }
 
-/// Get average outdoor temperature for next 12 hours
-/// Note: This uses the non-cached version as trend needs both current and forecast,
-/// and compute_temperature_trend_cached already handles caching with stale fallback
-async fn get_avg_next_12h_outdoor_temp() -> f64 {
+/// Get average outdoor temperature for next 24 hours with caching
+async fn get_avg_next_24h_outdoor_temp() -> f64 {
     let cfg = config::get_config();
-    // Use current temp from cache since we just fetched it
-    match device_requests::weather::get_current_outdoor_temp_cached(cfg.latitude, cfg.longitude).await {
-        Ok(current) => {
-            // Try to get the trend (which is cached with stale fallback)
-            match device_requests::weather::compute_temperature_trend_cached(cfg.latitude, cfg.longitude).await {
-                Ok(trend) => current + trend,
-                Err(e) => {
-                    log::error!("Failed to get temperature trend: {}. Using current as forecast.", e);
-                    current // Use current temp as forecast if trend unavailable
-                }
-            }
-        }
+    match device_requests::weather::get_avg_next_24h_outdoor_temp_cached(cfg.latitude, cfg.longitude).await {
+        Ok(avg) => avg,
         Err(e) => {
-            log::error!("Failed to get outdoor temperature for forecast: {}. Using default.", e);
+            log::error!("Failed to get 24h average outdoor temperature: {}. Using default.", e);
             20.0 // Default to 20°C on error (only if no stale cache exists)
         }
     }
@@ -488,7 +477,7 @@ mod tests {
             solar_production: 0,
             user_is_home: true,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -508,7 +497,7 @@ mod tests {
             solar_production: 2500,
             user_is_home: false,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -529,7 +518,7 @@ mod tests {
             solar_production: 0,
             user_is_home: true,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 30.0,
+            avg_next_24h_outdoor_temp: 30.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -549,7 +538,7 @@ mod tests {
             solar_production: 2500,
             user_is_home: false,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 30.0,
+            avg_next_24h_outdoor_temp: 30.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -570,7 +559,7 @@ mod tests {
             solar_production: 0,
             user_is_home: true,
             current_outdoor_temp: 20.0,
-            avg_next_12h_outdoor_temp: 20.0,
+            avg_next_24h_outdoor_temp: 20.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -590,7 +579,7 @@ mod tests {
             solar_production: 0,
             user_is_home: true,
             current_outdoor_temp: 18.0,
-            avg_next_12h_outdoor_temp: 18.0,
+            avg_next_24h_outdoor_temp: 18.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -610,7 +599,7 @@ mod tests {
             solar_production: 0,
             user_is_home: true,
             current_outdoor_temp: 26.0,
-            avg_next_12h_outdoor_temp: 26.0,
+            avg_next_24h_outdoor_temp: 26.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -630,7 +619,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 18.0,
-            avg_next_12h_outdoor_temp: 18.0,
+            avg_next_24h_outdoor_temp: 18.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -652,7 +641,7 @@ mod tests {
             solar_production: 1200, // Below normal threshold, but above lowered threshold
             user_is_home: true,
             current_outdoor_temp: 20.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -673,7 +662,7 @@ mod tests {
             solar_production: 1200, // Below normal threshold, but above lowered threshold
             user_is_home: true,
             current_outdoor_temp: 20.0,
-            avg_next_12h_outdoor_temp: 25.0,
+            avg_next_24h_outdoor_temp: 25.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -693,7 +682,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -713,7 +702,7 @@ mod tests {
             solar_production: 1200, // Moderate, above half threshold (1000W)
             user_is_home: false,
             current_outdoor_temp: 20.0,
-            avg_next_12h_outdoor_temp: 16.0, // Dropping 4°C
+            avg_next_24h_outdoor_temp: 16.0, // Dropping 4°C
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -735,7 +724,7 @@ mod tests {
             solar_production: 500, // Low solar, below bypass threshold
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
-            avg_next_12h_outdoor_temp: 1.0,
+            avg_next_24h_outdoor_temp: 1.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -755,7 +744,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 1.0, // Below 2°C
-            avg_next_12h_outdoor_temp: 1.0,
+            avg_next_24h_outdoor_temp: 1.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -775,7 +764,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 4.0, // Above 2°C
-            avg_next_12h_outdoor_temp: 4.0,
+            avg_next_24h_outdoor_temp: 4.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -798,7 +787,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 2.0,
-            avg_next_12h_outdoor_temp: 2.0,
+            avg_next_24h_outdoor_temp: 2.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -822,7 +811,7 @@ mod tests {
             solar_production: 3000, // High solar, above bypass threshold
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
-            avg_next_12h_outdoor_temp: 1.0,
+            avg_next_24h_outdoor_temp: 1.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -844,7 +833,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 10.0, // Not near comfortable (18-26)
-            avg_next_12h_outdoor_temp: 10.0,
+            avg_next_24h_outdoor_temp: 10.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -863,7 +852,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 21.0, // Near comfortable range, within 2°C buffer
-            avg_next_12h_outdoor_temp: 21.0,
+            avg_next_24h_outdoor_temp: 21.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -882,7 +871,7 @@ mod tests {
             solar_production: 2500, // Above threshold
             user_is_home: false,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 30.5, // Small change, not significant
+            avg_next_24h_outdoor_temp: 30.5, // Small change, not significant
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -901,7 +890,7 @@ mod tests {
             solar_production: 2500, // Above threshold
             user_is_home: false,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 35.0, // +5°C = significant change
+            avg_next_24h_outdoor_temp: 35.0, // +5°C = significant change
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -920,7 +909,7 @@ mod tests {
             solar_production: 500, // Below high threshold
             user_is_home: true,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -939,7 +928,7 @@ mod tests {
             solar_production: 0,
             user_is_home: false,
             current_outdoor_temp: 23.0, // Near comfortable range, within buffer
-            avg_next_12h_outdoor_temp: 23.0,
+            avg_next_24h_outdoor_temp: 23.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -958,7 +947,7 @@ mod tests {
             solar_production: 0,
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
-            avg_next_12h_outdoor_temp: 1.0,
+            avg_next_24h_outdoor_temp: 1.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -981,7 +970,7 @@ mod tests {
             solar_production: 500, // Below bypass threshold
             user_is_home: true,
             current_outdoor_temp: 1.9, // Just below 2°C
-            avg_next_12h_outdoor_temp: 1.5,
+            avg_next_24h_outdoor_temp: 1.5,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1000,7 +989,7 @@ mod tests {
             solar_production: 1000, // Exactly at threshold
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
-            avg_next_12h_outdoor_temp: 1.0,
+            avg_next_24h_outdoor_temp: 1.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1021,7 +1010,7 @@ mod tests {
             solar_production: 999, // Just below threshold
             user_is_home: true,
             current_outdoor_temp: 1.0, // Below 2°C
-            avg_next_12h_outdoor_temp: 1.0,
+            avg_next_24h_outdoor_temp: 1.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1042,7 +1031,7 @@ mod tests {
             solar_production: 500, // Low solar
             user_is_home: false,
             current_outdoor_temp: 1.0, // Below 2°C
-            avg_next_12h_outdoor_temp: 1.0,
+            avg_next_24h_outdoor_temp: 1.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1064,7 +1053,7 @@ mod tests {
             solar_production: 2500, // High solar
             user_is_home: false,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1083,7 +1072,7 @@ mod tests {
             solar_production: 1500, // Medium solar, between 1000W and 2000W
             user_is_home: false,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1102,7 +1091,7 @@ mod tests {
             solar_production: 1000, // Exactly at threshold
             user_is_home: false,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 30.0,
+            avg_next_24h_outdoor_temp: 30.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1121,7 +1110,7 @@ mod tests {
             solar_production: 900, // Below medium threshold
             user_is_home: false,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1142,7 +1131,7 @@ mod tests {
             solar_production: 2500, // High solar would normally give high intensity
             user_is_home: false,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 22.0, // Getting 7°C warmer (> 3°C threshold)
+            avg_next_24h_outdoor_temp: 22.0, // Getting 7°C warmer (> 3°C threshold)
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1163,7 +1152,7 @@ mod tests {
             solar_production: 2500, // High solar would normally give high intensity
             user_is_home: false,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 22.0, // Getting 8°C colder (> 3°C threshold)
+            avg_next_24h_outdoor_temp: 22.0, // Getting 8°C colder (> 3°C threshold)
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1184,7 +1173,7 @@ mod tests {
             solar_production: 2500, // High solar
             user_is_home: false,
             current_outdoor_temp: 20.0,
-            avg_next_12h_outdoor_temp: 15.0, // Getting 5°C colder
+            avg_next_24h_outdoor_temp: 15.0, // Getting 5°C colder
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1205,7 +1194,7 @@ mod tests {
             solar_production: 2500, // High solar
             user_is_home: false,
             current_outdoor_temp: 25.0,
-            avg_next_12h_outdoor_temp: 32.0, // Getting 7°C warmer
+            avg_next_24h_outdoor_temp: 32.0, // Getting 7°C warmer
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1226,7 +1215,7 @@ mod tests {
             solar_production: 1500, // Medium solar
             user_is_home: false,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 22.0, // Getting warmer
+            avg_next_24h_outdoor_temp: 22.0, // Getting warmer
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1245,7 +1234,7 @@ mod tests {
             solar_production: 2500, // High solar
             user_is_home: true, // User is home
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1264,7 +1253,7 @@ mod tests {
             solar_production: 1500, // Medium solar
             user_is_home: true, // User is home
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None,
         };
         let plan = get_plan(&input);
@@ -1286,7 +1275,7 @@ mod tests {
             solar_production: 500,
             user_is_home: true,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: Some(true), // Currently heating
         };
         let plan = get_plan(&input);
@@ -1305,7 +1294,7 @@ mod tests {
             solar_production: 500,
             user_is_home: true,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: Some(true), // Currently heating
         };
         let plan = get_plan(&input);
@@ -1324,7 +1313,7 @@ mod tests {
             solar_production: 500,
             user_is_home: true,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 30.0,
+            avg_next_24h_outdoor_temp: 30.0,
             current_ac_mode: Some(false), // Currently cooling
         };
         let plan = get_plan(&input);
@@ -1343,7 +1332,7 @@ mod tests {
             solar_production: 500,
             user_is_home: true,
             current_outdoor_temp: 30.0,
-            avg_next_12h_outdoor_temp: 30.0,
+            avg_next_24h_outdoor_temp: 30.0,
             current_ac_mode: Some(false), // Currently cooling
         };
         let plan = get_plan(&input);
@@ -1361,7 +1350,7 @@ mod tests {
             solar_production: 500,
             user_is_home: true,
             current_outdoor_temp: 15.0,
-            avg_next_12h_outdoor_temp: 15.0,
+            avg_next_24h_outdoor_temp: 15.0,
             current_ac_mode: None, // AC is off
         };
         let plan = get_plan(&input);

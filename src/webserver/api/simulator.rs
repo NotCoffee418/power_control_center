@@ -42,8 +42,8 @@ pub struct SimulatorInputs {
     pub solar_production: Option<u32>,
     /// Outdoor temperature (optional, fetched if not provided)
     pub outdoor_temp: Option<f64>,
-    /// Average outdoor temperature in next 12 hours (optional, fetched if not provided)
-    pub avg_next_12h_outdoor_temp: Option<f64>,
+    /// Average outdoor temperature in next 24 hours (optional, fetched if not provided)
+    pub avg_next_24h_outdoor_temp: Option<f64>,
     /// Whether user is home (optional, calculated if not provided)
     pub user_is_home: Option<bool>,
     /// PIR detection status for this device (optional, defaults to false)
@@ -54,8 +54,6 @@ pub struct SimulatorInputs {
     pub last_change_minutes: Option<i32>,
     /// Net power in watts (optional, positive = consuming, negative = exporting)
     pub net_power_watt: Option<i32>,
-    /// Outside temperature trend (optional, positive = warming, negative = cooling)
-    pub outside_temperature_trend: Option<f64>,
     /// Nodeset ID to evaluate (optional, uses active nodeset if not provided)
     /// Use -1 for new unsaved nodesets
     pub nodeset_id: Option<i64>,
@@ -121,12 +119,12 @@ pub struct SimulatorInputsUsed {
     pub is_auto_mode: bool,
     pub solar_production: u32,
     pub outdoor_temp: f64,
-    pub avg_next_12h_outdoor_temp: f64,
+    /// Average outdoor temperature for the next 24 hours
+    pub avg_next_24h_outdoor_temp: f64,
     pub user_is_home: bool,
     pub pir_detected: bool,
     pub last_change_minutes: i32,
     pub net_power_watt: i32,
-    pub outside_temperature_trend: f64,
 }
 
 impl SimulatorInputsUsed {
@@ -138,12 +136,11 @@ impl SimulatorInputsUsed {
             is_auto_mode: inputs.is_auto_mode,
             solar_production: inputs.solar_production.unwrap_or(0),
             outdoor_temp: inputs.outdoor_temp.unwrap_or(20.0),
-            avg_next_12h_outdoor_temp: inputs.avg_next_12h_outdoor_temp.unwrap_or(20.0),
+            avg_next_24h_outdoor_temp: inputs.avg_next_24h_outdoor_temp.unwrap_or(20.0),
             user_is_home: inputs.user_is_home.unwrap_or(false),
             pir_detected: inputs.pir_detected.unwrap_or(false),
             last_change_minutes: inputs.last_change_minutes.unwrap_or(60),
             net_power_watt: inputs.net_power_watt.unwrap_or(0),
-            outside_temperature_trend: inputs.outside_temperature_trend.unwrap_or(0.0),
         }
     }
 }
@@ -157,14 +154,12 @@ pub struct LiveInputs {
     pub solar_production: Option<u32>,
     /// Current outdoor temperature
     pub outdoor_temp: Option<f64>,
-    /// Average outdoor temperature in next 12 hours
-    pub avg_next_12h_outdoor_temp: Option<f64>,
+    /// Average outdoor temperature for the next 24 hours
+    pub avg_next_24h_outdoor_temp: Option<f64>,
     /// Whether user is home
     pub user_is_home: bool,
     /// Current net power in watts (positive = consuming, negative = exporting)
     pub net_power_watt: Option<i32>,
-    /// Outside temperature trend (positive = warming, negative = cooling)
-    pub outside_temperature_trend: Option<f64>,
 }
 
 /// Live inputs for a specific device
@@ -231,14 +226,9 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         None => get_outdoor_temp().await.unwrap_or(20.0),
     };
     
-    let temperature_trend = match inputs.outside_temperature_trend {
+    let avg_next_24h_outdoor_temp = match inputs.avg_next_24h_outdoor_temp {
         Some(t) => t,
-        None => get_temperature_trend().await.unwrap_or(0.0),
-    };
-    
-    let avg_next_12h_outdoor_temp = match inputs.avg_next_12h_outdoor_temp {
-        Some(t) => t,
-        None => outdoor_temp + temperature_trend,
+        None => get_avg_next_24h_outdoor_temp().await.unwrap_or(outdoor_temp),
     };
     
     let user_is_home = inputs.user_is_home.unwrap_or_else(|| {
@@ -268,12 +258,11 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         is_auto_mode: inputs.is_auto_mode,
         solar_production,
         outdoor_temp,
-        avg_next_12h_outdoor_temp,
+        avg_next_24h_outdoor_temp,
         user_is_home,
         pir_detected,
         last_change_minutes,
         net_power_watt,
-        outside_temperature_trend: temperature_trend,
     };
     
     // Get the nodeset to evaluate
@@ -365,7 +354,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         is_user_home: user_is_home,
         net_power_watt: net_power_watt as i64,
         raw_solar_watt: solar_production as i64,
-        outside_temperature_trend: temperature_trend,
+        avg_next_24h_outdoor_temp,
         pir_state,
         active_command,
     };
@@ -513,13 +502,8 @@ async fn get_live_inputs() -> Response {
     
     let outdoor_temp = get_outdoor_temp().await.ok();
     
-    // Get temperature trend
-    let outside_temperature_trend = get_temperature_trend().await.ok();
-    
-    let avg_next_12h_outdoor_temp = match (outdoor_temp, outside_temperature_trend) {
-        (Some(temp), Some(trend)) => Some(temp + trend),
-        _ => None,
-    };
+    // Get average outdoor temperature for the next 24 hours
+    let avg_next_24h_outdoor_temp = get_avg_next_24h_outdoor_temp().await.ok();
     
     // Get net power from meter reading
     let net_power_watt = match device_requests::meter::get_latest_reading_cached().await {
@@ -537,10 +521,9 @@ async fn get_live_inputs() -> Response {
         devices,
         solar_production,
         outdoor_temp,
-        avg_next_12h_outdoor_temp,
+        avg_next_24h_outdoor_temp,
         user_is_home,
         net_power_watt,
-        outside_temperature_trend,
     };
     
     let response = ApiResponse::success(live_inputs);
@@ -569,9 +552,10 @@ async fn get_outdoor_temp() -> Result<f64, ()> {
         .map_err(|_| ())
 }
 
-async fn get_temperature_trend() -> Result<f64, ()> {
+/// Get average outdoor temperature for the next 24 hours
+async fn get_avg_next_24h_outdoor_temp() -> Result<f64, ()> {
     let cfg = config::get_config();
-    device_requests::weather::compute_temperature_trend_cached(cfg.latitude, cfg.longitude)
+    device_requests::weather::get_avg_next_24h_outdoor_temp_cached(cfg.latitude, cfg.longitude)
         .await
         .map_err(|_| ())
 }

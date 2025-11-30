@@ -59,8 +59,8 @@ pub async fn get_current_outdoor_temp(latitude: f64, longitude: f64) -> Result<f
         .ok_or_else(|| WeatherError::ParseError("No current temperature data available".to_string()))
 }
 
-/// Get average outdoor temperature for next 12 hours from Open-Meteo API
-pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
+/// Get average outdoor temperature for next 24 hours from Open-Meteo API
+pub async fn get_avg_next_24h_outdoor_temp(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
     let url = format!(
         "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&hourly=temperature_2m&forecast_days=2&current=temperature_2m",
         latitude, longitude
@@ -92,28 +92,28 @@ pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Res
         .position(|t| t.starts_with(hour_prefix))
         .ok_or_else(|| WeatherError::ParseError("Current hour not found in hourly data".to_string()))?;
     
-    // Calculate average for next 12 hours (starting from the next hour after current)
+    // Calculate average for next 24 hours (starting from the next hour after current)
     let temps = &data.hourly.temperature_2m;
     if temps.len() <= current_hour_idx {
         return Err(WeatherError::ParseError("Insufficient forecast data after current hour".to_string()));
     }
     
-    // Take hours from current_hour_idx+1 to current_hour_idx+12 (next 12 hours)
+    // Take hours from current_hour_idx+1 to current_hour_idx+24 (next 24 hours)
     let forecast_temps: Vec<f64> = temps.iter()
         .skip(current_hour_idx + 1)
-        .take(12)
+        .take(24)
         .copied()
         .collect();
     
-    // We need at least some forecast data (even if less than 12 hours)
+    // We need at least some forecast data (even if less than 24 hours)
     if forecast_temps.is_empty() {
         return Err(WeatherError::ParseError("No forecast data available for next hours".to_string()));
     }
     
-    // Log a warning if we have less than 12 hours of forecast
-    if forecast_temps.len() < 12 {
+    // Log a warning if we have less than 24 hours of forecast
+    if forecast_temps.len() < 24 {
         log::warn!(
-            "Only {} hours of forecast available (requested 12). Using available data for average.",
+            "Only {} hours of forecast available (requested 24). Using available data for average.",
             forecast_temps.len()
         );
     }
@@ -122,18 +122,19 @@ pub async fn get_avg_next_12h_outdoor_temp(latitude: f64, longitude: f64) -> Res
     Ok(sum / forecast_temps.len() as f64)
 }
 
-/// Compute temperature trend: returns the difference between average next 12h temp and current temp
+/// Compute temperature trend: returns the difference between average next 24h temp and current temp
 /// Positive value means it's getting warmer, negative means it's getting colder
 pub async fn compute_temperature_trend(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
     let current_temp = get_current_outdoor_temp(latitude, longitude).await?;
-    let avg_next_12h = get_avg_next_12h_outdoor_temp(latitude, longitude).await?;
-    Ok(avg_next_12h - current_temp)
+    let avg_next_24h = get_avg_next_24h_outdoor_temp(latitude, longitude).await?;
+    Ok(avg_next_24h - current_temp)
 }
 
 // Cache for weather data (14 minute TTL to avoid excessive API calls)
 // 14 minutes ensures we don't query more than once per loop cycle (5 minute intervals)
 static WEATHER_TEMP_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
 static WEATHER_TREND_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
+static WEATHER_AVG_24H_CACHE: OnceLock<DataCache<f64>> = OnceLock::new();
 
 fn get_weather_temp_cache() -> &'static DataCache<f64> {
     WEATHER_TEMP_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
@@ -141,6 +142,10 @@ fn get_weather_temp_cache() -> &'static DataCache<f64> {
 
 fn get_weather_trend_cache() -> &'static DataCache<f64> {
     WEATHER_TREND_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
+}
+
+fn get_weather_avg_24h_cache() -> &'static DataCache<f64> {
+    WEATHER_AVG_24H_CACHE.get_or_init(|| DataCache::new(840)) // 14 minutes
 }
 
 /// Get current outdoor temperature with caching (14 minute TTL)
@@ -164,6 +169,18 @@ pub async fn compute_temperature_trend_cached(latitude: f64, longitude: f64) -> 
     
     cache.get_or_fetch_with_stale_fallback(&cache_key, || async {
         compute_temperature_trend(latitude, longitude).await
+    }).await
+}
+
+/// Get average outdoor temperature for next 24 hours with caching (14 minute TTL)
+/// Recommended for dashboard use to reduce API calls
+/// Falls back to stale cache if API request fails
+pub async fn get_avg_next_24h_outdoor_temp_cached(latitude: f64, longitude: f64) -> Result<f64, WeatherError> {
+    let cache = get_weather_avg_24h_cache();
+    let cache_key = format!("avg24h_{}_{}", latitude, longitude);
+    
+    cache.get_or_fetch_with_stale_fallback(&cache_key, || async {
+        get_avg_next_24h_outdoor_temp(latitude, longitude).await
     }).await
 }
 
@@ -247,40 +264,40 @@ mod tests {
     }
 
     #[test]
-    fn test_next_12_hours_extraction() {
-        // Test that we correctly extract next 12 hours from hourly data
+    fn test_next_24_hours_extraction() {
+        // Test that we correctly extract next 24 hours from hourly data
         let temps: Vec<f64> = (0..48).map(|i| i as f64).collect();
         let current_hour_idx = 10;
         
-        // Extract next 12 hours after current hour
+        // Extract next 24 hours after current hour
         let forecast: Vec<f64> = temps.iter()
             .skip(current_hour_idx + 1)
-            .take(12)
+            .take(24)
             .copied()
             .collect();
         
-        assert_eq!(forecast.len(), 12);
+        assert_eq!(forecast.len(), 24);
         assert_eq!(forecast[0], 11.0); // First value should be hour 11
-        assert_eq!(forecast[11], 22.0); // Last value should be hour 22
+        assert_eq!(forecast[23], 34.0); // Last value should be hour 34
     }
 
     #[test]
-    fn test_next_12_hours_with_limited_data() {
-        // Test that we handle cases where less than 12 hours are available
-        let temps: Vec<f64> = (0..20).map(|i| i as f64).collect();
+    fn test_next_24_hours_with_limited_data() {
+        // Test that we handle cases where less than 24 hours are available
+        let temps: Vec<f64> = (0..30).map(|i| i as f64).collect();
         let current_hour_idx = 15;
         
-        // Extract next hours (should get less than 12)
+        // Extract next hours (should get less than 24)
         let forecast: Vec<f64> = temps.iter()
             .skip(current_hour_idx + 1)
-            .take(12)
+            .take(24)
             .copied()
             .collect();
         
-        // Should get only 4 hours (16, 17, 18, 19)
-        assert_eq!(forecast.len(), 4);
+        // Should get only 14 hours (16, 17, ..., 29)
+        assert_eq!(forecast.len(), 14);
         assert_eq!(forecast[0], 16.0);
-        assert_eq!(forecast[3], 19.0);
+        assert_eq!(forecast[13], 29.0);
     }
 
     // Note: Integration tests with actual API calls are not included here
