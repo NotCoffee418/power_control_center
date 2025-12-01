@@ -1668,7 +1668,7 @@
   }
 
   .search-input {
-    width: calc(100% - 2rem);
+    width: calc(100% - 3rem);
     margin: 0.5rem 1rem;
     padding: 0.5rem;
     border: 1px solid #404040;
