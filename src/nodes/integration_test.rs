@@ -306,6 +306,7 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
         
+        // 7 inputs: exec_in + temperature, mode, fan_speed, is_powerful, enable_swing, cause_reason
         assert_eq!(execute_node.inputs.len(), 7, "Execute Action node should have 7 inputs (exec_in + 6 data inputs)");
         assert_eq!(execute_node.outputs.len(), 0, "Execute Action node should have no outputs (terminal)");
         assert_eq!(execute_node.category, "System");
