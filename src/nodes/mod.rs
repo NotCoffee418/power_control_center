@@ -3,6 +3,7 @@ mod logical_nodes;
 mod primitive_nodes;
 mod enum_nodes;
 mod sensor_nodes;
+mod math_nodes;
 pub mod flow_nodes;
 pub mod execution;
 #[cfg(test)]
@@ -15,6 +16,7 @@ pub use enum_nodes::{DeviceNode, IntensityNode, CauseReasonNode, RequestModeNode
 pub use sensor_nodes::PirDetectionNode;
 pub use flow_nodes::{StartNode, ExecuteActionNode, DoNothingNode, TurnOffNode, ActiveCommandNode, ResetActiveCommandNode};
 pub use execution::{NodesetExecutor, ExecutionInputs, ExecutionResult, ActionResult, DoNothingResult, RuntimeValue, ActiveCommandData, validate_nodeset_for_execution};
+pub use math_nodes::{AddNode, SubtractNode, MultiplyNode, DivideNode};
 
 /// Get all available node definitions for the frontend
 pub fn get_all_node_definitions() -> Vec<NodeDefinition> {
@@ -38,6 +40,11 @@ pub fn get_all_node_definitions() -> Vec<NodeDefinition> {
         EvaluateNumberNode::definition(),
         BranchNode::definition(),
         SequenceNode::definition(),
+        // Math nodes
+        AddNode::definition(),
+        SubtractNode::definition(),
+        MultiplyNode::definition(),
+        DivideNode::definition(),
         // Primitive nodes
         FloatNode::definition(),
         IntegerNode::definition(),

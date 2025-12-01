@@ -34,6 +34,10 @@ pub const NODE_TYPE_LOGIC_EQUALS: &str = "logic_equals";
 pub const NODE_TYPE_LOGIC_EVALUATE_NUMBER: &str = "logic_evaluate_number";
 pub const NODE_TYPE_LOGIC_BRANCH: &str = "logic_branch";
 pub const NODE_TYPE_LOGIC_SEQUENCE: &str = "logic_sequence";
+pub const NODE_TYPE_MATH_ADD: &str = "math_add";
+pub const NODE_TYPE_MATH_SUBTRACT: &str = "math_subtract";
+pub const NODE_TYPE_MATH_MULTIPLY: &str = "math_multiply";
+pub const NODE_TYPE_MATH_DIVIDE: &str = "math_divide";
 pub const NODE_TYPE_PRIMITIVE_FLOAT: &str = "primitive_float";
 pub const NODE_TYPE_PRIMITIVE_INTEGER: &str = "primitive_integer";
 pub const NODE_TYPE_PRIMITIVE_BOOLEAN: &str = "primitive_boolean";
@@ -983,6 +987,22 @@ impl NodesetExecutor {
                 self.evaluate_active_command(&node.id, output_id)
             }
             
+            NODE_TYPE_MATH_ADD => {
+                self.evaluate_math_add(&node.id)
+            }
+            
+            NODE_TYPE_MATH_SUBTRACT => {
+                self.evaluate_math_subtract(&node.id)
+            }
+            
+            NODE_TYPE_MATH_MULTIPLY => {
+                self.evaluate_math_multiply(&node.id)
+            }
+            
+            NODE_TYPE_MATH_DIVIDE => {
+                self.evaluate_math_divide(&node.id)
+            }
+            
             _ => Err(ExecutionError::InvalidNode {
                 node_id: node.id.clone(),
                 reason: format!("Unknown node type: {}", node.node_type),
@@ -1133,6 +1153,94 @@ impl NodesetExecutor {
                 node_id: node_id.to_string(),
                 reason: format!("Unknown output: {}", output_id),
             }),
+        }
+    }
+    
+    /// Evaluate Add node - adds two numeric values
+    /// If both inputs are integers, returns an integer. Otherwise returns a float.
+    fn evaluate_math_add(&mut self, node_id: &str) -> Result<RuntimeValue, ExecutionError> {
+        let a = self.get_input_value(node_id, "input_a")?;
+        let b = self.get_input_value(node_id, "input_b")?;
+        
+        match (&a, &b) {
+            (RuntimeValue::Integer(av), RuntimeValue::Integer(bv)) => {
+                Ok(RuntimeValue::Integer(av + bv))
+            }
+            _ => {
+                let a_num = a.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+                    expected: "Numeric".to_string(),
+                    got: a.type_name().to_string(),
+                })?;
+                let b_num = b.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+                    expected: "Numeric".to_string(),
+                    got: b.type_name().to_string(),
+                })?;
+                Ok(RuntimeValue::Float(a_num + b_num))
+            }
+        }
+    }
+    
+    /// Evaluate Subtract node - subtracts second value from first
+    /// If both inputs are integers, returns an integer. Otherwise returns a float.
+    fn evaluate_math_subtract(&mut self, node_id: &str) -> Result<RuntimeValue, ExecutionError> {
+        let a = self.get_input_value(node_id, "input_a")?;
+        let b = self.get_input_value(node_id, "input_b")?;
+        
+        match (&a, &b) {
+            (RuntimeValue::Integer(av), RuntimeValue::Integer(bv)) => {
+                Ok(RuntimeValue::Integer(av - bv))
+            }
+            _ => {
+                let a_num = a.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+                    expected: "Numeric".to_string(),
+                    got: a.type_name().to_string(),
+                })?;
+                let b_num = b.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+                    expected: "Numeric".to_string(),
+                    got: b.type_name().to_string(),
+                })?;
+                Ok(RuntimeValue::Float(a_num - b_num))
+            }
+        }
+    }
+    
+    /// Evaluate Multiply node - multiplies two float values
+    fn evaluate_math_multiply(&mut self, node_id: &str) -> Result<RuntimeValue, ExecutionError> {
+        let a = self.get_input_value(node_id, "input_a")?;
+        let b = self.get_input_value(node_id, "input_b")?;
+        
+        let a_num = a.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+            expected: "Float".to_string(),
+            got: a.type_name().to_string(),
+        })?;
+        let b_num = b.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+            expected: "Float".to_string(),
+            got: b.type_name().to_string(),
+        })?;
+        
+        Ok(RuntimeValue::Float(a_num * b_num))
+    }
+    
+    /// Evaluate Divide node - divides first value by second
+    /// Returns 0.0 if dividing by zero to avoid panics.
+    fn evaluate_math_divide(&mut self, node_id: &str) -> Result<RuntimeValue, ExecutionError> {
+        let a = self.get_input_value(node_id, "input_a")?;
+        let b = self.get_input_value(node_id, "input_b")?;
+        
+        let a_num = a.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+            expected: "Float".to_string(),
+            got: a.type_name().to_string(),
+        })?;
+        let b_num = b.as_f64().ok_or_else(|| ExecutionError::TypeMismatch {
+            expected: "Float".to_string(),
+            got: b.type_name().to_string(),
+        })?;
+        
+        // Handle division by zero by returning 0.0
+        if b_num.abs() < FLOAT_TOLERANCE {
+            Ok(RuntimeValue::Float(0.0))
+        } else {
+            Ok(RuntimeValue::Float(a_num / b_num))
         }
     }
 }
@@ -2107,5 +2215,496 @@ mod tests {
         assert!(result.error.is_some());
         let error_msg = result.error.unwrap();
         assert!(error_msg.contains("cause_reason"), "Error should mention missing cause_reason input, got: {}", error_msg);
+    }
+
+    fn create_math_node(id: &str, node_type: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "type": "custom",
+            "position": { "x": 200, "y": 0 },
+            "data": {
+                "definition": {
+                    "node_type": node_type,
+                    "name": node_type,
+                    "category": "Logic"
+                }
+            }
+        })
+    }
+
+    fn create_integer_node(id: &str, value: i64) -> serde_json::Value {
+        json!({
+            "id": id,
+            "type": "custom",
+            "position": { "x": 100, "y": 0 },
+            "data": {
+                "primitiveValue": value,
+                "definition": {
+                    "node_type": "primitive_integer",
+                    "name": "Integer",
+                    "description": "Integer value",
+                    "category": "Primitives",
+                    "inputs": [],
+                    "outputs": [{ "id": "value", "label": "Value" }]
+                }
+            }
+        })
+    }
+
+    // =========================================================================
+    // Math Node Tests
+    // =========================================================================
+
+    #[test]
+    fn test_add_node_with_integers() {
+        // Test: 5 + 3 = 8 (Integer + Integer = Integer)
+        let nodes = vec![
+            create_start_node(),
+            create_integer_node("int-1", 5),
+            create_integer_node("int-2", 3),
+            create_math_node("add-1", "math_add"),
+            create_float_node("base-temp", 20.0),
+            create_enum_node("mode-1", "request_mode", "Heat"),
+            create_enum_node("fan-speed-1", "fan_speed", "Auto"),
+            create_boolean_node("powerful-1", false),
+            create_enum_node("cause-1", "cause_reason", "1"),
+            create_execute_action_node(),
+        ];
+        
+        let edges = vec![
+            // Execution flow
+            create_edge("start-1", "exec_out", "execute-1", "exec_in"),
+            // Add node inputs
+            create_edge("int-1", "value", "add-1", "input_a"),
+            create_edge("int-2", "value", "add-1", "input_b"),
+            // Use base-temp for temperature (can't use add result directly since it's Integer)
+            create_edge("base-temp", "value", "execute-1", "temperature"),
+            create_edge("mode-1", "value", "execute-1", "mode"),
+            create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
+            create_edge("powerful-1", "value", "execute-1", "is_powerful"),
+            create_edge("cause-1", "value", "execute-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        // Test the Add node output directly
+        let add_result = executor.evaluate_output("add-1", "result").unwrap();
+        assert_eq!(add_result, RuntimeValue::Integer(8), "5 + 3 should equal 8");
+    }
+
+    #[test]
+    fn test_add_node_with_floats() {
+        // Test: 2.5 + 3.5 = 6.0 (Float + Float = Float)
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 2.5),
+            create_float_node("float-2", 3.5),
+            create_math_node("add-1", "math_add"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("float-1", "value", "add-1", "input_a"),
+            create_edge("float-2", "value", "add-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let add_result = executor.evaluate_output("add-1", "result").unwrap();
+        match add_result {
+            RuntimeValue::Float(v) => assert!((v - 6.0).abs() < f64::EPSILON, "2.5 + 3.5 should equal 6.0"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_add_node_with_mixed_types() {
+        // Test: 5 (int) + 2.5 (float) = 7.5 (Float)
+        let nodes = vec![
+            create_start_node(),
+            create_integer_node("int-1", 5),
+            create_float_node("float-1", 2.5),
+            create_math_node("add-1", "math_add"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("int-1", "value", "add-1", "input_a"),
+            create_edge("float-1", "value", "add-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let add_result = executor.evaluate_output("add-1", "result").unwrap();
+        match add_result {
+            RuntimeValue::Float(v) => assert!((v - 7.5).abs() < f64::EPSILON, "5 + 2.5 should equal 7.5"),
+            _ => panic!("Expected Float result for mixed type addition"),
+        }
+    }
+
+    #[test]
+    fn test_subtract_node_with_integers() {
+        // Test: 10 - 3 = 7 (Integer - Integer = Integer)
+        let nodes = vec![
+            create_start_node(),
+            create_integer_node("int-1", 10),
+            create_integer_node("int-2", 3),
+            create_math_node("sub-1", "math_subtract"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("int-1", "value", "sub-1", "input_a"),
+            create_edge("int-2", "value", "sub-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let sub_result = executor.evaluate_output("sub-1", "result").unwrap();
+        assert_eq!(sub_result, RuntimeValue::Integer(7), "10 - 3 should equal 7");
+    }
+
+    #[test]
+    fn test_subtract_node_with_floats() {
+        // Test: 10.5 - 3.5 = 7.0
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 10.5),
+            create_float_node("float-2", 3.5),
+            create_math_node("sub-1", "math_subtract"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("float-1", "value", "sub-1", "input_a"),
+            create_edge("float-2", "value", "sub-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let sub_result = executor.evaluate_output("sub-1", "result").unwrap();
+        match sub_result {
+            RuntimeValue::Float(v) => assert!((v - 7.0).abs() < f64::EPSILON, "10.5 - 3.5 should equal 7.0"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_subtract_node_negative_result() {
+        // Test: 3 - 10 = -7 (Integer)
+        let nodes = vec![
+            create_start_node(),
+            create_integer_node("int-1", 3),
+            create_integer_node("int-2", 10),
+            create_math_node("sub-1", "math_subtract"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("int-1", "value", "sub-1", "input_a"),
+            create_edge("int-2", "value", "sub-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let sub_result = executor.evaluate_output("sub-1", "result").unwrap();
+        assert_eq!(sub_result, RuntimeValue::Integer(-7), "3 - 10 should equal -7");
+    }
+
+    #[test]
+    fn test_multiply_node() {
+        // Test: 4.0 * 2.5 = 10.0
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 4.0),
+            create_float_node("float-2", 2.5),
+            create_math_node("mul-1", "math_multiply"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("float-1", "value", "mul-1", "input_a"),
+            create_edge("float-2", "value", "mul-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let mul_result = executor.evaluate_output("mul-1", "result").unwrap();
+        match mul_result {
+            RuntimeValue::Float(v) => assert!((v - 10.0).abs() < f64::EPSILON, "4.0 * 2.5 should equal 10.0"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_multiply_node_with_zero() {
+        // Test: 5.0 * 0.0 = 0.0
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 5.0),
+            create_float_node("float-2", 0.0),
+            create_math_node("mul-1", "math_multiply"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("float-1", "value", "mul-1", "input_a"),
+            create_edge("float-2", "value", "mul-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let mul_result = executor.evaluate_output("mul-1", "result").unwrap();
+        match mul_result {
+            RuntimeValue::Float(v) => assert!(v.abs() < f64::EPSILON, "5.0 * 0.0 should equal 0.0"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_divide_node() {
+        // Test: 10.0 / 2.0 = 5.0
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 10.0),
+            create_float_node("float-2", 2.0),
+            create_math_node("div-1", "math_divide"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("float-1", "value", "div-1", "input_a"),
+            create_edge("float-2", "value", "div-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let div_result = executor.evaluate_output("div-1", "result").unwrap();
+        match div_result {
+            RuntimeValue::Float(v) => assert!((v - 5.0).abs() < f64::EPSILON, "10.0 / 2.0 should equal 5.0"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_divide_node_by_zero() {
+        // Test: 10.0 / 0.0 = 0.0 (handled by returning 0 instead of panic)
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 10.0),
+            create_float_node("float-2", 0.0),
+            create_math_node("div-1", "math_divide"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("float-1", "value", "div-1", "input_a"),
+            create_edge("float-2", "value", "div-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let div_result = executor.evaluate_output("div-1", "result").unwrap();
+        match div_result {
+            RuntimeValue::Float(v) => assert!(v.abs() < f64::EPSILON, "Division by zero should return 0.0"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_divide_node_fractional_result() {
+        // Test: 7.0 / 2.0 = 3.5
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 7.0),
+            create_float_node("float-2", 2.0),
+            create_math_node("div-1", "math_divide"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            create_edge("float-1", "value", "div-1", "input_a"),
+            create_edge("float-2", "value", "div-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let div_result = executor.evaluate_output("div-1", "result").unwrap();
+        match div_result {
+            RuntimeValue::Float(v) => assert!((v - 3.5).abs() < f64::EPSILON, "7.0 / 2.0 should equal 3.5"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_chained_math_operations() {
+        // Test: (5 + 3) * 2.0 = 16.0 (chain add and multiply)
+        // However, since multiply only accepts Float, we need to use the result from add node
+        // Add two floats first, then multiply
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("float-1", 5.0),
+            create_float_node("float-2", 3.0),
+            create_math_node("add-1", "math_add"),
+            create_float_node("float-3", 2.0),
+            create_math_node("mul-1", "math_multiply"),
+            create_do_nothing_node(),
+            create_enum_node("cause-1", "cause_reason", "1"),
+        ];
+        
+        let edges = vec![
+            create_edge("start-1", "exec_out", "do-nothing-1", "exec_in"),
+            // Add 5 + 3
+            create_edge("float-1", "value", "add-1", "input_a"),
+            create_edge("float-2", "value", "add-1", "input_b"),
+            // Multiply result * 2
+            create_edge("add-1", "result", "mul-1", "input_a"),
+            create_edge("float-3", "value", "mul-1", "input_b"),
+            create_edge("cause-1", "value", "do-nothing-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        
+        let mul_result = executor.evaluate_output("mul-1", "result").unwrap();
+        match mul_result {
+            RuntimeValue::Float(v) => assert!((v - 16.0).abs() < f64::EPSILON, "(5 + 3) * 2 should equal 16.0"),
+            _ => panic!("Expected Float result"),
+        }
+    }
+
+    #[test]
+    fn test_math_with_execute_action() {
+        // Test using math result as temperature for Execute Action
+        // Add 20.0 + 2.0 = 22.0 for temperature
+        let nodes = vec![
+            create_start_node(),
+            create_float_node("base-temp", 20.0),
+            create_float_node("offset", 2.0),
+            create_math_node("add-1", "math_add"),
+            create_enum_node("mode-1", "request_mode", "Heat"),
+            create_enum_node("fan-speed-1", "fan_speed", "Auto"),
+            create_boolean_node("powerful-1", false),
+            create_enum_node("cause-1", "cause_reason", "1"),
+            create_execute_action_node(),
+        ];
+        
+        let edges = vec![
+            // Execution flow
+            create_edge("start-1", "exec_out", "execute-1", "exec_in"),
+            // Add for temperature
+            create_edge("base-temp", "value", "add-1", "input_a"),
+            create_edge("offset", "value", "add-1", "input_b"),
+            // Execute Action inputs
+            create_edge("add-1", "result", "execute-1", "temperature"),
+            create_edge("mode-1", "value", "execute-1", "mode"),
+            create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
+            create_edge("powerful-1", "value", "execute-1", "is_powerful"),
+            create_edge("cause-1", "value", "execute-1", "cause_reason"),
+        ];
+        
+        let inputs = ExecutionInputs {
+            device: "LivingRoom".to_string(),
+            ..Default::default()
+        };
+        
+        let mut executor = NodesetExecutor::new(&nodes, &edges, inputs).unwrap();
+        let result = executor.execute();
+        
+        assert!(result.completed);
+        assert_eq!(result.terminal_type, Some("Execute Action".to_string()));
+        assert!(result.action.is_some());
+        
+        let action = result.action.unwrap();
+        assert!((action.temperature - 22.0).abs() < f64::EPSILON, "Temperature should be 20 + 2 = 22");
     }
 }
