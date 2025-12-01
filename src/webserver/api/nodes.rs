@@ -155,8 +155,18 @@ async fn get_enriched_node_definitions() -> Vec<nodes::NodeDefinition> {
 /// 
 /// Returns tuple of (updated_nodes, removed_node_ids)
 async fn update_node_definitions(nodes: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, Vec<String>) {
-    // Build a map of current node definitions by node_type (enriched with cause reasons)
-    let current_definitions: HashMap<String, serde_json::Value> = get_enriched_node_definitions().await
+    let definitions = get_enriched_node_definitions().await;
+    update_node_definitions_with_defs(nodes, definitions)
+}
+
+/// Core implementation of update_node_definitions that takes definitions as a parameter.
+/// This allows testing without database access.
+fn update_node_definitions_with_defs(
+    nodes: Vec<serde_json::Value>,
+    definitions: Vec<nodes::NodeDefinition>,
+) -> (Vec<serde_json::Value>, Vec<String>) {
+    // Build a map of current node definitions by node_type
+    let current_definitions: HashMap<String, serde_json::Value> = definitions
         .into_iter()
         .filter_map(|def| {
             serde_json::to_value(&def)
@@ -1024,14 +1034,15 @@ mod tests {
         })
     }
 
-    #[tokio::test]
-    async fn test_update_node_definitions_updates_outdated_nodes() {
+    #[test]
+    fn test_update_node_definitions_updates_outdated_nodes() {
         // Create a node with an outdated definition
         let outdated_node = create_outdated_node("logic_and");
         let nodes = vec![outdated_node];
         
-        // Update the definitions
-        let (updated_nodes, removed_ids) = update_node_definitions(nodes).await;
+        // Update the definitions using the sync version with plain definitions (no database needed)
+        let definitions = nodes::get_all_node_definitions();
+        let (updated_nodes, removed_ids) = update_node_definitions_with_defs(nodes, definitions);
         
         // Should have one node with no removals
         assert_eq!(updated_nodes.len(), 1);
@@ -1054,8 +1065,8 @@ mod tests {
         assert_eq!(outputs.len(), 1, "AND node should have 1 output");
     }
 
-    #[tokio::test]
-    async fn test_update_node_definitions_preserves_user_data() {
+    #[test]
+    fn test_update_node_definitions_preserves_user_data() {
         // Create a node with user-specific data
         let node = json!({
             "id": "primitive_integer-123",
@@ -1078,7 +1089,8 @@ mod tests {
         });
         let nodes = vec![node];
         
-        let (updated_nodes, removed_ids) = update_node_definitions(nodes).await;
+        let definitions = nodes::get_all_node_definitions();
+        let (updated_nodes, removed_ids) = update_node_definitions_with_defs(nodes, definitions);
         
         assert_eq!(updated_nodes.len(), 1);
         assert!(removed_ids.is_empty());
@@ -1096,8 +1108,8 @@ mod tests {
         assert_eq!(position.get("y").and_then(|y| y.as_f64()), Some(75.0));
     }
 
-    #[tokio::test]
-    async fn test_update_node_definitions_removes_unknown_nodes() {
+    #[test]
+    fn test_update_node_definitions_removes_unknown_nodes() {
         // Create a node with an unknown type
         let unknown_node = json!({
             "id": "unknown_type-1",
@@ -1120,7 +1132,8 @@ mod tests {
         let valid_node = create_node("logic_and");
         let nodes = vec![unknown_node, valid_node];
         
-        let (updated_nodes, removed_ids) = update_node_definitions(nodes).await;
+        let definitions = nodes::get_all_node_definitions();
+        let (updated_nodes, removed_ids) = update_node_definitions_with_defs(nodes, definitions);
         
         // Only valid node should remain
         assert_eq!(updated_nodes.len(), 1);
@@ -1136,10 +1149,11 @@ mod tests {
         assert_eq!(node_type, Some("logic_and"));
     }
 
-    #[tokio::test]
-    async fn test_update_node_definitions_handles_empty_list() {
+    #[test]
+    fn test_update_node_definitions_handles_empty_list() {
         let nodes: Vec<serde_json::Value> = vec![];
-        let (updated_nodes, removed_ids) = update_node_definitions(nodes).await;
+        let definitions = nodes::get_all_node_definitions();
+        let (updated_nodes, removed_ids) = update_node_definitions_with_defs(nodes, definitions);
         
         assert!(updated_nodes.is_empty());
         assert!(removed_ids.is_empty());
@@ -1205,8 +1219,8 @@ mod tests {
         assert_eq!(filtered_edges.len(), 2);
     }
 
-    #[tokio::test]
-    async fn test_update_preserves_enum_value() {
+    #[test]
+    fn test_update_preserves_enum_value() {
         // Create a cause_reason node with a specific enum value
         let node = json!({
             "id": "cause_reason-1",
@@ -1228,7 +1242,8 @@ mod tests {
         });
         let nodes = vec![node];
         
-        let (updated_nodes, removed_ids) = update_node_definitions(nodes).await;
+        let definitions = nodes::get_all_node_definitions();
+        let (updated_nodes, removed_ids) = update_node_definitions_with_defs(nodes, definitions);
         
         assert_eq!(updated_nodes.len(), 1);
         assert!(removed_ids.is_empty());
@@ -1243,8 +1258,8 @@ mod tests {
         assert_eq!(definition.get("name").and_then(|n| n.as_str()), Some("Cause Reason"));
     }
 
-    #[tokio::test]
-    async fn test_update_preserves_dynamic_inputs() {
+    #[test]
+    fn test_update_preserves_dynamic_inputs() {
         // Create an AND node with dynamically added inputs
         let node = json!({
             "id": "logic_and-1",
@@ -1274,7 +1289,8 @@ mod tests {
         });
         let nodes = vec![node];
         
-        let (updated_nodes, removed_ids) = update_node_definitions(nodes).await;
+        let definitions = nodes::get_all_node_definitions();
+        let (updated_nodes, removed_ids) = update_node_definitions_with_defs(nodes, definitions);
         
         assert_eq!(updated_nodes.len(), 1);
         assert!(removed_ids.is_empty());
