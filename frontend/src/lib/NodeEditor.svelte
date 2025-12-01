@@ -1048,8 +1048,7 @@
         return allowedTypes.includes(sourceType);
       }
       
-      // No constraint - accept anything (except Execution which is handled above)
-      // CauseReason can flow through Any-typed pins
+      // No constraint - accept anything (Execution is handled above, CauseReason can flow through)
       return true;
     }
 
