@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, setContext } from 'svelte';
   import { 
     SvelteFlow, 
     Controls, 
@@ -42,6 +42,14 @@
   
   // Simulator drawer state
   let simulatorOpen = $state(false);
+  // Error node IDs from simulator - nodes with these IDs will have red glow
+  let errorNodeIds = $state([]);
+  
+  // Set up context for error node IDs so CustomNode components can access them
+  // Using a getter function so the context always provides the current value
+  setContext('errorNodeIds', {
+    getErrorNodeIds: () => errorNodeIds
+  });
   
   // Constants for node spawn positioning
   const NODE_WIDTH = 220; // Approximate width of a node
@@ -242,8 +250,18 @@
         activeNodesetId = result.data.id;
         activeNodesetName = result.data.name;
         
-        // Reset unsaved changes after loading
-        hasUnsavedChanges = false;
+        // Clean up any orphan/corrupted edges
+        const removedEdges = cleanupOrphanEdges();
+        
+        // If edges were cleaned up, mark as having unsaved changes and notify user
+        if (removedEdges > 0) {
+          hasUnsavedChanges = true;
+          saveStatus = `⚠ Cleaned up ${removedEdges} corrupted edge(s). Save to fix permanently.`;
+          setTimeout(() => saveStatus = '', 5000);
+        } else {
+          // Reset unsaved changes after loading
+          hasUnsavedChanges = false;
+        }
       }
     } catch (e) {
       console.error('Error loading active nodeset:', e);
@@ -266,8 +284,18 @@
         nodes = result.data.nodes || [];
         edges = result.data.edges || [];
         
-        // Reset unsaved changes after loading
-        hasUnsavedChanges = false;
+        // Clean up any orphan/corrupted edges
+        const removedEdges = cleanupOrphanEdges();
+        
+        // If edges were cleaned up, mark as having unsaved changes and notify user
+        if (removedEdges > 0) {
+          hasUnsavedChanges = true;
+          saveStatus = `⚠ Cleaned up ${removedEdges} corrupted edge(s). Save to fix permanently.`;
+          setTimeout(() => saveStatus = '', 5000);
+        } else {
+          // Reset unsaved changes after loading
+          hasUnsavedChanges = false;
+        }
         return true;
       } else {
         console.error('Failed to load nodeset:', result.error);
@@ -282,6 +310,100 @@
   // Create initial nodes (empty canvas by default)
   function createInitialNodes() {
     nodes = [];
+  }
+
+  /**
+   * Clean up orphan/corrupted edges from the current edges array.
+   * Removes edges that:
+   * - Reference non-existent source or target nodes
+   * - Have source/target handles that don't exist on their nodes
+   * - Connect incompatible pin types (execution to value)
+   * 
+   * Returns the number of edges that were removed.
+   */
+  function cleanupOrphanEdges() {
+    if (!edges || edges.length === 0) return 0;
+    
+    // Build a map of node IDs to their data for quick lookup
+    const nodeMap = new Map();
+    for (const node of nodes) {
+      if (node.id) {
+        nodeMap.set(node.id, node);
+      }
+    }
+    
+    const validEdges = [];
+    let removedCount = 0;
+    
+    for (const edge of edges) {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+      
+      // Check if both source and target nodes exist
+      if (!sourceNode || !targetNode) {
+        console.warn(`Removing orphan edge: ${edge.id} - missing node(s)`);
+        removedCount++;
+        continue;
+      }
+      
+      // Get the node definitions
+      const sourceDefinition = sourceNode.data?.definition;
+      const targetDefinition = targetNode.data?.definition;
+      
+      if (!sourceDefinition || !targetDefinition) {
+        console.warn(`Removing edge ${edge.id} - missing definition(s)`);
+        removedCount++;
+        continue;
+      }
+      
+      // Check if source handle exists on the source node
+      const sourceOutputs = sourceDefinition.outputs || [];
+      const dynamicOutputs = sourceNode.data?.dynamicOutputs || [];
+      const allSourceOutputs = [...sourceOutputs, ...dynamicOutputs];
+      const sourceHandle = edge.sourceHandle;
+      const sourceOutput = allSourceOutputs.find(o => o.id === sourceHandle);
+      
+      if (sourceHandle && !sourceOutput) {
+        console.warn(`Removing edge ${edge.id} - invalid source handle '${sourceHandle}' on node '${sourceDefinition.name}'`);
+        removedCount++;
+        continue;
+      }
+      
+      // Check if target handle exists on the target node
+      const targetInputs = targetDefinition.inputs || [];
+      const dynamicInputs = targetNode.data?.dynamicInputs || [];
+      const allTargetInputs = [...targetInputs, ...dynamicInputs];
+      const targetHandle = edge.targetHandle;
+      const targetInput = allTargetInputs.find(i => i.id === targetHandle);
+      
+      if (targetHandle && !targetInput) {
+        console.warn(`Removing edge ${edge.id} - invalid target handle '${targetHandle}' on node '${targetDefinition.name}'`);
+        removedCount++;
+        continue;
+      }
+      
+      // Check for type mismatch between execution and value pins
+      if (sourceOutput && targetInput) {
+        const isSourceExecution = sourceOutput.value_type?.type === 'Execution';
+        const isTargetExecution = targetInput.value_type?.type === 'Execution';
+        
+        if (isSourceExecution !== isTargetExecution) {
+          console.warn(`Removing edge ${edge.id} - type mismatch (execution: ${isSourceExecution} vs ${isTargetExecution})`);
+          removedCount++;
+          continue;
+        }
+      }
+      
+      // Edge is valid, keep it
+      validEdges.push(edge);
+    }
+    
+    if (removedCount > 0) {
+      edges = validEdges;
+      console.log(`Cleaned up ${removedCount} orphan/corrupted edge(s)`);
+    }
+    
+    return removedCount;
   }
 
   // Create a node from a definition
@@ -1491,6 +1613,7 @@
     currentNodesetId={currentNodesetId}
     nodes={nodes}
     edges={edges}
+    bind:errorNodeIds={errorNodeIds}
   />
 </div>
 

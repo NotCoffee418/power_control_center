@@ -1,8 +1,13 @@
 <script>
   import { Handle, Position } from '@xyflow/svelte';
+  import { getContext } from 'svelte';
 
   // Props passed by SvelteFlow
   let { data, id, selected } = $props();
+  
+  // Get the error node IDs context from NodeEditor
+  // This allows us to highlight nodes that have errors
+  const errorContext = getContext('errorNodeIds');
 
   // Derive values from data - these need to be reactive to data.definition changes
   // Use $derived for values that should update when data.definition changes
@@ -10,6 +15,12 @@
   const outputs = $derived(definition?.outputs || []);
   const color = $derived(definition?.color || '#757575');
   const isDefault = $derived(data?.isDefault || false);
+  
+  // Check if this node has an error (is in the errorNodeIds list)
+  // Uses a derived value that calls the getter function from context
+  const hasError = $derived(
+    errorContext?.getErrorNodeIds?.()?.includes(id) ?? false
+  );
   
   // Get node type safely - also derived
   const nodeType = $derived(definition?.node_type || '');
@@ -234,6 +245,7 @@
   class="custom-node"
   class:selected={selected}
   class:default-node={isDefault}
+  class:has-error={hasError}
   style="background: {color};"
 >
   <div class="node-header">
@@ -446,6 +458,21 @@
 
   .custom-node.default-node {
     border-style: dashed;
+  }
+
+  .custom-node.has-error {
+    border-color: #FF4444;
+    box-shadow: 0 0 15px rgba(255, 68, 68, 0.6), 0 0 30px rgba(255, 68, 68, 0.4);
+    animation: error-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes error-pulse {
+    0%, 100% {
+      box-shadow: 0 0 15px rgba(255, 68, 68, 0.6), 0 0 30px rgba(255, 68, 68, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 25px rgba(255, 68, 68, 0.8), 0 0 50px rgba(255, 68, 68, 0.5);
+    }
   }
 
   .node-header {
