@@ -43,18 +43,24 @@ pub async fn get_by_id(id: i32) -> Result<Option<CauseReasonRecord>, sqlx::Error
     .await
 }
 
-/// Create a new cause reason (ID is auto-generated, new reasons are always editable)
+/// Minimum ID for user-created cause reasons (system IDs are 0-99)
+const MIN_USER_CAUSE_REASON_ID: i32 = 100;
+
+/// Create a new cause reason (ID is auto-generated starting at 100, new reasons are always editable)
 pub async fn create(label: &str, description: &str) -> Result<CauseReasonRecord, sqlx::Error> {
     let pool = get_pool().await;
     
-    // Get the next available ID
+    // Get the next available ID (minimum 100 to avoid system ID range)
     let (max_id,): (Option<i32>,) = sqlx::query_as(
         "SELECT MAX(id) FROM cause_reasons"
     )
     .fetch_one(pool)
     .await?;
     
-    let new_id = max_id.unwrap_or(0) + 1;
+    let new_id = std::cmp::max(
+        max_id.unwrap_or(0) + 1,
+        MIN_USER_CAUSE_REASON_ID
+    );
     
     sqlx::query(
         "INSERT INTO cause_reasons (id, label, description, is_hidden, is_editable) VALUES (?, ?, ?, 0, 1)"

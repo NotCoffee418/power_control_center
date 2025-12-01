@@ -23,6 +23,9 @@ async fn main() {
         } else {
             debug!("Database migrations OK.");
         }
+
+        // Initialize defaults for empty tables (cause_reasons, nodesets)
+        db::defaults::initialize_defaults(pool).await;
     }
 
     // Start AC controller

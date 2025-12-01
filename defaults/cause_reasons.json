@@ -1,0 +1,86 @@
+[
+    {
+        "id": 0,
+        "label": "Undefined",
+        "description": "No specific reason recorded",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 1,
+        "label": "Ice Exception",
+        "description": "AC is OFF because outdoor temperature is below 2°C. When running in cold conditions, the AC unit would go through a defrost cycle that pulls warm air out of the room, making heating inefficient. We rely solely on central heating instead. This exception is bypassed if indoor temperature drops below 12°C or if solar production is above 1000W.",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 2,
+        "label": "PIR Detection",
+        "description": "AC is OFF due to motion detection. The PIR (Passive Infrared) sensor detected movement near the AC unit, and the system automatically turns off the AC to avoid blowing air directly at people, which can be uncomfortable.",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 3,
+        "label": "Stable temperature",
+        "description": "Operating at low intensity because nobody is home. The system maintains basic temperature control while minimizing energy usage when the space is unoccupied.",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 4,
+        "label": "Comfort Temperature",
+        "description": "Operating at medium intensity because user is home or we have medium excess solar power.",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 5,
+        "label": "Temperature Reached",
+        "description": "Target temperature with threshold has been reached, turning device off.",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 6,
+        "label": "Excessive Solar Power",
+        "description": "Operating at high intensity (Powerful mode) to utilize excess solar power production. This aggressive climate control has minimal environmental and cost impact when solar production is high.",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 7,
+        "label": "Abnormal indoor temperature",
+        "description": "Outdoor temperature is mild but indoor temperature is out of comfort. House is on fire or a new ice age has taken over in the span of a few minutes.",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 8,
+        "label": "Synchronize State",
+        "description": "On startup, we may assign an initial Turn Off signal to ensure the actual device status is what the application assumes it is",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 9,
+        "label": "In Manual Mode",
+        "description": "Provide cause for Do Nothing for simulator when in manual mode",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 10,
+        "label": "Fresh State",
+        "description": "Application just started or device came out of manual mode",
+        "is_hidden": false,
+        "is_editable": false
+    },
+    {
+        "id": 11,
+        "label": "Weather is Room Temperature",
+        "description": "Room temperature is acceptable for the current temperature outside.",
+        "is_hidden": false,
+        "is_editable": false
+    }
+]
