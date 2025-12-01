@@ -800,6 +800,10 @@
                       <span class="result-value">{simulationResult.ac_state.fan_speed === 0 ? 'Auto' : simulationResult.ac_state.fan_speed}</span>
                     </div>
                     <div class="result-row">
+                      <span class="result-label">Swing:</span>
+                      <span class="result-value">{simulationResult.ac_state.swing === 1 ? 'On' : 'Off'}</span>
+                    </div>
+                    <div class="result-row">
                       <span class="result-label">Powerful:</span>
                       <span class="result-value">{simulationResult.ac_state.powerful_mode ? 'Yes' : 'No'}</span>
                     </div>

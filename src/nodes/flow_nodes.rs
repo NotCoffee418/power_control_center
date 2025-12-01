@@ -171,6 +171,13 @@ impl Node for ExecuteActionNode {
                     true,
                 ),
                 NodeInput::new(
+                    "enable_swing",
+                    "Enable Swing",
+                    "Whether to enable swing mode for oscillating air distribution",
+                    ValueType::Boolean,
+                    true,
+                ),
+                NodeInput::new(
                     "cause_reason",
                     "Cause Reason",
                     "The reason for this action (for logging and debugging). Connect from a Cause Reason node.",
@@ -451,7 +458,7 @@ mod tests {
         assert_eq!(def.node_type, "flow_execute_action");
         assert_eq!(def.name, "Execute Action");
         assert_eq!(def.category, "System");
-        assert_eq!(def.inputs.len(), 6); // exec_in, temperature, mode, fan_speed, is_powerful, cause_reason (device is inferred from context)
+        assert_eq!(def.inputs.len(), 7); // exec_in, temperature, mode, fan_speed, is_powerful, enable_swing, cause_reason (device is inferred from context)
         assert_eq!(def.outputs.len(), 0); // Terminal node has no outputs
         
         // Verify exec_in input (execution flow)
@@ -496,6 +503,11 @@ mod tests {
         let powerful_input = def.inputs.iter().find(|i| i.id == "is_powerful").unwrap();
         assert_eq!(powerful_input.value_type, ValueType::Boolean);
         assert!(powerful_input.required);
+        
+        // Verify enable_swing input
+        let swing_input = def.inputs.iter().find(|i| i.id == "enable_swing").unwrap();
+        assert_eq!(swing_input.value_type, ValueType::Boolean);
+        assert!(swing_input.required);
         
         // Verify cause_reason input (CauseReason type with empty options - populated from database at runtime)
         let cause_input = def.inputs.iter().find(|i| i.id == "cause_reason").unwrap();

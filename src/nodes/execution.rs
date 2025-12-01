@@ -196,6 +196,7 @@ pub struct ActionResult {
     pub mode: String,
     pub fan_speed: String,
     pub is_powerful: bool,
+    pub enable_swing: bool,
     pub cause_reason: String,
 }
 
@@ -706,6 +707,12 @@ impl NodesetExecutor {
                 expected: "Boolean".to_string(),
                 got: "non-boolean".to_string(),
             })?;
+        let enable_swing = self.get_input_value(node_id, "enable_swing")?
+            .as_bool()
+            .ok_or_else(|| ExecutionError::TypeMismatch {
+                expected: "Boolean".to_string(),
+                got: "non-boolean".to_string(),
+            })?;
         let cause_reason = self.get_input_value(node_id, "cause_reason")?
             .as_string();
         
@@ -715,6 +722,7 @@ impl NodesetExecutor {
             mode,
             fan_speed,
             is_powerful,
+            enable_swing,
             cause_reason,
         })
     }
@@ -740,6 +748,7 @@ impl NodesetExecutor {
     /// - Mode: Off
     /// - Fan Speed: Auto
     /// - Is Powerful: false
+    /// - Enable Swing: false
     /// Device is inferred from the execution context (Start node)
     fn evaluate_turn_off_node(&mut self, node_id: &str) -> Result<ActionResult, ExecutionError> {
         // Device is inferred from execution context, not from node input
@@ -753,6 +762,7 @@ impl NodesetExecutor {
             mode: "Off".to_string(),
             fan_speed: "Auto".to_string(),
             is_powerful: false,
+            enable_swing: false,
             cause_reason,
         })
     }
@@ -1375,6 +1385,7 @@ mod tests {
                         { "id": "mode", "label": "Mode" },
                         { "id": "fan_speed", "label": "Fan Speed" },
                         { "id": "is_powerful", "label": "Is Powerful" },
+                        { "id": "enable_swing", "label": "Enable Swing" },
                         { "id": "cause_reason", "label": "Cause Reason" }
                     ],
                     "outputs": []
@@ -1523,6 +1534,7 @@ mod tests {
             create_start_node(),
             create_float_node("float-1", 22.0),
             create_boolean_node("bool-1", false),
+            create_boolean_node("bool-2", true), // enable_swing
             create_enum_node("mode-1", "request_mode", "Heat"),
             create_enum_node("fan-speed-1", "fan_speed", "Auto"),
             create_enum_node("cause-1", "cause_reason", "1"),
@@ -1537,6 +1549,7 @@ mod tests {
             create_edge("mode-1", "value", "execute-1", "mode"),
             create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
             create_edge("bool-1", "value", "execute-1", "is_powerful"),
+            create_edge("bool-2", "value", "execute-1", "enable_swing"),
             create_edge("cause-1", "value", "execute-1", "cause_reason"),
         ];
         
@@ -1559,6 +1572,7 @@ mod tests {
         assert_eq!(action.mode, "Heat");
         assert_eq!(action.fan_speed, "Auto");
         assert!(!action.is_powerful);
+        assert!(action.enable_swing);
     }
 
     #[test]
@@ -1707,6 +1721,7 @@ mod tests {
             create_enum_node("fan-speed-1", "fan_speed", "Medium"),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_boolean_node("powerful", false),
+            create_boolean_node("swing", true),
             create_execute_action_node(),
         ];
         
@@ -1722,6 +1737,7 @@ mod tests {
             create_edge("mode-1", "value", "execute-1", "mode"),
             create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
             create_edge("powerful", "value", "execute-1", "is_powerful"),
+            create_edge("swing", "value", "execute-1", "enable_swing"),
             create_edge("cause-1", "value", "execute-1", "cause_reason"),
         ];
         
@@ -1762,6 +1778,7 @@ mod tests {
             create_enum_node("fan-speed-1", "fan_speed", "High"),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_boolean_node("powerful", false),
+            create_boolean_node("swing", false),
             create_execute_action_node(),
         ];
         
@@ -1777,6 +1794,7 @@ mod tests {
             create_edge("mode-1", "value", "execute-1", "mode"),
             create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
             create_edge("powerful", "value", "execute-1", "is_powerful"),
+            create_edge("swing", "value", "execute-1", "enable_swing"),
             create_edge("cause-1", "value", "execute-1", "cause_reason"),
         ];
         
@@ -2674,6 +2692,7 @@ mod tests {
             create_enum_node("mode-1", "request_mode", "Heat"),
             create_enum_node("fan-speed-1", "fan_speed", "Auto"),
             create_boolean_node("powerful-1", false),
+            create_boolean_node("swing-1", true),
             create_enum_node("cause-1", "cause_reason", "1"),
             create_execute_action_node(),
         ];
@@ -2689,6 +2708,7 @@ mod tests {
             create_edge("mode-1", "value", "execute-1", "mode"),
             create_edge("fan-speed-1", "value", "execute-1", "fan_speed"),
             create_edge("powerful-1", "value", "execute-1", "is_powerful"),
+            create_edge("swing-1", "value", "execute-1", "enable_swing"),
             create_edge("cause-1", "value", "execute-1", "cause_reason"),
         ];
         

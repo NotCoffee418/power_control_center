@@ -748,6 +748,9 @@ async fn get_cause_reason_label(cause_id: &str) -> String {
 
 /// Convert an ActionResult to an AcState for state comparison
 fn action_to_ac_state(action: &crate::nodes::ActionResult) -> AcState {
+    // Convert enable_swing boolean to swing integer (0 = off, 1 = on)
+    let swing = if action.enable_swing { 1 } else { 0 };
+    
     match action.mode.as_str() {
         "Off" => AcState::new_off(),
         "Heat" => {
@@ -759,8 +762,7 @@ fn action_to_ac_state(action: &crate::nodes::ActionResult) -> AcState {
                 "Quiet" => 4,
                 _ => 0,
             };
-            // Swing off (0) for heating - matches node_executor.rs behavior
-            AcState::new_on(AC_MODE_HEAT, fan_speed, action.temperature, 0, action.is_powerful)
+            AcState::new_on(AC_MODE_HEAT, fan_speed, action.temperature, swing, action.is_powerful)
         }
         "Cool" => {
             let fan_speed = match action.fan_speed.as_str() {
@@ -771,8 +773,7 @@ fn action_to_ac_state(action: &crate::nodes::ActionResult) -> AcState {
                 "Quiet" => 4,
                 _ => 0,
             };
-            // Swing on (1) for cooling - matches node_executor.rs behavior
-            AcState::new_on(AC_MODE_COOL, fan_speed, action.temperature, 1, action.is_powerful)
+            AcState::new_on(AC_MODE_COOL, fan_speed, action.temperature, swing, action.is_powerful)
         }
         _ => AcState::new_off(),
     }
@@ -814,12 +815,15 @@ fn action_to_simulator_state(action: &crate::nodes::ActionResult) -> SimulatorAc
         _ => 0, // Default to Auto if unknown
     };
     
+    // Convert enable_swing boolean to swing integer (0 = off, 1 = on)
+    let swing = if action.enable_swing { 1 } else { 0 };
+    
     SimulatorAcState {
         is_on,
         mode: mode_str,
         fan_speed: Some(fan_speed),
         temperature: Some(action.temperature),
-        swing: Some(0), // Swing off
+        swing: Some(swing),
         powerful_mode: action.is_powerful,
     }
 }
