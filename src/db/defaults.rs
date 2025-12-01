@@ -15,6 +15,9 @@ struct DefaultsAssets;
 /// System cause_reason IDs are reserved (0-99). User-created reasons start at 100.
 const SYSTEM_CAUSE_REASON_MAX_ID: i32 = 99;
 
+/// The default nodeset ID (system-managed profile)
+const DEFAULT_NODESET_ID: i64 = 0;
+
 /// Initialize database defaults on startup
 ///
 /// This function updates system cause_reasons and the default nodeset
@@ -80,7 +83,8 @@ async fn update_default_nodeset(pool: &SqlitePool) -> Result<(), Box<dyn std::er
 
     // Check if the default nodeset exists and has user modifications
     let result: Option<(String,)> =
-        sqlx::query_as("SELECT node_json FROM nodesets WHERE id = 0")
+        sqlx::query_as("SELECT node_json FROM nodesets WHERE id = ?")
+            .bind(DEFAULT_NODESET_ID)
             .fetch_optional(pool)
             .await?;
 
@@ -111,7 +115,8 @@ async fn update_default_nodeset(pool: &SqlitePool) -> Result<(), Box<dyn std::er
     }
 
     // Update or insert the default nodeset
-    sqlx::query("INSERT OR REPLACE INTO nodesets (id, name, node_json) VALUES (0, 'Default', ?)")
+    sqlx::query("INSERT OR REPLACE INTO nodesets (id, name, node_json) VALUES (?, 'Default', ?)")
+        .bind(DEFAULT_NODESET_ID)
         .bind(json_str)
         .execute(pool)
         .await?;
