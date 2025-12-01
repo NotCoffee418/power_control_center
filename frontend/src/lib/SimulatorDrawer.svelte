@@ -10,7 +10,7 @@
   let { isOpen = $bindable(true), currentNodesetId = $bindable(null), nodes = $bindable([]), edges = $bindable([]), errorNodeIds = $bindable([]) } = $props();
 
   // State
-  let drawerHeight = $state(300);
+  let drawerHeight = $state(350);
   let isResizing = $state(false);
   let loading = $state(false);
   let evaluating = $state(false);
@@ -29,7 +29,7 @@
   let netPowerWattStr = $state('0');
 
   // Active Command state
-  let activeCommandIsDefined = $state(false);
+  let activeCommandIsDefined = $state(true);
   let activeCommandIsOn = $state(false);
   let activeCommandTemperatureStr = $state('22.0');
   let activeCommandMode = $state('Cool'); // 'Heat', 'Cool', or 'Off'

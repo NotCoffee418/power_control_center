@@ -5,6 +5,7 @@
   // Constants for time conversions
   const SECONDS_TO_MILLISECONDS = 1000;
   const SECONDS_PER_MINUTE = 60;
+  const LOADING_TIMEOUT_MS = 10000; // 10 seconds timeout before showing error
 
   let dashboardData = $state(null);
   let recentCommands = $state([]);
@@ -13,6 +14,7 @@
   let error = $state(null);
   let lastUpdate = $state(null);
   let refreshInterval = null;
+  let loadingTimeoutId = null;
 
   async function fetchDashboardData() {
     try {
@@ -23,6 +25,11 @@
         dashboardData = result.data;
         error = null;
         lastUpdate = new Date();
+        // Clear the timeout since we got data successfully
+        if (loadingTimeoutId) {
+          clearTimeout(loadingTimeoutId);
+          loadingTimeoutId = null;
+        }
       } else {
         error = result.error || 'Failed to fetch dashboard data';
       }
@@ -54,6 +61,13 @@
   onMount(() => {
     fetchDashboardData();
     fetchRecentCommands();
+    // Set timeout to show error if loading takes too long
+    loadingTimeoutId = setTimeout(() => {
+      if (loading && !dashboardData && !error) {
+        error = 'Connection timed out. Please check your network.';
+        loading = false;
+      }
+    }, LOADING_TIMEOUT_MS);
     // Refresh every 10 seconds
     refreshInterval = setInterval(() => {
       fetchDashboardData();
@@ -64,6 +78,9 @@
   onDestroy(() => {
     if (refreshInterval) {
       clearInterval(refreshInterval);
+    }
+    if (loadingTimeoutId) {
+      clearTimeout(loadingTimeoutId);
     }
   });
 
@@ -163,8 +180,11 @@
 <div class="dashboard">
   <header>
     <div class="header-content">
-      <h1>Power Control Center</h1>
-      <a href="/nodes" class="nav-link">🔧 Node Editor (Prototype)</a>
+      <div class="title-row">
+        <img src="/icon.png" alt="" role="presentation" class="site-icon" onerror={(e) => e.target.style.display='none'} />
+        <h1>Power Control Center</h1>
+      </div>
+      <a href="/nodes" class="nav-link">Open Node Editor</a>
     </div>
     {#if lastUpdate}
       <p class="last-update">Last updated: {lastUpdate.toLocaleTimeString()}</p>
@@ -172,7 +192,10 @@
   </header>
 
   {#if loading}
-    <div class="loading">Loading dashboard data...</div>
+    <div class="loading">
+      <div class="loading-spinner"></div>
+      <p>Loading dashboard data...</p>
+    </div>
   {:else if error}
     <div class="error">{error}</div>
   {:else if dashboardData}
@@ -351,32 +374,44 @@
 
   .header-content {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 2rem;
-    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .site-icon {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: 8px;
   }
 
   h1 {
     margin: 0;
     font-size: 2.5rem;
-    color: #646cff;
+    color: #e0e0e0;
   }
 
   .nav-link {
     display: inline-block;
     padding: 0.5rem 1rem;
-    background: rgba(100, 108, 255, 0.1);
-    border: 1px solid rgba(100, 108, 255, 0.3);
+    background: #757575;
+    border: 1px solid #757575;
     border-radius: 8px;
-    color: #646cff;
+    color: white;
     text-decoration: none;
     font-weight: 500;
     transition: all 0.3s ease;
   }
 
   .nav-link:hover {
-    background: rgba(100, 108, 255, 0.2);
+    background: #888;
     transform: translateY(-2px);
   }
 
@@ -390,6 +425,28 @@
     text-align: center;
     padding: 2rem;
     font-size: 1.2rem;
+  }
+
+  .loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(160, 160, 160, 0.2);
+    border-top-color: #a0a0a0;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .error {
@@ -412,7 +469,7 @@
   .section h2 {
     margin: 0 0 1rem 0;
     font-size: 1.5rem;
-    color: #646cff;
+    color: #a0a0a0;
   }
 
   .environmental-power .data-grid {
@@ -467,8 +524,8 @@
   }
 
   .data-item.user-home.away {
-    background: rgba(100, 108, 255, 0.1);
-    border: 1px solid rgba(100, 108, 255, 0.3);
+    background: rgba(160, 160, 160, 0.1);
+    border: 1px solid rgba(160, 160, 160, 0.3);
   }
 
   .device-cards {
@@ -486,8 +543,8 @@
   }
 
   .device-card.active {
-    border-color: #646cff;
-    box-shadow: 0 0 20px rgba(100, 108, 255, 0.2);
+    border-color: #a0a0a0;
+    box-shadow: 0 0 20px rgba(160, 160, 160, 0.2);
   }
 
   .device-header {
@@ -571,7 +628,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.75rem;
-    background: rgba(100, 108, 255, 0.1);
+    background: rgba(160, 160, 160, 0.1);
     border-radius: 8px;
     margin-top: 0.75rem;
   }
@@ -584,7 +641,7 @@
   .temp-value {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #646cff;
+    color: #a0a0a0;
   }
 
   /* PIR Detection Styles */
@@ -685,7 +742,7 @@
 
   .device-name {
     font-weight: 600;
-    color: #646cff;
+    color: #a0a0a0;
   }
 
   .action-cell {
