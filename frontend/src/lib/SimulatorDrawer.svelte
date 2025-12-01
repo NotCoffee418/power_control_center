@@ -6,7 +6,8 @@
   const NEW_NODESET_ID = -1;
 
   // Props
-  let { isOpen = $bindable(true), currentNodesetId = $bindable(null), nodes = $bindable([]), edges = $bindable([]) } = $props();
+  // errorNodeIds: Array of node IDs that have errors - used to highlight nodes with red glow
+  let { isOpen = $bindable(true), currentNodesetId = $bindable(null), nodes = $bindable([]), edges = $bindable([]), errorNodeIds = $bindable([]) } = $props();
 
   // State
   let drawerHeight = $state(300);
@@ -186,6 +187,42 @@
     }
   }
 
+  /**
+   * Extract node IDs from an error message.
+   * Looks for patterns like:
+   * - "on node 'logic_if-f5a02bde-2a4b-4e80-856f-87a169de4d75'"
+   * - "Node 'some-node-id'"
+   * - "node 'some-node-id'"
+   * Returns an array of unique node IDs found in the message.
+   */
+  function extractNodeIdsFromError(errorMessage) {
+    if (!errorMessage) return [];
+    
+    const nodeIds = [];
+    
+    // Match patterns like: on node 'node-id', Node 'node-id', node 'node-id'
+    // Also matches node IDs that contain UUIDs with dashes
+    const patterns = [
+      /on node '([^']+)'/gi,
+      /\bNode '([^']+)'/gi,
+      /\bnode '([^']+)'/gi,
+      // Match node IDs directly when they appear after "from" (e.g., "Execution flow from 'node-id'")
+      /from '([^']+)'/gi,
+    ];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(errorMessage)) !== null) {
+        const nodeId = match[1];
+        if (nodeId && !nodeIds.includes(nodeId)) {
+          nodeIds.push(nodeId);
+        }
+      }
+    }
+    
+    return nodeIds;
+  }
+
   // Evaluate the workflow with current inputs
   async function evaluate() {
     // Validate all inputs before evaluating
@@ -197,6 +234,8 @@
     evaluating = true;
     errorMessage = '';
     simulationResult = null;
+    // Clear error node highlighting when starting a new evaluation
+    errorNodeIds = [];
     
     try {
       // Build the request payload
@@ -245,9 +284,13 @@
         simulationResult = result.data;
         if (!result.data.success) {
           errorMessage = result.data.error || 'Simulation failed';
+          // Extract and highlight affected nodes from the error message
+          errorNodeIds = extractNodeIdsFromError(result.data.error);
         }
       } else {
         errorMessage = result.error || 'Failed to evaluate workflow';
+        // Extract and highlight affected nodes from the error message
+        errorNodeIds = extractNodeIdsFromError(result.error);
       }
     } catch (e) {
       console.error('Error evaluating workflow:', e);

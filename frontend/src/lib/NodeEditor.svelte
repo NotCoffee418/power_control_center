@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, setContext } from 'svelte';
   import { 
     SvelteFlow, 
     Controls, 
@@ -42,6 +42,14 @@
   
   // Simulator drawer state
   let simulatorOpen = $state(false);
+  // Error node IDs from simulator - nodes with these IDs will have red glow
+  let errorNodeIds = $state([]);
+  
+  // Set up context for error node IDs so CustomNode components can access them
+  // Using a getter function so the context always provides the current value
+  setContext('errorNodeIds', {
+    getErrorNodeIds: () => errorNodeIds
+  });
   
   // Constants for node spawn positioning
   const NODE_WIDTH = 220; // Approximate width of a node
@@ -1491,6 +1499,7 @@
     currentNodesetId={currentNodesetId}
     nodes={nodes}
     edges={edges}
+    bind:errorNodeIds={errorNodeIds}
   />
 </div>
 
