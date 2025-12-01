@@ -1001,14 +1001,13 @@
       return sourceType === 'Execution' && targetType === 'Execution';
     }
 
-    // CauseReason type must match exactly when both sides are concrete types
-    // However, CauseReason can flow through Any-typed pins (like Branch node)
-    // This check is only for direct CauseReason-to-CauseReason connections
-    // Any-type handling below will check constraints appropriately
+    // CauseReason to CauseReason connections are always allowed
+    // CauseReason can also flow through Any-typed pins (like Branch node)
+    // which is handled below in the Any type section
     if (sourceType === 'CauseReason' && targetType === 'CauseReason') {
       return true;
     }
-    // If target is CauseReason but source is not (and not Any), reject
+    // Reject connections to CauseReason targets from non-CauseReason, non-Any sources
     if (targetType === 'CauseReason' && sourceType !== 'Any') {
       return false;
     }
