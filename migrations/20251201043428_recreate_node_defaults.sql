@@ -1,9 +1,4 @@
--- This migration was replaced with runtime initialization.
--- 
--- Default cause_reasons and nodeset data are now loaded from embedded JSON files
--- at application startup via db::defaults::initialize_defaults().
---
--- This approach avoids issues with large SQL migrations on slow devices
--- and SQLite statement parsing with embedded semicolons in JSON data.
---
--- See: defaults/cause_reasons.json and defaults/default_nodeset.json
+-- Clear system cause_reasons to allow fresh initialization from code
+-- System cause_reasons (IDs 0-99) are managed by db::defaults module
+-- User-created cause_reasons start at ID 100 (enforced in code)
+DELETE FROM cause_reasons WHERE id < 100;
