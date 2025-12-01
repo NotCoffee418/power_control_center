@@ -1444,7 +1444,7 @@
 <div class="node-editor-container">
   <div class="toolbar">
     <div class="toolbar-header">
-      <h1>🔧 Node-Based AC Logic Editor</h1>
+      <h1><img src="/icon.png" alt="" class="title-icon" /> Node-Based AC Logic Editor</h1>
       <div class="profile-info">
         <span class="profile-label">Active Profile:</span>
         <span class="profile-name">{activeNodesetId === NEW_NODESET_ID ? 'None' : `${activeNodesetId} - ${activeNodesetName}`}</span>
@@ -1481,7 +1481,7 @@
         <button onclick={deleteNodeset} class="btn btn-delete" disabled={currentNodesetId < 1}>
           🗑️ Delete
         </button>
-        <a href="/" class="btn btn-back" onclick={handleBackClick}>← Back</a>
+        <a href="/" class="btn btn-back" onclick={handleBackClick}>Return to Dashboard →</a>
       </div>
     </div>
     {#if saveStatus}
@@ -1647,6 +1647,15 @@
     margin: 0;
     font-size: 1.3rem;
     color: #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .title-icon {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
   }
 
   .profile-info {
