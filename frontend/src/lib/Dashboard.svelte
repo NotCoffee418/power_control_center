@@ -184,7 +184,7 @@
         <img src="/icon.png" alt="" role="presentation" class="site-icon" onerror={(e) => e.target.style.display='none'} />
         <h1>Power Control Center</h1>
       </div>
-      <a href="/nodes" class="nav-link">Node Editor</a>
+      <a href="/nodes" class="nav-link">Open Node Editor</a>
     </div>
     {#if lastUpdate}
       <p class="last-update">Last updated: {lastUpdate.toLocaleTimeString()}</p>
@@ -389,6 +389,7 @@
     width: 48px;
     height: 48px;
     object-fit: contain;
+    border-radius: 8px;
   }
 
   h1 {
@@ -400,17 +401,17 @@
   .nav-link {
     display: inline-block;
     padding: 0.5rem 1rem;
-    background: rgba(160, 160, 160, 0.1);
-    border: 1px solid rgba(160, 160, 160, 0.3);
+    background: #757575;
+    border: 1px solid #757575;
     border-radius: 8px;
-    color: #a0a0a0;
+    color: white;
     text-decoration: none;
     font-weight: 500;
     transition: all 0.3s ease;
   }
 
   .nav-link:hover {
-    background: rgba(160, 160, 160, 0.2);
+    background: #888;
     transform: translateY(-2px);
   }
 

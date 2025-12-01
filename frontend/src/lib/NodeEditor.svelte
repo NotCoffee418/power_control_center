@@ -1656,6 +1656,7 @@
     width: 28px;
     height: 28px;
     object-fit: contain;
+    border-radius: 6px;
   }
 
   .profile-info {
