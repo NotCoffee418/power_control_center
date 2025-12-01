@@ -393,6 +393,9 @@ async fn execute_action_result(device: &AcDevices, action: &ActionResult) -> Nod
 
 /// Convert an ActionResult to an AcState
 fn action_to_ac_state(action: &ActionResult) -> AcState {
+    // Convert enable_swing boolean to swing integer (0 = off, 1 = on)
+    let swing = if action.enable_swing { 1 } else { 0 };
+    
     match action.mode.as_str() {
         "Off" => AcState::new_off(),
         "Heat" => {
@@ -401,7 +404,7 @@ fn action_to_ac_state(action: &ActionResult) -> AcState {
                 AC_MODE_HEAT,
                 fan_speed,
                 action.temperature,
-                0, // swing off for heating
+                swing,
                 action.is_powerful,
             )
         }
@@ -411,7 +414,7 @@ fn action_to_ac_state(action: &ActionResult) -> AcState {
                 AC_MODE_COOL,
                 fan_speed,
                 action.temperature,
-                1, // swing on for cooling
+                swing,
                 action.is_powerful,
             )
         }
@@ -698,6 +701,7 @@ mod tests {
             mode: "Off".to_string(),
             fan_speed: "Auto".to_string(),
             is_powerful: false,
+            enable_swing: false,
             cause_reason: "0".to_string(),
         };
         
@@ -714,6 +718,7 @@ mod tests {
             mode: "Heat".to_string(),
             fan_speed: "Auto".to_string(),
             is_powerful: false,
+            enable_swing: false,
             cause_reason: "0".to_string(),
         };
         
@@ -722,7 +727,7 @@ mod tests {
         assert_eq!(state.mode, Some(AC_MODE_HEAT));
         assert_eq!(state.temperature, Some(24.0));
         assert_eq!(state.fan_speed, Some(0)); // Auto
-        assert_eq!(state.swing, Some(0)); // Off for heating
+        assert_eq!(state.swing, Some(0)); // Off because enable_swing is false
         assert!(!state.powerful_mode);
     }
 
@@ -734,6 +739,7 @@ mod tests {
             mode: "Cool".to_string(),
             fan_speed: "High".to_string(),
             is_powerful: true,
+            enable_swing: true,
             cause_reason: "0".to_string(),
         };
         
@@ -742,8 +748,42 @@ mod tests {
         assert_eq!(state.mode, Some(AC_MODE_COOL));
         assert_eq!(state.temperature, Some(20.0));
         assert_eq!(state.fan_speed, Some(1)); // High
-        assert_eq!(state.swing, Some(1)); // On for cooling
+        assert_eq!(state.swing, Some(1)); // On because enable_swing is true
         assert!(state.powerful_mode);
+    }
+
+    #[test]
+    fn test_action_to_ac_state_swing_enabled() {
+        // Test that enable_swing=true results in swing=1
+        let action = ActionResult {
+            device: "TestDevice".to_string(),
+            temperature: 22.0,
+            mode: "Heat".to_string(),
+            fan_speed: "Auto".to_string(),
+            is_powerful: false,
+            enable_swing: true,
+            cause_reason: "0".to_string(),
+        };
+        
+        let state = action_to_ac_state(&action);
+        assert_eq!(state.swing, Some(1)); // On because enable_swing is true
+    }
+
+    #[test]
+    fn test_action_to_ac_state_swing_disabled() {
+        // Test that enable_swing=false results in swing=0
+        let action = ActionResult {
+            device: "TestDevice".to_string(),
+            temperature: 22.0,
+            mode: "Cool".to_string(),
+            fan_speed: "Auto".to_string(),
+            is_powerful: false,
+            enable_swing: false,
+            cause_reason: "0".to_string(),
+        };
+        
+        let state = action_to_ac_state(&action);
+        assert_eq!(state.swing, Some(0)); // Off because enable_swing is false
     }
 
     #[test]
@@ -771,6 +811,7 @@ mod tests {
                 mode: "Cool".to_string(),
                 fan_speed: speed_str.to_string(),
                 is_powerful: false,
+                enable_swing: false,
                 cause_reason: "0".to_string(),
             };
             

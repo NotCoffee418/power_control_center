@@ -8,20 +8,21 @@ mod integration_tests {
     fn test_get_all_node_definitions() {
         let definitions = nodes::get_all_node_definitions();
         
-        // Verify we have 27 node definitions:
-        // System: 5 (flow_start, flow_execute_action, flow_do_nothing, flow_active_command, flow_reset_active_command)
+        // Verify we have 28 node definitions:
+        // System: 6 (flow_start, flow_execute_action, flow_do_nothing, flow_turn_off, flow_active_command, flow_reset_active_command)
         // Sensors: 1 (pir_detection)
         // Logic: 9 (and, or, nand, if, not, equals, evaluate_number, branch, sequence)
         // Math: 4 (add, subtract, multiply, divide)
         // Primitives: 3 (float, integer, boolean)
         // Enums: 5 (device, intensity, cause_reason, request_mode, fan_speed)
-        assert_eq!(definitions.len(), 27);
+        assert_eq!(definitions.len(), 28);
         
         // Verify system node types
         let node_types: Vec<&str> = definitions.iter().map(|d| d.node_type.as_str()).collect();
         assert!(node_types.contains(&"flow_start"));
         assert!(node_types.contains(&"flow_execute_action"));
         assert!(node_types.contains(&"flow_do_nothing"));
+        assert!(node_types.contains(&"flow_turn_off"));
         assert!(node_types.contains(&"flow_active_command"));
         assert!(node_types.contains(&"flow_reset_active_command"));
         
@@ -80,7 +81,7 @@ mod integration_tests {
         // Verify categories are assigned appropriately
         for def in &definitions {
             match def.node_type.as_str() {
-                "flow_start" | "flow_execute_action" | "flow_do_nothing" | "flow_active_command" | "flow_reset_active_command" => {
+                "flow_start" | "flow_execute_action" | "flow_do_nothing" | "flow_turn_off" | "flow_active_command" | "flow_reset_active_command" => {
                     assert_eq!(def.category, "System", "System nodes should be in 'System' category");
                 }
                 "pir_detection" => {
@@ -305,7 +306,8 @@ mod integration_tests {
         let definitions = nodes::get_all_node_definitions();
         let execute_node = definitions.iter().find(|d| d.node_type == "flow_execute_action").unwrap();
         
-        assert_eq!(execute_node.inputs.len(), 6, "Execute Action node should have 6 inputs (exec_in + 5 data inputs)");
+        // 7 inputs: exec_in + temperature, mode, fan_speed, is_powerful, enable_swing, cause_reason
+        assert_eq!(execute_node.inputs.len(), 7, "Execute Action node should have 7 inputs (exec_in + 6 data inputs)");
         assert_eq!(execute_node.outputs.len(), 0, "Execute Action node should have no outputs (terminal)");
         assert_eq!(execute_node.category, "System");
         
@@ -321,6 +323,7 @@ mod integration_tests {
         assert!(input_ids.contains(&"mode"));
         assert!(input_ids.contains(&"fan_speed"));
         assert!(input_ids.contains(&"is_powerful"));
+        assert!(input_ids.contains(&"enable_swing"));
         assert!(input_ids.contains(&"cause_reason"));
         
         // Verify no device input (device is inferred from context)
