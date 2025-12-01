@@ -1001,10 +1001,16 @@
       return sourceType === 'Execution' && targetType === 'Execution';
     }
 
-    // CauseReason type must match exactly - can only connect CauseReason to CauseReason
-    // This avoids the need for enum value matching since CauseReason is its own distinct type
-    if (sourceType === 'CauseReason' || targetType === 'CauseReason') {
-      return sourceType === 'CauseReason' && targetType === 'CauseReason';
+    // CauseReason type must match exactly when both sides are concrete types
+    // However, CauseReason can flow through Any-typed pins (like Branch node)
+    // This check is only for direct CauseReason-to-CauseReason connections
+    // Any-type handling below will check constraints appropriately
+    if (sourceType === 'CauseReason' && targetType === 'CauseReason') {
+      return true;
+    }
+    // If target is CauseReason but source is not (and not Any), reject
+    if (targetType === 'CauseReason' && sourceType !== 'Any') {
+      return false;
     }
 
     // Handle "Any" target type with potential constraints
@@ -1042,7 +1048,8 @@
         return allowedTypes.includes(sourceType);
       }
       
-      // No constraint - accept anything (except Execution and CauseReason which are handled above)
+      // No constraint - accept anything (except Execution which is handled above)
+      // CauseReason can flow through Any-typed pins
       return true;
     }
 
@@ -1055,7 +1062,11 @@
         }
         return sourceConstrainedType.type === targetType;
       }
-      // No constraint on source - it can connect to anything
+      // No constraint on source - it can connect to anything except CauseReason
+      // CauseReason requires explicit type matching
+      if (targetType === 'CauseReason') {
+        return false;
+      }
       return true;
     }
 
