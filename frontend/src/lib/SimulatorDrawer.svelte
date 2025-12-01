@@ -223,6 +223,111 @@
     return nodeIds;
   }
 
+  /**
+   * Validate edges for corruption issues.
+   * Checks for:
+   * - Edges referencing non-existent nodes
+   * - Edges with source/target handles that don't exist on their nodes
+   * - Type mismatches (execution pins connected to value pins)
+   * 
+   * Returns an object with:
+   * - isValid: boolean
+   * - errors: array of error message strings
+   * - affectedNodeIds: array of node IDs that have issues
+   */
+  function validateEdges() {
+    const errors = [];
+    const affectedNodeIds = [];
+    
+    // Build a map of node IDs to their definitions for quick lookup
+    const nodeMap = new Map();
+    for (const node of nodes) {
+      if (node.id) {
+        nodeMap.set(node.id, node);
+      }
+    }
+    
+    for (const edge of edges) {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+      
+      // Check if source node exists
+      if (!sourceNode) {
+        errors.push(`Edge references non-existent source node: ${edge.source}`);
+        continue;
+      }
+      
+      // Check if target node exists
+      if (!targetNode) {
+        errors.push(`Edge references non-existent target node: ${edge.target}`);
+        if (!affectedNodeIds.includes(edge.source)) {
+          affectedNodeIds.push(edge.source);
+        }
+        continue;
+      }
+      
+      // Get the definition outputs and inputs
+      const definition = sourceNode.data?.definition;
+      const targetDefinition = targetNode.data?.definition;
+      
+      if (!definition || !targetDefinition) {
+        continue; // Skip validation if definitions are missing
+      }
+      
+      // Check if source handle exists
+      const sourceOutputs = definition.outputs || [];
+      const sourceHandle = edge.sourceHandle;
+      const sourceOutput = sourceOutputs.find(o => o.id === sourceHandle);
+      
+      if (sourceHandle && !sourceOutput) {
+        errors.push(`Edge from '${definition.name}' has invalid source handle '${sourceHandle}'`);
+        if (!affectedNodeIds.includes(edge.source)) {
+          affectedNodeIds.push(edge.source);
+        }
+        continue;
+      }
+      
+      // Check if target handle exists (including dynamic inputs for logic nodes)
+      const targetInputs = targetDefinition.inputs || [];
+      const dynamicInputs = targetNode.data?.dynamicInputs || [];
+      const allTargetInputs = [...targetInputs, ...dynamicInputs];
+      const targetHandle = edge.targetHandle;
+      const targetInput = allTargetInputs.find(i => i.id === targetHandle);
+      
+      if (targetHandle && !targetInput) {
+        errors.push(`Edge to '${targetDefinition.name}' has invalid target handle '${targetHandle}'`);
+        if (!affectedNodeIds.includes(edge.target)) {
+          affectedNodeIds.push(edge.target);
+        }
+        continue;
+      }
+      
+      // Check for type mismatch between execution and value pins
+      if (sourceOutput && targetInput) {
+        const isSourceExecution = sourceOutput.value_type?.type === 'Execution';
+        const isTargetExecution = targetInput.value_type?.type === 'Execution';
+        
+        if (isSourceExecution !== isTargetExecution) {
+          const sourceType = isSourceExecution ? 'execution flow' : 'value';
+          const targetType = isTargetExecution ? 'execution flow' : 'value';
+          errors.push(`Edge connects ${sourceType} output to ${targetType} input between '${definition.name}' and '${targetDefinition.name}'`);
+          if (!affectedNodeIds.includes(edge.source)) {
+            affectedNodeIds.push(edge.source);
+          }
+          if (!affectedNodeIds.includes(edge.target)) {
+            affectedNodeIds.push(edge.target);
+          }
+        }
+      }
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors,
+      affectedNodeIds
+    };
+  }
+
   // Evaluate the workflow with current inputs
   async function evaluate() {
     // Validate all inputs before evaluating
@@ -236,6 +341,15 @@
     simulationResult = null;
     // Clear error node highlighting when starting a new evaluation
     errorNodeIds = [];
+    
+    // Validate edges for corruption before evaluating
+    const edgeValidation = validateEdges();
+    if (!edgeValidation.isValid) {
+      errorMessage = 'Edge corruption detected: ' + edgeValidation.errors.join('; ');
+      errorNodeIds = edgeValidation.affectedNodeIds;
+      evaluating = false;
+      return;
+    }
     
     try {
       // Build the request payload
