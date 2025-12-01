@@ -1444,7 +1444,7 @@
 <div class="node-editor-container">
   <div class="toolbar">
     <div class="toolbar-header">
-      <h1><img src="/icon.png" alt="" class="title-icon" /> Node-Based AC Logic Editor</h1>
+      <h1><img src="/icon.png" alt="" role="presentation" class="title-icon" onerror={(e) => e.target.style.display='none'} /> Node-Based AC Logic Editor</h1>
       <div class="profile-info">
         <span class="profile-label">Active Profile:</span>
         <span class="profile-name">{activeNodesetId === NEW_NODESET_ID ? 'None' : `${activeNodesetId} - ${activeNodesetName}`}</span>

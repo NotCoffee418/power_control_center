@@ -25,6 +25,11 @@
         dashboardData = result.data;
         error = null;
         lastUpdate = new Date();
+        // Clear the timeout since we got data successfully
+        if (loadingTimeoutId) {
+          clearTimeout(loadingTimeoutId);
+          loadingTimeoutId = null;
+        }
       } else {
         error = result.error || 'Failed to fetch dashboard data';
       }
@@ -176,7 +181,7 @@
   <header>
     <div class="header-content">
       <div class="title-row">
-        <img src="/icon.png" alt="Power Control Center icon" class="site-icon" />
+        <img src="/icon.png" alt="" role="presentation" class="site-icon" onerror={(e) => e.target.style.display='none'} />
         <h1>Power Control Center</h1>
       </div>
       <a href="/nodes" class="nav-link">Node Editor</a>
