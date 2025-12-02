@@ -28,10 +28,12 @@ pub struct AcState {
 
 impl AcState {
     /// Create a new state representing an off AC
+    /// Sets mode to Some(0) to indicate OFF mode was explicitly set,
+    /// allowing is_defined checks to properly detect that a command was sent
     pub fn new_off() -> Self {
         Self {
             is_on: false,
-            mode: None,
+            mode: Some(0), // 0 = Off mode (changed from None to track command was sent)
             fan_speed: None,
             temperature: None,
             swing: None,

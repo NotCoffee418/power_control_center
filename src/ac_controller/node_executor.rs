@@ -717,7 +717,9 @@ mod tests {
         
         let state = action_to_ac_state(&action);
         assert!(!state.is_on);
-        assert!(state.mode.is_none());
+        // After fix: mode should be Some(0) to indicate OFF mode was explicitly set
+        // This allows is_defined checks to properly detect that a command was sent
+        assert_eq!(state.mode, Some(0));
     }
 
     #[test]
@@ -844,5 +846,63 @@ mod tests {
         
         let result = NodeExecutionResult::Error("test error".to_string());
         assert!(format!("{:?}", result).contains("Error"));
+    }
+
+    #[test]
+    fn test_off_command_maintains_is_defined() {
+        // Test that after sending an OFF command, is_defined remains true
+        // This is the fix for the bug where the evaluator thought device should stay off
+        
+        // Create an OFF action
+        let action = ActionResult {
+            device: "TestDevice".to_string(),
+            temperature: 21.0,
+            mode: "Off".to_string(),
+            fan_speed: "Auto".to_string(),
+            is_powerful: false,
+            enable_swing: false,
+            cause_reason: "0".to_string(),
+        };
+        
+        let state = action_to_ac_state(&action);
+        
+        // Verify the state is OFF
+        assert!(!state.is_on, "State should be OFF");
+        
+        // Verify mode is Some(0) to represent OFF mode explicitly
+        assert_eq!(state.mode, Some(0), "Mode should be Some(0) for OFF");
+        
+        // Verify that is_defined would be calculated correctly
+        // The is_defined calculation: ac_state.is_on || ac_state.mode.is_some()
+        let is_defined = state.is_on || state.mode.is_some();
+        assert!(is_defined, "is_defined should be true after OFF command because mode is Some(0)");
+    }
+
+    #[test]
+    fn test_off_then_on_state_requires_change() {
+        // Test that transitioning from OFF to ON properly detects a change
+        let off_state = AcState::new_off();
+        let on_state = AcState::new_on(
+            AC_MODE_HEAT, // Use imported constant
+            0, // Auto fan
+            22.0, // temperature
+            1, // swing on
+            false, // not powerful
+        );
+        
+        // OFF to ON should require a change
+        assert!(off_state.requires_change(&on_state), 
+            "Transitioning from OFF to ON should require a state change");
+    }
+
+    #[test]
+    fn test_off_to_off_no_change_with_mode_tracking() {
+        // Test that two OFF states (both with mode=0) don't require a change
+        let off_state1 = AcState::new_off();
+        let off_state2 = AcState::new_off();
+        
+        // Both have mode=Some(0) now, but should still detect no change needed
+        assert!(!off_state1.requires_change(&off_state2), 
+            "Two OFF states should not require a change");
     }
 }
