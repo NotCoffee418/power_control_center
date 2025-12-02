@@ -76,9 +76,10 @@ async fn get_dashboard_status() -> Response {
             }
         };
         
+        // Convert mode integer to string (AC_MODE_COOL=1, AC_MODE_HEAT=4)
         let mode_str = state.mode.map(|m| match m {
-            1 => "heat".to_string(),
-            4 => "cool".to_string(),
+            1 => "cool".to_string(),
+            4 => "heat".to_string(),
             _ => format!("mode_{}", m),
         });
         
