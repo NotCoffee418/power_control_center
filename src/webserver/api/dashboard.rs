@@ -218,13 +218,40 @@ async fn get_recent_commands(Query(params): Query<RecentCommandsQuery>) -> Respo
         }
     };
     
-    // Enrich commands with cause information
+    // Collect unique cause IDs from commands
+    let cause_ids: std::collections::HashSet<i32> = commands
+        .iter()
+        .map(|action| action.cause_id)
+        .collect();
+    
+    // Fetch cause reasons from database for all unique IDs
+    let mut cause_map = std::collections::HashMap::new();
+    for cause_id in cause_ids {
+        match db::cause_reasons::get_by_id(cause_id).await {
+            Ok(Some(reason)) => {
+                cause_map.insert(cause_id, (reason.label.clone(), reason.description.clone()));
+            }
+            Ok(None) => {
+                log::warn!("Cause reason ID {} not found in database, using Undefined", cause_id);
+                cause_map.insert(cause_id, ("Undefined".to_string(), "No specific reason recorded".to_string()));
+            }
+            Err(e) => {
+                log::error!("Failed to fetch cause reason ID {}: {}", cause_id, e);
+                cause_map.insert(cause_id, ("Undefined".to_string(), "No specific reason recorded".to_string()));
+            }
+        }
+    }
+    
+    // Enrich commands with cause information from database
     let enriched_commands: Vec<AcActionWithCause> = commands.into_iter().map(|action| {
-        let cause = crate::types::CauseReason::from_id(action.cause_id);
+        let (cause_label, cause_description) = cause_map
+            .get(&action.cause_id)
+            .unwrap_or(&("Undefined".to_string(), "No specific reason recorded".to_string()))
+            .clone();
         AcActionWithCause {
             action,
-            cause_label: cause.label().to_string(),
-            cause_description: cause.description().to_string(),
+            cause_label,
+            cause_description,
         }
     }).collect();
     
