@@ -359,9 +359,9 @@ mod tests {
         assert!(!state_off.is_on);
         assert!(!state_no_change.is_on);
         assert!(state_cool.is_on);
-        assert_eq!(state_cool.mode, Some(4)); // Cool
+        assert_eq!(state_cool.mode, Some(1)); // Cool
         assert!(state_heat.is_on);
-        assert_eq!(state_heat.mode, Some(1)); // Heat
+        assert_eq!(state_heat.mode, Some(4)); // Heat
         assert!(state_heat.powerful_mode); // High intensity should enable powerful
     }
 
@@ -369,9 +369,9 @@ mod tests {
     fn test_state_change_detection_comprehensive() {
         // Test various state change scenarios
         let off_state = AcState::new_off();
-        let cool_low = AcState::new_on(4, 0, 26.0, 1, false);
-        let cool_high = AcState::new_on(4, 5, 20.0, 1, true);
-        let heat_med = AcState::new_on(1, 0, 22.0, 0, false);
+        let cool_low = AcState::new_on(1, 0, 26.0, 1, false);
+        let cool_high = AcState::new_on(1, 1, 20.0, 1, true);
+        let heat_med = AcState::new_on(4, 0, 22.0, 0, false);
 
         // Off to Cool should require change
         assert!(off_state.requires_change(&cool_low));
@@ -383,7 +383,7 @@ mod tests {
         assert!(cool_low.requires_change(&heat_med));
 
         // Same state should not require change
-        let cool_low_copy = AcState::new_on(4, 0, 26.0, 1, false);
+        let cool_low_copy = AcState::new_on(1, 0, 26.0, 1, false);
         assert!(!cool_low.requires_change(&cool_low_copy));
     }
 
@@ -397,7 +397,7 @@ mod tests {
         
         // Set device to on
         let manager = get_state_manager();
-        let on_state = AcState::new_on(4, 0, 22.0, 1, false);
+        let on_state = AcState::new_on(1, 0, 22.0, 1, false);
         manager.set_state("LivingRoom", on_state);
         
         // Should now be on (not off)
