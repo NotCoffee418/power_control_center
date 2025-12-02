@@ -1,8 +1,8 @@
 mod types;
 
-pub use types::{plan_to_state, AcState, AC_MODE_COOL, AC_MODE_HEAT};
+pub use types::{AcState, AC_MODE_COOL, AC_MODE_HEAT};
 
-use super::plan_types::{AcDevices, RequestMode};
+use super::devices::AcDevices;
 use crate::device_requests;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -72,197 +72,6 @@ pub fn get_state_manager() -> &'static AcStateManager {
     AC_STATE_MANAGER.get_or_init(AcStateManager::new)
 }
 
-/// Execute an AC plan for a specific device
-/// This will compare the plan with the current state and only send API calls if needed
-///
-/// # Arguments
-/// * `device` - The AC device to control
-/// * `plan_result` - The desired plan from the planning module with cause
-/// * `force_execution` - If true, bypass NoChange optimization and always execute
-///
-/// # Returns
-/// * `Ok(true)` if a command was sent successfully
-/// * `Ok(false)` if no command was needed (state unchanged)
-/// * `Err` if an API call failed
-pub async fn execute_plan(
-    device: &AcDevices,
-    plan_result: &super::plan_types::PlanResult,
-    force_execution: bool,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let plan = &plan_result.mode;
-    let device_name = device.as_str();
-    let state_manager = get_state_manager();
-
-    // Check if device is in manual mode - if so, skip execution entirely
-    // We need to fetch the actual mode if we haven't tracked it yet
-    let manual_mode_monitor = super::manual_mode_monitor::get_manual_mode_monitor();
-    let is_automatic_mode = match manual_mode_monitor.get_mode(device_name) {
-        Some(is_auto) => is_auto,
-        None => {
-            // Mode not yet tracked - fetch it from the device
-            match crate::device_requests::ac::get_sensors_cached(device_name).await {
-                Ok(sensor_data) => {
-                    // Store the mode for future reference
-                    manual_mode_monitor.update_mode(device_name, sensor_data.is_automatic_mode);
-                    sensor_data.is_automatic_mode
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to fetch mode for device '{}': {}. Skipping execution for safety.",
-                        device_name,
-                        e
-                    );
-                    return Ok(false);
-                }
-            }
-        }
-    };
-
-    // Skip execution if device is in manual mode
-    if !is_automatic_mode {
-        log::info!(
-            "Device '{}' is in manual mode, skipping automatic command execution",
-            device_name
-        );
-        return Ok(false);
-    }
-
-    // Check if this is the first execution for this device
-    let is_first_execution = !state_manager.is_device_initialized(device_name);
-
-    // Get current state
-    let current_state = state_manager.get_state(device_name);
-
-    // Convert plan to desired state
-    let desired_state = plan_to_state(plan, &plan_result.intensity, device_name);
-
-    // Check if we need to make changes
-    // On first execution or force_execution, always send command
-    // Otherwise, only send if state requires change
-    if !is_first_execution && !force_execution && !current_state.requires_change(&desired_state) {
-        log::debug!(
-            "No state change required for device '{}', skipping API call",
-            device_name
-        );
-        return Ok(false);
-    }
-
-    if is_first_execution {
-        log::info!(
-            "First execution for device '{}', sending command to ensure sync with physical state",
-            device_name
-        );
-    } else if force_execution {
-        log::info!(
-            "Forced execution for device '{}', bypassing NoChange optimization",
-            device_name
-        );
-    }
-
-    log::info!(
-        "State change detected for device '{}', executing plan",
-        device_name
-    );
-
-    // Execute the necessary API calls to achieve the desired state
-    let result = execute_state_change(device_name, &current_state, &desired_state, plan_result.cause.id(), is_first_execution || force_execution).await;
-
-    // Update state if successful
-    if result.is_ok() {
-        state_manager.set_state(device_name, desired_state);
-        state_manager.mark_device_initialized(device_name);
-        log::info!("Successfully updated state for device '{}'", device_name);
-    }
-
-    result.map(|_| true)
-}
-
-/// Execute the necessary API calls to transition from current state to desired state
-async fn execute_state_change(
-    device_name: &str,
-    current_state: &AcState,
-    desired_state: &AcState,
-    cause_id: i32,
-    force_send: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let min_on_time_state = super::min_on_time::get_min_on_time_state();
-
-    // Case 1: Turning off the AC (or forcing off on first execution)
-    if desired_state.is_on == false && current_state.is_on {
-        // Check minimum on-time before allowing turn-off
-        // (PIR detection clears this timer, so it can still turn off)
-        if !min_on_time_state.can_turn_off(device_name) {
-            log::info!(
-                "Device '{}' has not been on for minimum time, not turning off yet",
-                device_name
-            );
-            return Ok(());
-        }
-        
-        log::info!("Turning off AC '{}'", device_name);
-        device_requests::ac::turn_off_ac(device_name, cause_id).await?;
-        return Ok(());
-    }
-
-    // Case 2: AC should be off and is already off
-    if desired_state.is_on == false && !current_state.is_on {
-        // On first execution or forced execution, we still send the off command to ensure sync with physical device
-        if force_send {
-            log::info!("Forced execution: sending OFF command to '{}' to ensure sync with physical device", device_name);
-            device_requests::ac::turn_off_ac(device_name, cause_id).await?;
-            return Ok(());
-        }
-        // Otherwise, nothing to do
-        return Ok(());
-    }
-
-    // Case 3: Turning on or changing settings when AC is on
-    if desired_state.is_on {
-        let mode = desired_state.mode.expect("Mode should be set when AC is on");
-        let fan_speed = desired_state
-            .fan_speed
-            .expect("Fan speed should be set when AC is on");
-        let temperature = desired_state
-            .temperature
-            .expect("Temperature should be set when AC is on");
-        let swing = desired_state
-            .swing
-            .expect("Swing should be set when AC is on");
-
-        // Record turn-on time if device wasn't on before
-        if !current_state.is_on {
-            min_on_time_state.record_turn_on(device_name);
-        }
-
-        // Send the turn on command with all settings
-        log::info!(
-            "Turning on AC '{}': mode={}, fan_speed={}, temp={}°C, swing={}",
-            device_name,
-            mode,
-            fan_speed,
-            temperature,
-            swing
-        );
-        device_requests::ac::turn_on_ac(device_name, mode, fan_speed, temperature, swing, cause_id).await?;
-
-        // Handle powerful mode toggle if needed
-        // Note: We need to check if powerful mode changed and is different from what turn_on sets
-        if desired_state.powerful_mode != current_state.powerful_mode {
-            if desired_state.powerful_mode {
-                log::info!("Enabling powerful mode for AC '{}'", device_name);
-                device_requests::ac::toggle_powerful(device_name, cause_id).await?;
-            }
-            // If powerful mode should be off but was on, we toggle it off
-            else if current_state.powerful_mode {
-                log::info!("Disabling powerful mode for AC '{}'", device_name);
-                device_requests::ac::toggle_powerful(device_name, cause_id).await?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
 /// Check if a device is currently off according to tracked state
 /// Returns true if the device is off or not yet tracked (defaults to off)
 pub fn is_device_off(device: &AcDevices) -> bool {
@@ -292,9 +101,44 @@ pub fn reset_all_states() {
     log::info!("Reset all device states");
 }
 
+/// Turn off a device directly with a specific cause
+/// This is a simplified function for cases like PIR detection where we just need to turn off the AC
+/// without going through the full planning system
+///
+/// # Arguments
+/// * `device` - The AC device to turn off
+/// * `cause` - The reason for turning off the device
+///
+/// # Returns
+/// * `Ok(true)` if the command was sent successfully
+/// * `Ok(false)` if the device is already off (no command needed)
+/// * `Err` if the API call failed
+pub async fn turn_off_device(
+    device: &AcDevices,
+    cause: crate::types::CauseReason,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let device_name = device.as_str();
+    let state_manager = get_state_manager();
+    
+    // Check if device is already off
+    let current_state = state_manager.get_state(device_name);
+    if !current_state.is_on {
+        log::debug!("Device '{}' is already off, no action needed", device_name);
+        return Ok(false);
+    }
+    
+    // Turn off the device
+    log::info!("Turning off AC '{}' due to {:?}", device_name, cause);
+    device_requests::ac::turn_off_ac(device_name, cause.id()).await?;
+    
+    // Update the tracked state
+    state_manager.set_state(device_name, AcState::new_off());
+    
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::super::plan_types::Intensity;
     use super::*;
 
     #[test]
@@ -346,23 +190,6 @@ mod tests {
         // Verify it's reset to default (off)
         let after_reset = manager.get_state("TestDevice");
         assert!(!after_reset.is_on);
-    }
-
-    #[test]
-    fn test_plan_conversion_integration() {
-        // Test that plans are correctly converted to states
-        let state_off = plan_to_state(&RequestMode::Off, &Intensity::Low, "LivingRoom");
-        let state_no_change = plan_to_state(&RequestMode::NoChange, &Intensity::Low, "LivingRoom");
-        let state_cool = plan_to_state(&RequestMode::Colder, &Intensity::Medium, "LivingRoom");
-        let state_heat = plan_to_state(&RequestMode::Warmer, &Intensity::High, "LivingRoom");
-
-        assert!(!state_off.is_on);
-        assert!(!state_no_change.is_on);
-        assert!(state_cool.is_on);
-        assert_eq!(state_cool.mode, Some(1)); // Cool
-        assert!(state_heat.is_on);
-        assert_eq!(state_heat.mode, Some(4)); // Heat
-        assert!(state_heat.powerful_mode); // High intensity should enable powerful
     }
 
     #[test]
@@ -473,134 +300,4 @@ mod tests {
         assert!(!manager.is_device_initialized("Device2"));
     }
 
-    #[test]
-    fn test_first_execution_sends_off_command_when_both_states_off() {
-        // This test validates the fix for the bug where IceException wouldn't send
-        // OFF command on first execution if the tracked state was already OFF
-        
-        // Use unique device name to avoid conflicts with other tests
-        let unique_device = "TestDeviceFirstExec";
-        
-        let manager = get_state_manager();
-        
-        // Clear any existing state for this specific device
-        manager.clear_device_initialization(unique_device);
-        {
-            let mut states = manager.states.write().unwrap();
-            states.remove(unique_device);
-        }
-        
-        // Verify device is not initialized (simulating first run)
-        assert!(!manager.is_device_initialized(unique_device));
-        
-        // Get current state - should default to OFF
-        let current_state = manager.get_state(unique_device);
-        assert!(!current_state.is_on);
-        
-        // Create a desired state that is also OFF (like IceException would create)
-        let desired_state = AcState::new_off();
-        
-        // The key insight: even though both states are OFF, on first execution
-        // we should still send the command to sync with physical device
-        // This is validated by the is_first_execution flag being passed to execute_state_change
-        
-        // We can't easily test the actual API call without mocking, but we can verify
-        // that the logic checks work correctly
-        assert_eq!(current_state.is_on, desired_state.is_on);
-        assert_eq!(current_state.is_on, false);
-    }
-
-    #[test]
-    fn test_force_execution_bypasses_nochange_optimization() {
-        // This test validates that force_execution flag bypasses the NoChange optimization
-        // Used for Manual→Auto transitions
-        
-        // Reset to simulate fresh start
-        reset_all_states();
-        
-        let manager = get_state_manager();
-        
-        // Set up an initialized device with a specific state
-        let cool_state = AcState::new_on(4, 0, 22.0, 1, false);
-        manager.set_state("TestDevice", cool_state.clone());
-        manager.mark_device_initialized("TestDevice");
-        
-        // Verify the device is initialized and has the expected state
-        assert!(manager.is_device_initialized("TestDevice"));
-        let current = manager.get_state("TestDevice");
-        assert_eq!(current, cool_state);
-        
-        // Create the exact same state as desired (normally would skip execution)
-        let desired_state = cool_state;
-        
-        // Verify that without force execution, no change would be required
-        assert!(!current.requires_change(&desired_state));
-        
-        // With force_execution=true, the execute_plan function should bypass this check
-        // and execute the command anyway (we can't test the actual API call here,
-        // but the logic is in place to support Manual→Auto transitions)
-    }
-
-    #[tokio::test]
-    async fn test_manual_mode_device_skips_execution() {
-        // This test validates that devices in manual mode are not sent commands
-        // This is critical to prevent incorrect database logging and respect user control
-        
-        // Reset to clean state
-        reset_all_states();
-        
-        let device = AcDevices::LivingRoom;
-        let device_name = device.as_str();
-        
-        // Set device to manual mode
-        let monitor = crate::ac_controller::get_manual_mode_monitor();
-        monitor.update_mode(device_name, false); // false = manual mode
-        
-        // Verify device is in manual mode
-        assert!(monitor.is_manual_mode(device_name));
-        
-        // Create a plan that would normally execute (OFF command)
-        use crate::types::CauseReason;
-        use crate::ac_controller::PlanResult;
-        let plan = PlanResult::new(
-            RequestMode::Off,
-            Intensity::Low,
-            CauseReason::IceException
-        );
-        
-        // Attempt to execute the plan
-        // Should return Ok(false) indicating no command was sent
-        let result = execute_plan(&device, &plan, false).await;
-        
-        // Verify execution was skipped
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false, "Manual mode device should not execute commands");
-        
-        // Verify device was not marked as initialized
-        let manager = get_state_manager();
-        assert!(!manager.is_device_initialized(device_name), 
-            "Manual mode device should not be marked as initialized");
-    }
-
-    #[tokio::test]
-    async fn test_auto_mode_device_executes_on_first_run() {
-        // This test validates that devices in auto mode DO execute commands
-        // even on first run, as long as they're in auto mode
-        
-        // Reset to clean state
-        reset_all_states();
-        
-        let device_name = "TestAutoDevice";
-        
-        // Set device to auto mode
-        let monitor = crate::ac_controller::get_manual_mode_monitor();
-        monitor.update_mode(device_name, true); // true = auto mode
-        
-        // Verify device is in auto mode
-        assert!(!monitor.is_manual_mode(device_name));
-        
-        // Note: We can't test the actual execution without mocking the API
-        // but we've verified that the manual mode check works correctly
-        // and auto mode devices pass through to the execution logic
-    }
 }

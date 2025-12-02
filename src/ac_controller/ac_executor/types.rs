@@ -1,4 +1,4 @@
-use super::super::plan_types::{Intensity, RequestMode};
+// Types removed - legacy plan_types no longer needed
 
 /// AC operation modes for API calls
 pub const AC_MODE_COOL: i32 = 1;
@@ -100,68 +100,6 @@ impl AcState {
     }
 }
 
-/// Converts a RequestMode plan into a concrete AcState
-/// The device_name parameter is reserved for future device-specific settings
-pub fn plan_to_state(mode: &RequestMode, intensity: &Intensity, _device_name: &str) -> AcState {
-    match mode {
-        RequestMode::Off => {
-            // Explicitly turn off the device
-            AcState::new_off()
-        }
-        RequestMode::NoChange => {
-            // NoChange means keep current state, but we can't query current state here
-            // So we default to off as a safe fallback
-            // In practice, this should not cause changes due to state comparison in executor
-            AcState::new_off()
-        }
-        RequestMode::Colder => {
-            // Cooling mode
-            let (fan_speed, temperature, powerful) = get_settings_for_intensity(intensity, true);
-            AcState::new_on(
-                AC_MODE_COOL,
-                fan_speed,
-                temperature,
-                1, // swing on for cooling
-                powerful,
-            )
-        }
-        RequestMode::Warmer => {
-            // Heating mode
-            let (fan_speed, temperature, powerful) = get_settings_for_intensity(intensity, false);
-            AcState::new_on(
-                AC_MODE_HEAT,
-                fan_speed,
-                temperature,
-                0, // swing off for heating
-                powerful,
-            )
-        }
-    }
-}
-
-/// Get appropriate settings based on intensity level
-/// Returns (fan_speed, temperature, powerful_mode)
-/// is_cooling determines if we're in cooling or heating mode
-fn get_settings_for_intensity(intensity: &Intensity, is_cooling: bool) -> (i32, f64, bool) {
-    match intensity {
-        Intensity::Low => {
-            // Minimal operation - just prevent extreme temperatures
-            let temp = if is_cooling { 26.0 } else { 19.0 };
-            (0, temp, false) // 0 = auto fan speed
-        }
-        Intensity::Medium => {
-            // Comfortable operation for when user is home
-            let temp = if is_cooling { 22.0 } else { 22.0 };
-            (0, temp, false) // 0 = auto fan speed
-        }
-        Intensity::High => {
-            // Powerful mode - when excess solar available
-            let temp = if is_cooling { 20.0 } else { 24.0 };
-            (1, temp, true) // 1 = High fan speed, powerful mode on
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,92 +139,6 @@ mod tests {
 
         assert!(!state1.requires_change(&state2));
         assert!(state1.requires_change(&state3));
-    }
-
-    #[test]
-    fn test_plan_to_state_off() {
-        let state = plan_to_state(&RequestMode::Off, &Intensity::Low, "LivingRoom");
-
-        assert_eq!(state, AcState::new_off());
-    }
-
-    #[test]
-    fn test_plan_to_state_no_change() {
-        let state = plan_to_state(&RequestMode::NoChange, &Intensity::Low, "LivingRoom");
-
-        assert_eq!(state, AcState::new_off());
-    }
-
-    #[test]
-    fn test_plan_to_state_colder_low() {
-        let state = plan_to_state(&RequestMode::Colder, &Intensity::Low, "LivingRoom");
-
-        assert!(state.is_on);
-        assert_eq!(state.mode, Some(1)); // Cool mode
-        assert_eq!(state.temperature, Some(26.0));
-        assert_eq!(state.fan_speed, Some(0)); // Auto
-        assert_eq!(state.swing, Some(1)); // On for cooling
-        assert!(!state.powerful_mode);
-    }
-
-    #[test]
-    fn test_plan_to_state_colder_medium() {
-        let state = plan_to_state(&RequestMode::Colder, &Intensity::Medium, "LivingRoom");
-
-        assert!(state.is_on);
-        assert_eq!(state.mode, Some(1)); // Cool mode
-        assert_eq!(state.temperature, Some(22.0));
-        assert_eq!(state.fan_speed, Some(0)); // Auto
-        assert_eq!(state.swing, Some(1)); // On for cooling
-        assert!(!state.powerful_mode);
-    }
-
-    #[test]
-    fn test_plan_to_state_colder_high() {
-        let state = plan_to_state(&RequestMode::Colder, &Intensity::High, "LivingRoom");
-
-        assert!(state.is_on);
-        assert_eq!(state.mode, Some(1)); // Cool mode
-        assert_eq!(state.temperature, Some(20.0));
-        assert_eq!(state.fan_speed, Some(1)); // High
-        assert_eq!(state.swing, Some(1)); // On for cooling
-        assert!(state.powerful_mode);
-    }
-
-    #[test]
-    fn test_plan_to_state_warmer_low() {
-        let state = plan_to_state(&RequestMode::Warmer, &Intensity::Low, "LivingRoom");
-
-        assert!(state.is_on);
-        assert_eq!(state.mode, Some(4)); // Heat mode
-        assert_eq!(state.temperature, Some(19.0));
-        assert_eq!(state.fan_speed, Some(0)); // Auto
-        assert_eq!(state.swing, Some(0)); // Off for heating
-        assert!(!state.powerful_mode);
-    }
-
-    #[test]
-    fn test_plan_to_state_warmer_medium() {
-        let state = plan_to_state(&RequestMode::Warmer, &Intensity::Medium, "LivingRoom");
-
-        assert!(state.is_on);
-        assert_eq!(state.mode, Some(4)); // Heat mode
-        assert_eq!(state.temperature, Some(22.0));
-        assert_eq!(state.fan_speed, Some(0)); // Auto
-        assert_eq!(state.swing, Some(0)); // Off for heating
-        assert!(!state.powerful_mode);
-    }
-
-    #[test]
-    fn test_plan_to_state_warmer_high() {
-        let state = plan_to_state(&RequestMode::Warmer, &Intensity::High, "LivingRoom");
-
-        assert!(state.is_on);
-        assert_eq!(state.mode, Some(4)); // Heat mode
-        assert_eq!(state.temperature, Some(24.0));
-        assert_eq!(state.fan_speed, Some(1)); // High
-        assert_eq!(state.swing, Some(0)); // Off for heating
-        assert!(state.powerful_mode);
     }
 
     #[test]
