@@ -296,7 +296,13 @@ async fn handle_response<T: for<'de> Deserialize<'de>>(
 
     if api_response.success {
         debug!("API request successful");
-        Ok(api_response.data)
+        match api_response.data {
+            Some(data) => Ok(data),
+            None => {
+                error!("API request succeeded but data field is missing");
+                Err(AcError::ApiError("Response data is missing".to_string()))
+            }
+        }
     } else {
         error!("API request failed: {}", api_response.error);
         Err(AcError::ApiError(api_response.error))
