@@ -188,7 +188,9 @@ async fn gather_execution_inputs(device: &AcDevices) -> Result<ExecutionInputs, 
     // Get active command from state manager
     let state_manager = get_state_manager();
     let ac_state = state_manager.get_state(device_name);
-    let is_defined = ac_state.is_on || ac_state.mode.is_some();
+    // is_defined should only be true if a command has actually been sent to the device
+    // Check if device is initialized (has had at least one command sent)
+    let is_defined = state_manager.is_device_initialized(device_name) && (ac_state.is_on || ac_state.mode.is_some());
     
     let active_command = ActiveCommandData {
         is_defined,
@@ -904,5 +906,38 @@ mod tests {
         // Both have mode=Some(0) now, but should still detect no change needed
         assert!(!off_state1.requires_change(&off_state2), 
             "Two OFF states should not require a change");
+    }
+
+    #[test]
+    fn test_active_command_is_defined_only_after_first_command() {
+        // Test that is_defined is false before any command is sent (device not initialized)
+        // and true after a command is sent (device initialized)
+        
+        // Reset all states to ensure clean test
+        super::super::ac_executor::reset_all_states();
+        
+        let state_manager = super::super::ac_executor::get_state_manager();
+        let device_name = "TestDevice";
+        
+        // Initially, device is not initialized
+        assert!(!state_manager.is_device_initialized(device_name), 
+            "Device should not be initialized before first command");
+        
+        // Get the state - it will be new_off() with mode=Some(0)
+        let ac_state = state_manager.get_state(device_name);
+        assert_eq!(ac_state.mode, Some(0), "Initial state should have mode Some(0)");
+        
+        // is_defined should be false because device is not initialized yet
+        let is_defined = state_manager.is_device_initialized(device_name) && (ac_state.is_on || ac_state.mode.is_some());
+        assert!(!is_defined, 
+            "is_defined should be false before first command even though mode is Some(0)");
+        
+        // Mark device as initialized (simulating a command was sent)
+        state_manager.mark_device_initialized(device_name);
+        
+        // Now is_defined should be true
+        let is_defined_after = state_manager.is_device_initialized(device_name) && (ac_state.is_on || ac_state.mode.is_some());
+        assert!(is_defined_after, 
+            "is_defined should be true after device is initialized");
     }
 }
