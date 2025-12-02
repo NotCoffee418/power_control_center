@@ -218,13 +218,32 @@ async fn get_recent_commands(Query(params): Query<RecentCommandsQuery>) -> Respo
         }
     };
     
-    // Enrich commands with cause information
+    // Define default cause reason for unknown IDs
+    let default_cause = ("Undefined".to_string(), "No specific reason recorded".to_string());
+    
+    // Fetch all cause reasons from database in a single query
+    let cause_map: std::collections::HashMap<i32, (String, String)> = match db::cause_reasons::get_all(true).await {
+        Ok(reasons) => {
+            reasons.into_iter()
+                .map(|reason| (reason.id, (reason.label, reason.description)))
+                .collect()
+        }
+        Err(e) => {
+            log::error!("Failed to fetch cause reasons from database: {}", e);
+            std::collections::HashMap::new()
+        }
+    };
+    
+    // Enrich commands with cause information from database
     let enriched_commands: Vec<AcActionWithCause> = commands.into_iter().map(|action| {
-        let cause = crate::types::CauseReason::from_id(action.cause_id);
+        let (cause_label, cause_description) = cause_map
+            .get(&action.cause_id)
+            .unwrap_or(&default_cause)
+            .clone();
         AcActionWithCause {
             action,
-            cause_label: cause.label().to_string(),
-            cause_description: cause.description().to_string(),
+            cause_label,
+            cause_description,
         }
     }).collect();
     
