@@ -254,7 +254,7 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
     };
     
     let user_is_home = inputs.user_is_home.unwrap_or_else(|| {
-        crate::ac_controller::plan_helpers::is_user_home_and_awake()
+        crate::ac_controller::time_helpers::is_user_home_and_awake()
     });
     
     let pir_detected = inputs.pir_detected.unwrap_or(false);
@@ -595,7 +595,7 @@ async fn get_live_inputs() -> Response {
         Err(_) => None,
     };
     
-    let user_is_home = crate::ac_controller::plan_helpers::is_user_home_and_awake();
+    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake();
     
     let live_inputs = LiveInputs {
         devices,

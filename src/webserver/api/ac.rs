@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ac_controller::{AcDevices, ac_executor},
     db,
-    types::{AcAction, ApiError, ApiResponse},
+    types::{ApiError, ApiResponse},
 };
 
 pub fn ac_routes() -> Router {

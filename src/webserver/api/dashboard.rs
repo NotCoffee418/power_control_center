@@ -153,7 +153,7 @@ async fn get_dashboard_status() -> Response {
     };
     
     // Get user home status
-    let user_is_home = crate::ac_controller::plan_helpers::is_user_home_and_awake();
+    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake();
     
     let status = DashboardStatus {
         devices,

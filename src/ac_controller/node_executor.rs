@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use crate::{
     ac_controller::{
         ac_executor::{get_state_manager, AC_MODE_COOL, AC_MODE_HEAT},
-        manual_mode_monitor, plan_helpers, pir_state, AcDevices,
+        manual_mode_monitor, time_helpers, pir_state, AcDevices,
     },
     config,
     db,
@@ -139,7 +139,7 @@ async fn gather_execution_inputs(device: &AcDevices) -> Result<ExecutionInputs, 
     };
 
     // Get is_user_home
-    let is_user_home = plan_helpers::is_user_home_and_awake();
+    let is_user_home = time_helpers::is_user_home_and_awake();
 
     // Get net power and raw solar
     let (net_power_watt, raw_solar_watt) = match device_requests::meter::get_latest_reading_cached().await {
