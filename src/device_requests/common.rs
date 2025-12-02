@@ -8,7 +8,7 @@ use tokio::sync::OnceCell;
 pub(super) struct ApiResponse<T> {
     pub(super) success: bool,
     pub(super) error: String,
-    pub(super) data: T,
+    pub(super) data: Option<T>,
 }
 
 static CLIENT: OnceCell<Client> = OnceCell::const_new();

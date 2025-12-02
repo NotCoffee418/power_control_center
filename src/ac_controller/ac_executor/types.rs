@@ -1,8 +1,8 @@
 use super::super::plan_types::{Intensity, RequestMode};
 
 /// AC operation modes for API calls
-pub const AC_MODE_HEAT: i32 = 1;
-pub const AC_MODE_COOL: i32 = 4;
+pub const AC_MODE_COOL: i32 = 1;
+pub const AC_MODE_HEAT: i32 = 4;
 
 /// Temperature tolerance in Celsius for state change detection.
 /// If the temperature difference is within this tolerance, we skip sending a new command.
@@ -157,7 +157,7 @@ fn get_settings_for_intensity(intensity: &Intensity, is_cooling: bool) -> (i32, 
         Intensity::High => {
             // Powerful mode - when excess solar available
             let temp = if is_cooling { 20.0 } else { 24.0 };
-            (5, temp, true) // 5 = max fan speed, powerful mode on
+            (1, temp, true) // 1 = High fan speed, powerful mode on
         }
     }
 }
@@ -168,16 +168,16 @@ mod tests {
 
     #[test]
     fn test_ac_mode_constants() {
-        // Verify AC modes are defined correctly
-        assert_eq!(AC_MODE_HEAT, 1);
-        assert_eq!(AC_MODE_COOL, 4);
+        // Verify AC modes are defined correctly (API: 1=Cool, 4=Heat)
+        assert_eq!(AC_MODE_COOL, 1);
+        assert_eq!(AC_MODE_HEAT, 4);
     }
 
     #[test]
     fn test_ac_state_equality() {
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state3 = AcState::new_on(1, 0, 22.0, 0, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state3 = AcState::new_on(4, 0, 22.0, 0, false);
 
         assert_eq!(state1, state2);
         assert_ne!(state1, state3);
@@ -187,7 +187,7 @@ mod tests {
     fn test_ac_state_off_equality() {
         let state1 = AcState::new_off();
         let state2 = AcState::new_off();
-        let state3 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state3 = AcState::new_on(1, 0, 22.0, 1, false);
 
         assert_eq!(state1, state2);
         assert_ne!(state1, state3);
@@ -195,9 +195,9 @@ mod tests {
 
     #[test]
     fn test_requires_change() {
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state3 = AcState::new_on(1, 0, 22.0, 0, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state3 = AcState::new_on(4, 0, 22.0, 0, false);
 
         assert!(!state1.requires_change(&state2));
         assert!(state1.requires_change(&state3));
@@ -222,7 +222,7 @@ mod tests {
         let state = plan_to_state(&RequestMode::Colder, &Intensity::Low, "LivingRoom");
 
         assert!(state.is_on);
-        assert_eq!(state.mode, Some(4)); // Cool mode
+        assert_eq!(state.mode, Some(1)); // Cool mode
         assert_eq!(state.temperature, Some(26.0));
         assert_eq!(state.fan_speed, Some(0)); // Auto
         assert_eq!(state.swing, Some(1)); // On for cooling
@@ -234,7 +234,7 @@ mod tests {
         let state = plan_to_state(&RequestMode::Colder, &Intensity::Medium, "LivingRoom");
 
         assert!(state.is_on);
-        assert_eq!(state.mode, Some(4)); // Cool mode
+        assert_eq!(state.mode, Some(1)); // Cool mode
         assert_eq!(state.temperature, Some(22.0));
         assert_eq!(state.fan_speed, Some(0)); // Auto
         assert_eq!(state.swing, Some(1)); // On for cooling
@@ -246,9 +246,9 @@ mod tests {
         let state = plan_to_state(&RequestMode::Colder, &Intensity::High, "LivingRoom");
 
         assert!(state.is_on);
-        assert_eq!(state.mode, Some(4)); // Cool mode
+        assert_eq!(state.mode, Some(1)); // Cool mode
         assert_eq!(state.temperature, Some(20.0));
-        assert_eq!(state.fan_speed, Some(5)); // Max
+        assert_eq!(state.fan_speed, Some(1)); // High
         assert_eq!(state.swing, Some(1)); // On for cooling
         assert!(state.powerful_mode);
     }
@@ -258,7 +258,7 @@ mod tests {
         let state = plan_to_state(&RequestMode::Warmer, &Intensity::Low, "LivingRoom");
 
         assert!(state.is_on);
-        assert_eq!(state.mode, Some(1)); // Heat mode
+        assert_eq!(state.mode, Some(4)); // Heat mode
         assert_eq!(state.temperature, Some(19.0));
         assert_eq!(state.fan_speed, Some(0)); // Auto
         assert_eq!(state.swing, Some(0)); // Off for heating
@@ -270,7 +270,7 @@ mod tests {
         let state = plan_to_state(&RequestMode::Warmer, &Intensity::Medium, "LivingRoom");
 
         assert!(state.is_on);
-        assert_eq!(state.mode, Some(1)); // Heat mode
+        assert_eq!(state.mode, Some(4)); // Heat mode
         assert_eq!(state.temperature, Some(22.0));
         assert_eq!(state.fan_speed, Some(0)); // Auto
         assert_eq!(state.swing, Some(0)); // Off for heating
@@ -282,40 +282,40 @@ mod tests {
         let state = plan_to_state(&RequestMode::Warmer, &Intensity::High, "LivingRoom");
 
         assert!(state.is_on);
-        assert_eq!(state.mode, Some(1)); // Heat mode
+        assert_eq!(state.mode, Some(4)); // Heat mode
         assert_eq!(state.temperature, Some(24.0));
-        assert_eq!(state.fan_speed, Some(5)); // Max
+        assert_eq!(state.fan_speed, Some(1)); // High
         assert_eq!(state.swing, Some(0)); // Off for heating
         assert!(state.powerful_mode);
     }
 
     #[test]
     fn test_state_change_detection_temperature() {
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 23.0, 1, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 23.0, 1, false);
 
         assert!(state1.requires_change(&state2));
     }
 
     #[test]
     fn test_state_change_detection_mode() {
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(4, 0, 22.0, 1, false);
 
         assert!(state1.requires_change(&state2));
     }
 
     #[test]
     fn test_state_change_detection_powerful() {
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 22.0, 1, true);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.0, 1, true);
 
         assert!(state1.requires_change(&state2));
     }
 
     #[test]
     fn test_state_change_detection_on_to_off() {
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
         let state2 = AcState::new_off();
 
         assert!(state1.requires_change(&state2));
@@ -324,8 +324,8 @@ mod tests {
     #[test]
     fn test_temperature_tolerance_within_threshold() {
         // Temperature difference of 0.3°C should NOT require a change (within ±0.5°C tolerance)
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 22.3, 1, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.3, 1, false);
 
         assert!(!state1.requires_change(&state2), "0.3°C difference should not require a change");
     }
@@ -333,8 +333,8 @@ mod tests {
     #[test]
     fn test_temperature_tolerance_at_threshold() {
         // Temperature difference of exactly 0.5°C should NOT require a change (at tolerance boundary)
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 22.5, 1, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.5, 1, false);
 
         assert!(!state1.requires_change(&state2), "0.5°C difference (at tolerance) should not require a change");
     }
@@ -342,8 +342,8 @@ mod tests {
     #[test]
     fn test_temperature_tolerance_above_threshold() {
         // Temperature difference of 0.51°C should require a change (above tolerance)
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 22.51, 1, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.51, 1, false);
 
         assert!(state1.requires_change(&state2), "0.51°C difference should require a change");
     }
@@ -351,8 +351,8 @@ mod tests {
     #[test]
     fn test_temperature_tolerance_negative_difference() {
         // Negative temperature difference should also be handled
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 21.6, 1, false); // 0.4°C lower
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 21.6, 1, false); // 0.4°C lower
 
         assert!(!state1.requires_change(&state2), "-0.4°C difference should not require a change");
     }
@@ -360,8 +360,8 @@ mod tests {
     #[test]
     fn test_temperature_tolerance_large_difference() {
         // Large temperature difference should always require a change
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 25.0, 1, false); // 3°C higher
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 25.0, 1, false); // 3°C higher
 
         assert!(state1.requires_change(&state2), "3°C difference should require a change");
     }
@@ -369,8 +369,8 @@ mod tests {
     #[test]
     fn test_same_state_no_change() {
         // Exactly the same state should not require a change
-        let state1 = AcState::new_on(4, 0, 22.0, 1, false);
-        let state2 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state1 = AcState::new_on(1, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.0, 1, false);
 
         assert!(!state1.requires_change(&state2), "Same state should not require a change");
     }
@@ -388,7 +388,7 @@ mod tests {
     fn test_off_to_on_requires_change() {
         // Off to on should require a change
         let state1 = AcState::new_off();
-        let state2 = AcState::new_on(4, 0, 22.0, 1, false);
+        let state2 = AcState::new_on(1, 0, 22.0, 1, false);
 
         assert!(state1.requires_change(&state2), "Off to on should require a change");
     }
