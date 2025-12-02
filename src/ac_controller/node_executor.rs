@@ -337,9 +337,7 @@ async fn execute_result_to_commands(device: &AcDevices, result: ExecutionResult)
 async fn execute_action_result(device: &AcDevices, action: &ActionResult) -> NodeExecutionResult {
     let device_name = device.as_str();
     let state_manager = get_state_manager();
-    let mut current_state = state_manager.get_state(device_name);
-    
-
+    let current_state = state_manager.get_state(device_name);
     
     // Parse the cause_reason to get the ID for logging
     let cause_id: i32 = match action.cause_reason.parse() {
