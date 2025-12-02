@@ -8,7 +8,6 @@ pub mod time_helpers;
 
 // Re-export types needed by other modules
 pub use devices::AcDevices;
-pub use manual_mode_monitor::get_manual_mode_monitor;
 
 use std::time::Duration;
 use tokio;
