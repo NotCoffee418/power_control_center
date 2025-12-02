@@ -3,11 +3,12 @@ use axum::{
     extract::Query,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
+    ac_controller::{AcDevices, ac_executor},
     db,
     types::{AcAction, ApiError, ApiResponse},
 };
@@ -16,6 +17,7 @@ pub fn ac_routes() -> Router {
     Router::new()
         .route("/get_history_page", get(get_history_page))
         .route("/get_history_count", get(get_history_count))
+        .route("/reset_device_state", post(reset_device_state))
 }
 
 #[derive(Deserialize)]
@@ -78,4 +80,42 @@ async fn get_history_count() -> Response {
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
+}
+
+#[derive(Deserialize)]
+struct ResetDeviceStateRequest {
+    device: String,
+}
+
+#[derive(Serialize)]
+struct ResetDeviceStateResponse {
+    success: bool,
+    message: String,
+}
+
+/// POST /api/ac/reset_device_state
+/// Resets the tracked state for a specific AC device
+/// This is useful when the tracked state gets out of sync with the physical device
+/// After reset, the next control cycle will treat it as first execution and force sync
+async fn reset_device_state(Json(req): Json<ResetDeviceStateRequest>) -> Response {
+    // Validate device name
+    let device = match AcDevices::from_str(&req.device) {
+        Some(d) => d,
+        None => {
+            let response = ApiError::error(&format!("Unknown device: {}", req.device));
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+        }
+    };
+    
+    // Reset the device state
+    ac_executor::reset_device_state(&device);
+    
+    log::info!("Device state reset via API for device: {}", req.device);
+    
+    let response = ApiResponse::success(ResetDeviceStateResponse {
+        success: true,
+        message: format!("Device state reset for '{}'. Next control cycle will force sync with physical device.", req.device),
+    });
+    
+    (StatusCode::OK, Json(response)).into_response()
 }

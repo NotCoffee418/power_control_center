@@ -152,9 +152,13 @@ async fn manual_mode_monitoring_loop() {
                     
                     if transitioned_to_auto {
                         log::info!(
-                            "Device '{}' transitioned from Manual to Auto mode - triggering immediate nodeset execution",
+                            "Device '{}' transitioned from Manual to Auto mode - resetting state and triggering immediate nodeset execution",
                             device_name
                         );
+                        
+                        // Reset the device state to force re-sync with physical device
+                        // This ensures we don't rely on potentially stale state from before the manual intervention
+                        ac_executor::reset_device_state(&device);
                         
                         // Execute nodeset with forced execution to bypass state comparison
                         match node_executor::execute_nodeset_for_device_forced(&device).await {

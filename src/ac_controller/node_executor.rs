@@ -370,9 +370,19 @@ async fn execute_action_result(device: &AcDevices, action: &ActionResult) -> Nod
     // First execution or state differs requires sending command
     let is_first_execution = !state_manager_is_device_initialized(device_name);
     
+    // Log state comparison for debugging
+    log::info!(
+        "State comparison for '{}': current_on={}, desired_on={}, first_exec={}, requires_change={}",
+        device_name,
+        current_state.is_on,
+        desired_state.is_on,
+        is_first_execution,
+        current_state.requires_change(&desired_state)
+    );
+    
     if !is_first_execution && !current_state.requires_change(&desired_state) {
-        log::debug!(
-            "No state change required for device '{}', skipping command",
+        log::info!(
+            "No state change required for device '{}', skipping command (current matches desired)",
             device_name
         );
         return NodeExecutionResult::NoAction;
