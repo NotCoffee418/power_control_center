@@ -218,33 +218,21 @@ async fn get_recent_commands(Query(params): Query<RecentCommandsQuery>) -> Respo
         }
     };
     
-    // Collect unique cause IDs from commands
-    let cause_ids: std::collections::HashSet<i32> = commands
-        .iter()
-        .map(|action| action.cause_id)
-        .collect();
-    
     // Define default cause reason for unknown IDs
     let default_cause = ("Undefined".to_string(), "No specific reason recorded".to_string());
     
-    // Fetch cause reasons from database for all unique IDs
-    let mut cause_map = std::collections::HashMap::new();
-    for cause_id in cause_ids {
-        match db::cause_reasons::get_by_id(cause_id).await {
-            Ok(Some(reason)) => {
-                // Move strings instead of cloning
-                cause_map.insert(cause_id, (reason.label, reason.description));
-            }
-            Ok(None) => {
-                log::warn!("Cause reason ID {} not found in database, using Undefined", cause_id);
-                cause_map.insert(cause_id, default_cause.clone());
-            }
-            Err(e) => {
-                log::error!("Failed to fetch cause reason ID {}: {}", cause_id, e);
-                cause_map.insert(cause_id, default_cause.clone());
-            }
+    // Fetch all cause reasons from database in a single query
+    let cause_map: std::collections::HashMap<i32, (String, String)> = match db::cause_reasons::get_all(true).await {
+        Ok(reasons) => {
+            reasons.into_iter()
+                .map(|reason| (reason.id, (reason.label, reason.description)))
+                .collect()
         }
-    }
+        Err(e) => {
+            log::error!("Failed to fetch cause reasons from database: {}", e);
+            std::collections::HashMap::new()
+        }
+    };
     
     // Enrich commands with cause information from database
     let enriched_commands: Vec<AcActionWithCause> = commands.into_iter().map(|action| {
