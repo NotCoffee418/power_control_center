@@ -15,6 +15,11 @@
   let lastUpdate = $state(null);
   let refreshInterval = null;
   let loadingTimeoutId = null;
+  
+  // User Is Home control state
+  let homeOverrideHours = $state(4);
+  let settingHomeOverride = $state(false);
+  let homeOverrideError = $state(null);
 
   async function fetchDashboardData() {
     try {
@@ -175,6 +180,84 @@
     const minutesAgo = (now - timestamp) / SECONDS_PER_MINUTE;
     return minutesAgo < timeoutMinutes;
   }
+
+  /**
+   * Format the home override status message
+   * @param {number|null} timestamp - Unix timestamp in seconds when override expires
+   * @returns {string} Human readable status message
+   */
+  function formatHomeOverrideStatus(timestamp) {
+    if (!timestamp) {
+      return 'No home time override';
+    }
+    const date = new Date(timestamp * SECONDS_TO_MILLISECONDS);
+    return `Home until ${date.toLocaleString()}`;
+  }
+
+  /**
+   * Set user home override for the specified number of hours
+   */
+  async function setHomeOverride() {
+    if (homeOverrideHours < 1 || homeOverrideHours > 168) {
+      homeOverrideError = 'Hours must be between 1 and 168';
+      return;
+    }
+    
+    settingHomeOverride = true;
+    homeOverrideError = null;
+    
+    try {
+      const response = await fetch('/api/user-home/set', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ hours: homeOverrideHours }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Refresh dashboard data immediately to show the update
+        await fetchDashboardData();
+      } else {
+        homeOverrideError = result.error || 'Failed to set home override';
+      }
+    } catch (e) {
+      homeOverrideError = `Error: ${e.message}`;
+      console.error('Error setting home override:', e);
+    } finally {
+      settingHomeOverride = false;
+    }
+  }
+
+  /**
+   * Clear user home override
+   */
+  async function clearHomeOverride() {
+    settingHomeOverride = true;
+    homeOverrideError = null;
+    
+    try {
+      const response = await fetch('/api/user-home/clear', {
+        method: 'POST',
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Refresh dashboard data immediately to show the update
+        await fetchDashboardData();
+      } else {
+        homeOverrideError = result.error || 'Failed to clear home override';
+      }
+    } catch (e) {
+      homeOverrideError = `Error: ${e.message}`;
+      console.error('Error clearing home override:', e);
+    } finally {
+      settingHomeOverride = false;
+    }
+  }
 </script>
 
 <div class="dashboard">
@@ -234,6 +317,47 @@
           <div class="data-item user-home" class:home={dashboardData.user_is_home} class:away={!dashboardData.user_is_home}>
             <span class="label">User Status</span>
             <span class="value large">{dashboardData.user_is_home ? '🏠 Home' : '🚶 Away'}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- User Is Home Control Section -->
+      <div class="section user-home-control">
+        <h2>User Is Home Control</h2>
+        <div class="control-container">
+          <div class="control-input-row">
+            <label for="home-hours">Set user is home for next hours:</label>
+            <input 
+              id="home-hours"
+              type="number" 
+              min="1" 
+              max="168" 
+              bind:value={homeOverrideHours}
+              disabled={settingHomeOverride}
+              class="hours-input"
+            />
+            <button 
+              onclick={setHomeOverride}
+              disabled={settingHomeOverride}
+              class="btn btn-set"
+            >
+              {settingHomeOverride ? 'Setting...' : 'Set'}
+            </button>
+            <button 
+              onclick={clearHomeOverride}
+              disabled={settingHomeOverride}
+              class="btn btn-clear"
+            >
+              {settingHomeOverride ? 'Clearing...' : 'Clear'}
+            </button>
+          </div>
+          
+          {#if homeOverrideError}
+            <div class="control-error">{homeOverrideError}</div>
+          {/if}
+          
+          <div class="control-status" class:has-override={dashboardData.user_home_override_until}>
+            {formatHomeOverrideStatus(dashboardData.user_home_override_until)}
           </div>
         </div>
       </div>
@@ -526,6 +650,116 @@
   .data-item.user-home.away {
     background: rgba(160, 160, 160, 0.1);
     border: 1px solid rgba(160, 160, 160, 0.3);
+  }
+
+  /* User Is Home Control Section */
+  .user-home-control {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .control-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .control-input-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .control-input-row label {
+    font-size: 1rem;
+    color: #e0e0e0;
+  }
+
+  .hours-input {
+    width: 80px;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 1rem;
+    text-align: center;
+  }
+
+  .hours-input:focus {
+    outline: none;
+    border-color: #a0a0a0;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .hours-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn {
+    padding: 0.5rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: white;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-set {
+    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  }
+
+  .btn-set:hover:not(:disabled) {
+    background: linear-gradient(135deg, #45a049 0%, #3d8b40 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+  }
+
+  .btn-clear {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+  }
+
+  .btn-clear:hover:not(:disabled) {
+    background: linear-gradient(135deg, #ee5a52 0%, #d84a41 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(255, 107, 107, 0.3);
+  }
+
+  .control-error {
+    color: #ff6b6b;
+    font-size: 0.875rem;
+    padding: 0.5rem;
+    background: rgba(255, 107, 107, 0.1);
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    border-radius: 6px;
+  }
+
+  .control-status {
+    padding: 1rem;
+    background: rgba(160, 160, 160, 0.1);
+    border: 1px solid rgba(160, 160, 160, 0.3);
+    border-radius: 8px;
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #a0a0a0;
+  }
+
+  .control-status.has-override {
+    background: rgba(81, 207, 102, 0.1);
+    border: 1px solid rgba(81, 207, 102, 0.3);
+    color: #51cf66;
   }
 
   .device-cards {
@@ -871,6 +1105,23 @@
 
     .device-cards {
       grid-template-columns: 1fr;
+    }
+
+    .control-input-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .control-input-row label {
+      text-align: center;
+    }
+
+    .hours-input {
+      width: 100%;
+    }
+
+    .btn {
+      width: 100%;
     }
 
     /* Mobile: Convert table to card layout */

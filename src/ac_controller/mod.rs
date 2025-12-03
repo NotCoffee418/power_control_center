@@ -3,7 +3,7 @@ pub mod pir_state;
 pub mod ac_executor;
 mod manual_mode_monitor;
 pub mod min_on_time;
-mod node_executor;
+pub mod node_executor;
 pub mod time_helpers;
 
 // Re-export types needed by other modules
