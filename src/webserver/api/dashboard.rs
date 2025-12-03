@@ -8,7 +8,7 @@ use axum::{
 use serde::{Serialize, Deserialize};
 
 use crate::{
-    ac_controller::ac_executor::{get_state_manager, AC_MODE_COOL, AC_MODE_HEAT},
+    ac_controller::ac_executor::{get_state_manager, AC_MODE_OFF, AC_MODE_COOL, AC_MODE_HEAT},
     config,
     db,
     device_requests,
@@ -76,8 +76,9 @@ async fn get_dashboard_status() -> Response {
             }
         };
         
-        // Convert mode integer to string (AC_MODE_COOL=1, AC_MODE_HEAT=4)
+        // Convert mode integer to string (AC_MODE_OFF=0, AC_MODE_COOL=1, AC_MODE_HEAT=4)
         let mode_str = state.mode.map(|m| match m {
+            AC_MODE_OFF => "off".to_string(),
             AC_MODE_COOL => "cool".to_string(),
             AC_MODE_HEAT => "heat".to_string(),
             _ => format!("mode_{}", m),

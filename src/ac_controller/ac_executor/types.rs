@@ -1,6 +1,7 @@
 // Types removed - legacy plan_types no longer needed
 
 /// AC operation modes for API calls
+pub const AC_MODE_OFF: i32 = 0;
 pub const AC_MODE_COOL: i32 = 1;
 pub const AC_MODE_HEAT: i32 = 4;
 
