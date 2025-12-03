@@ -29,6 +29,28 @@ pub struct UserHomeResponse {
     pub message: String,
 }
 
+/// Trigger immediate AC evaluation for all devices after home override change
+async fn trigger_ac_evaluation(action_description: &str) {
+    log::info!("Triggering immediate AC evaluation after {}", action_description);
+    for device in AcDevices::all() {
+        let device_name = device.as_str();
+        match ac_controller::node_executor::execute_nodeset_for_device(&device).await {
+            ac_controller::node_executor::NodeExecutionResult::CommandExecuted => {
+                log::info!("AC command executed for {} after {}", device_name, action_description);
+            }
+            ac_controller::node_executor::NodeExecutionResult::NoAction => {
+                log::debug!("No action needed for {} after {}", device_name, action_description);
+            }
+            ac_controller::node_executor::NodeExecutionResult::ManualMode => {
+                log::debug!("Device {} is in manual mode, skipped evaluation", device_name);
+            }
+            ac_controller::node_executor::NodeExecutionResult::Error(e) => {
+                log::error!("Failed to execute nodeset for {} after {}: {}", device_name, action_description, e);
+            }
+        }
+    }
+}
+
 /// POST /api/user-home/set
 /// Set user home override for the specified number of hours
 async fn set_user_home(Json(request): Json<SetUserHomeRequest>) -> Response {
@@ -59,24 +81,7 @@ async fn set_user_home(Json(request): Json<SetUserHomeRequest>) -> Response {
             
             // Trigger immediate AC evaluation for all devices
             tokio::spawn(async move {
-                log::info!("Triggering immediate AC evaluation after user home override set");
-                for device in AcDevices::all() {
-                    let device_name = device.as_str();
-                    match ac_controller::node_executor::execute_nodeset_for_device(&device).await {
-                        ac_controller::node_executor::NodeExecutionResult::CommandExecuted => {
-                            log::info!("AC command executed for {} after user home override", device_name);
-                        }
-                        ac_controller::node_executor::NodeExecutionResult::NoAction => {
-                            log::debug!("No action needed for {} after user home override", device_name);
-                        }
-                        ac_controller::node_executor::NodeExecutionResult::ManualMode => {
-                            log::debug!("Device {} is in manual mode, skipped evaluation", device_name);
-                        }
-                        ac_controller::node_executor::NodeExecutionResult::Error(e) => {
-                            log::error!("Failed to execute nodeset for {} after user home override: {}", device_name, e);
-                        }
-                    }
-                }
+                trigger_ac_evaluation("user home override set").await;
             });
             
             let response = ApiResponse::success(UserHomeResponse {
@@ -111,24 +116,7 @@ async fn clear_user_home() -> Response {
             
             // Trigger immediate AC evaluation for all devices
             tokio::spawn(async move {
-                log::info!("Triggering immediate AC evaluation after user home override cleared");
-                for device in AcDevices::all() {
-                    let device_name = device.as_str();
-                    match ac_controller::node_executor::execute_nodeset_for_device(&device).await {
-                        ac_controller::node_executor::NodeExecutionResult::CommandExecuted => {
-                            log::info!("AC command executed for {} after user home override cleared", device_name);
-                        }
-                        ac_controller::node_executor::NodeExecutionResult::NoAction => {
-                            log::debug!("No action needed for {} after user home override cleared", device_name);
-                        }
-                        ac_controller::node_executor::NodeExecutionResult::ManualMode => {
-                            log::debug!("Device {} is in manual mode, skipped evaluation", device_name);
-                        }
-                        ac_controller::node_executor::NodeExecutionResult::Error(e) => {
-                            log::error!("Failed to execute nodeset for {} after user home override cleared: {}", device_name, e);
-                        }
-                    }
-                }
+                trigger_ac_evaluation("user home override cleared").await;
             });
             
             let response = ApiResponse::success(UserHomeResponse {

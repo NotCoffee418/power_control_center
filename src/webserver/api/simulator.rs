@@ -253,9 +253,10 @@ async fn evaluate_workflow(Json(inputs): Json<SimulatorInputs>) -> Response {
         None => get_avg_next_24h_outdoor_temp().await.unwrap_or(outdoor_temp),
     };
     
-    let user_is_home = inputs.user_is_home.unwrap_or_else(|| {
-        crate::ac_controller::time_helpers::is_user_home_and_awake()
-    });
+    let user_is_home = match inputs.user_is_home {
+        Some(is_home) => is_home,
+        None => crate::ac_controller::time_helpers::is_user_home_and_awake_async().await,
+    };
     
     let pir_detected = inputs.pir_detected.unwrap_or(false);
     let pir_minutes_ago = inputs.pir_minutes_ago.unwrap_or(0) as i64;
@@ -595,7 +596,7 @@ async fn get_live_inputs() -> Response {
         Err(_) => None,
     };
     
-    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake();
+    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake_async().await;
     
     let live_inputs = LiveInputs {
         devices,

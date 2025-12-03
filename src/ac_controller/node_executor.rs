@@ -139,7 +139,7 @@ async fn gather_execution_inputs(device: &AcDevices) -> Result<ExecutionInputs, 
     };
 
     // Get is_user_home
-    let is_user_home = time_helpers::is_user_home_and_awake();
+    let is_user_home = time_helpers::is_user_home_and_awake_async().await;
 
     // Get net power and raw solar
     let (net_power_watt, raw_solar_watt) = match device_requests::meter::get_latest_reading_cached().await {

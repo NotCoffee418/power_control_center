@@ -155,7 +155,7 @@ async fn get_dashboard_status() -> Response {
     };
     
     // Get user home status
-    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake();
+    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake_async().await;
     
     // Get user home override status
     let user_home_override_until = match get_user_home_override().await {
