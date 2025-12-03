@@ -1,6 +1,6 @@
 mod types;
 
-pub use types::{AcState, AC_MODE_COOL, AC_MODE_HEAT};
+pub use types::{AcState, AC_MODE_OFF, AC_MODE_COOL, AC_MODE_HEAT};
 
 use super::devices::AcDevices;
 use crate::device_requests;
