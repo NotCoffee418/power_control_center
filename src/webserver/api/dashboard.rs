@@ -32,6 +32,7 @@ pub struct DashboardStatus {
     pub net_power_w: Option<i32>,
     pub pir_timeout_minutes: u32,
     pub user_is_home: bool,
+    pub user_home_override_until: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -154,7 +155,13 @@ async fn get_dashboard_status() -> Response {
     };
     
     // Get user home status
-    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake();
+    let user_is_home = crate::ac_controller::time_helpers::is_user_home_and_awake_async().await;
+    
+    // Get user home override status
+    let user_home_override_until = match get_user_home_override().await {
+        Ok(override_timestamp) if override_timestamp > 0 => Some(override_timestamp),
+        _ => None,
+    };
     
     let status = DashboardStatus {
         devices,
@@ -166,6 +173,7 @@ async fn get_dashboard_status() -> Response {
         net_power_w: net_power,
         pir_timeout_minutes: cfg.pir_timeout_minutes,
         user_is_home,
+        user_home_override_until,
     };
     
     let response = ApiResponse::success(status);
@@ -202,6 +210,25 @@ pub struct RecentCommandsResponse {
     pub total_count: i64,
     pub page: i64,
     pub per_page: i64,
+}
+
+/// Helper function to get user home override timestamp
+async fn get_user_home_override() -> Result<i64, Box<dyn std::error::Error>> {
+    let pool = db::get_pool().await;
+    
+    let result = sqlx::query_as::<_, (String,)>(
+        "SELECT setting_value FROM settings WHERE setting_key = 'user_is_home_override'"
+    )
+    .fetch_optional(pool)
+    .await?;
+    
+    match result {
+        Some((value_str,)) => {
+            let timestamp = value_str.parse::<i64>()?;
+            Ok(timestamp)
+        }
+        None => Ok(0),
+    }
 }
 
 /// GET /api/dashboard/recent-commands?page=1&per_page=10
