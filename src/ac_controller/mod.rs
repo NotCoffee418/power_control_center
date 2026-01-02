@@ -18,6 +18,7 @@ const MANUAL_MODE_POLL_INTERVAL_SECS: u64 = 10;
 /// Start the AC controller loop
 /// Runs immediately on startup, then repeats at the interval specified in the active profile
 /// Also spawns a separate task to monitor devices in manual mode
+/// Also spawns a background task to process the logging queue
 pub async fn start_ac_controller() {
     log::info!("AC controller starting...");
     
@@ -28,6 +29,11 @@ pub async fn start_ac_controller() {
     // Start the manual mode monitoring task
     tokio::spawn(async move {
         manual_mode_monitoring_loop().await;
+    });
+    
+    // Start the logging queue processing task
+    tokio::spawn(async move {
+        logging_queue_processing_loop().await;
     });
     
     // Get the initial interval from the active profile
@@ -189,5 +195,36 @@ async fn manual_mode_monitoring_loop() {
         
         // Wait before next check
         tokio::time::sleep(Duration::from_secs(MANUAL_MODE_POLL_INTERVAL_SECS)).await;
+    }
+}
+
+/// Process the logging queue to retry failed database log entries
+/// Runs every 30 seconds to retry pending entries
+async fn logging_queue_processing_loop() {
+    const QUEUE_PROCESS_INTERVAL_SECS: u64 = 30;
+    
+    log::info!("Logging queue processing loop starting...");
+    
+    // Wait a bit before starting to allow the system to initialize
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    
+    loop {
+        let queue = crate::device_requests::logging_queue::get_logging_queue();
+        let queue_size = queue.size().await;
+        
+        if queue_size > 0 {
+            log::debug!("Processing logging queue with {} entries", queue_size);
+            let (success, failures, exhausted) = queue.process_queue().await;
+            
+            if success > 0 || failures > 0 || exhausted > 0 {
+                log::info!(
+                    "Logging queue processed: {} succeeded, {} failed, {} exhausted",
+                    success, failures, exhausted
+                );
+            }
+        }
+        
+        // Wait before next processing cycle
+        tokio::time::sleep(Duration::from_secs(QUEUE_PROCESS_INTERVAL_SECS)).await;
     }
 }
