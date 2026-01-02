@@ -1,6 +1,6 @@
 use super::common;
 use super::cache::DataCache;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::OnceLock;
@@ -76,9 +76,8 @@ pub async fn turn_off_ac(endpoint_name: &str, cause_id: i32) -> Result<bool, AcE
             Ok(response) => {
                 match handle_response(response).await {
                     Ok(result) => {
-                        // Success - log to database and return
-                        // If database logging fails, treat it as a command failure to maintain consistency
-                        log_ac_command(endpoint_name, "off", None, None, None, None, cause_id).await?;
+                        // Success - log to database (enqueued if DB unavailable)
+                        log_ac_command(endpoint_name, "off", None, None, None, None, cause_id).await;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -148,8 +147,7 @@ pub async fn turn_on_ac(
             Ok(response) => {
                 match handle_response(response).await {
                     Ok(result) => {
-                        // Success - log to database and return
-                        // If database logging fails, treat it as a command failure to maintain consistency
+                        // Success - log to database (enqueued if DB unavailable)
                         log_ac_command(
                             endpoint_name,
                             "on",
@@ -158,7 +156,7 @@ pub async fn turn_on_ac(
                             Some(temperature as f32),
                             Some(swing),
                             cause_id,
-                        ).await?;
+                        ).await;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -211,9 +209,8 @@ pub async fn toggle_powerful(endpoint_name: &str, cause_id: i32) -> Result<bool,
             Ok(response) => {
                 match handle_response(response).await {
                     Ok(result) => {
-                        // Success - log to database and return
-                        // If database logging fails, treat it as a command failure to maintain consistency
-                        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None, cause_id).await?;
+                        // Success - log to database (enqueued if DB unavailable)
+                        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None, cause_id).await;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -315,7 +312,8 @@ async fn handle_response<T: for<'de> Deserialize<'de>>(
 }
 
 /// Log AC command to database with environmental context
-/// Returns an error if database logging fails to ensure state consistency
+/// On failure, enqueues the log entry for retry instead of returning an error
+/// This decouples physical device commands from database logging
 async fn log_ac_command(
     endpoint_name: &str,
     action_type: &str,
@@ -324,7 +322,7 @@ async fn log_ac_command(
     temperature: Option<f32>,
     swing: Option<i32>,
     cause_id: i32,
-) -> Result<(), AcError> {
+) {
     // Try to get indoor temperature from the device
     let measured_temp = match get_sensors(endpoint_name).await {
         Ok(sensor_data) => Some(sensor_data.temperature as f32),
@@ -373,12 +371,33 @@ async fn log_ac_command(
         cause_id,
     );
     
-    // Log to database - return error if it fails to ensure state consistency
-    crate::db::ac_actions::insert(ac_action).await.map_err(|e| {
-        error!("Failed to log AC command to database: {}", e);
-        AcError::DatabaseError(format!("Failed to log command: {}", e))
-    })?;
-    
-    debug!("AC command logged to database successfully");
-    Ok(())
+    // Log to database - if it fails, enqueue for retry instead of failing the command
+    match crate::db::ac_actions::insert(ac_action).await {
+        Ok(_) => {
+            debug!("AC command logged to database successfully");
+        }
+        Err(e) => {
+            warn!(
+                "Failed to log AC command to database: {} - enqueuing for retry",
+                e
+            );
+            // Create a new AcAction for the queue since we consumed the previous one
+            let queued_action = crate::types::db_types::AcAction::new_for_insert(
+                endpoint_name.to_string(),
+                action_type.to_string(),
+                mode,
+                fan_speed,
+                temperature,
+                swing,
+                measured_temp,
+                net_power,
+                solar_production,
+                is_human_home,
+                cause_id,
+            );
+            super::logging_queue::get_logging_queue()
+                .enqueue(queued_action)
+                .await;
+        }
+    }
 }

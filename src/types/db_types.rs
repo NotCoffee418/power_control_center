@@ -1,7 +1,7 @@
 use serde::Serialize;
 use sqlx::prelude::FromRow;
 
-#[derive(Debug, FromRow, Serialize)]
+#[derive(Debug, FromRow, Serialize, Clone)]
 pub struct AcAction {
     pub id: i32,
     pub action_timestamp: i32, // Unix timestamp
