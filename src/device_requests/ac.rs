@@ -29,6 +29,7 @@ pub enum AcError {
     ApiError(String),
     NetworkError(reqwest::Error),
     EndpointNotFound(String),
+    DatabaseError(String),
 }
 
 impl fmt::Display for AcError {
@@ -39,6 +40,7 @@ impl fmt::Display for AcError {
             AcError::EndpointNotFound(name) => {
                 write!(f, "AC endpoint '{}' not found in config", name)
             }
+            AcError::DatabaseError(msg) => write!(f, "Database Error: {}", msg),
         }
     }
 }
@@ -374,7 +376,7 @@ async fn log_ac_command(
     // Log to database - return error if it fails to ensure state consistency
     crate::db::ac_actions::insert(ac_action).await.map_err(|e| {
         error!("Failed to log AC command to database: {}", e);
-        AcError::ApiError(format!("Database logging failed: {}", e))
+        AcError::DatabaseError(format!("Failed to log command: {}", e))
     })?;
     
     debug!("AC command logged to database successfully");
