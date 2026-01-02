@@ -29,6 +29,7 @@ pub enum AcError {
     ApiError(String),
     NetworkError(reqwest::Error),
     EndpointNotFound(String),
+    DatabaseError(String),
 }
 
 impl fmt::Display for AcError {
@@ -39,6 +40,7 @@ impl fmt::Display for AcError {
             AcError::EndpointNotFound(name) => {
                 write!(f, "AC endpoint '{}' not found in config", name)
             }
+            AcError::DatabaseError(msg) => write!(f, "Database Error: {}", msg),
         }
     }
 }
@@ -75,7 +77,8 @@ pub async fn turn_off_ac(endpoint_name: &str, cause_id: i32) -> Result<bool, AcE
                 match handle_response(response).await {
                     Ok(result) => {
                         // Success - log to database and return
-                        log_ac_command(endpoint_name, "off", None, None, None, None, cause_id).await;
+                        // If database logging fails, treat it as a command failure to maintain consistency
+                        log_ac_command(endpoint_name, "off", None, None, None, None, cause_id).await?;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -146,6 +149,7 @@ pub async fn turn_on_ac(
                 match handle_response(response).await {
                     Ok(result) => {
                         // Success - log to database and return
+                        // If database logging fails, treat it as a command failure to maintain consistency
                         log_ac_command(
                             endpoint_name,
                             "on",
@@ -154,7 +158,7 @@ pub async fn turn_on_ac(
                             Some(temperature as f32),
                             Some(swing),
                             cause_id,
-                        ).await;
+                        ).await?;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -208,7 +212,8 @@ pub async fn toggle_powerful(endpoint_name: &str, cause_id: i32) -> Result<bool,
                 match handle_response(response).await {
                     Ok(result) => {
                         // Success - log to database and return
-                        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None, cause_id).await;
+                        // If database logging fails, treat it as a command failure to maintain consistency
+                        log_ac_command(endpoint_name, "toggle-powerful", None, None, None, None, cause_id).await?;
                         return Ok(result);
                     }
                     Err(e) => {
@@ -310,6 +315,7 @@ async fn handle_response<T: for<'de> Deserialize<'de>>(
 }
 
 /// Log AC command to database with environmental context
+/// Returns an error if database logging fails to ensure state consistency
 async fn log_ac_command(
     endpoint_name: &str,
     action_type: &str,
@@ -318,7 +324,7 @@ async fn log_ac_command(
     temperature: Option<f32>,
     swing: Option<i32>,
     cause_id: i32,
-) {
+) -> Result<(), AcError> {
     // Try to get indoor temperature from the device
     let measured_temp = match get_sensors(endpoint_name).await {
         Ok(sensor_data) => Some(sensor_data.temperature as f32),
@@ -367,10 +373,12 @@ async fn log_ac_command(
         cause_id,
     );
     
-    // Log to database asynchronously (don't block on errors)
-    if let Err(e) = crate::db::ac_actions::insert(ac_action).await {
+    // Log to database - return error if it fails to ensure state consistency
+    crate::db::ac_actions::insert(ac_action).await.map_err(|e| {
         error!("Failed to log AC command to database: {}", e);
-    } else {
-        debug!("AC command logged to database successfully");
-    }
+        AcError::DatabaseError(format!("Failed to log command: {}", e))
+    })?;
+    
+    debug!("AC command logged to database successfully");
+    Ok(())
 }
