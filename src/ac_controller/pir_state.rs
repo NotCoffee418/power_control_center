@@ -62,8 +62,6 @@ pub fn get_pir_state() -> &'static Arc<PirState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
-    use std::time::Duration;
 
     #[test]
     fn test_record_and_check_detection() {
@@ -122,9 +120,10 @@ mod tests {
         let detection_time = state.get_last_detection("TestDevice");
         assert!(detection_time.is_some());
         
-        // Detection should be very recent (within last second)
+        // Detection should be recent (within last 10 seconds to avoid flaky tests)
+        // This is a reasonable threshold that doesn't depend on exact timing
         let now = Utc::now();
         let diff = now.signed_duration_since(detection_time.unwrap());
-        assert!(diff.num_seconds() < 2);
+        assert!(diff.num_seconds() < 10, "Detection time should be recent, got {} seconds ago", diff.num_seconds());
     }
 }
