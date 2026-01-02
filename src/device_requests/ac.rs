@@ -372,7 +372,8 @@ async fn log_ac_command(
     );
     
     // Log to database - if it fails, enqueue for retry instead of failing the command
-    match crate::db::ac_actions::insert(ac_action).await {
+    // Clone before insert so we can reuse the action if database fails
+    match crate::db::ac_actions::insert(ac_action.clone()).await {
         Ok(_) => {
             debug!("AC command logged to database successfully");
         }
@@ -381,22 +382,9 @@ async fn log_ac_command(
                 "Failed to log AC command to database: {} - enqueuing for retry",
                 e
             );
-            // Create a new AcAction for the queue since we consumed the previous one
-            let queued_action = crate::types::db_types::AcAction::new_for_insert(
-                endpoint_name.to_string(),
-                action_type.to_string(),
-                mode,
-                fan_speed,
-                temperature,
-                swing,
-                measured_temp,
-                net_power,
-                solar_production,
-                is_human_home,
-                cause_id,
-            );
+            // Enqueue the action for background retry
             super::logging_queue::get_logging_queue()
-                .enqueue(queued_action)
+                .enqueue(ac_action)
                 .await;
         }
     }
